@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
+import path from 'path'
 import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { initRunDir, writeAgentLog, updateRunMeta } from '@/lib/logger'
-import { RunMeta } from '@/lib/types'
+import { RunMeta, AgentOutput } from '@/lib/types'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],
-    branchedFromRunId,
+    branchedFromRunId: branchedFromRunId ? path.basename(branchedFromRunId) : undefined,
     branchedFromStep,
   }
   initRunDir(meta)
@@ -37,43 +38,61 @@ export async function POST(req: NextRequest) {
       const wp = getWorkspacePath()
       const startStep = branchedFromStep ?? 0
 
-      for (let i = startStep; i < chain.agents.length; i++) {
-        const agentName = chain.agents[i]
-        const agentDef = agents.find(a => a.name === agentName)
-        if (!agentDef) {
-          send({ type: 'error', agentName, error: `Agent "${agentName}" not found` })
-          continue
-        }
-
-        send({ type: 'agent_start', agentName, step: i })
-
-        const systemPrompt = await buildSystemPrompt(
-          agentDef, skills, previousOutputs, wp, seedPrompt
-        )
-
-        // user message is {input} resolved — already in system prompt for most agents
-        const userMessage = i === 0 ? seedPrompt : 'Continue based on your instructions.'
-
-        const output = await runAgent(
-          agentDef,
-          systemPrompt,
-          userMessage,
-          (token) => send({ type: 'token', agentName, token }),
-        )
-
-        previousOutputs.push(output)
-        writeAgentLog(runId, i, output)
-        send({ type: 'agent_done', agentName, step: i, output })
+      // Write branched outputs to the new run's log folder and send done events
+      if (branchOutputs && branchOutputs.length > 0) {
+        branchOutputs.forEach((output: AgentOutput, idx: number) => {
+          writeAgentLog(runId, idx, output)
+          send({ type: 'agent_done', agentName: output.agentName, step: idx, output })
+        })
       }
 
-      updateRunMeta(runId, {
-        status: 'complete',
-        completedAt: new Date().toISOString(),
-        agentOutputs: previousOutputs,
-      })
+      try {
+        for (let i = startStep; i < chain.agents.length; i++) {
+          const agentName = chain.agents[i]
+          const agentDef = agents.find(a => a.name === agentName)
+          if (!agentDef) {
+            send({ type: 'error', agentName, error: `Agent "${agentName}" not found` })
+            continue
+          }
 
-      send({ type: 'run_complete', runId })
-      controller.close()
+          send({ type: 'agent_start', agentName, step: i })
+
+          const systemPrompt = await buildSystemPrompt(
+            agentDef, skills, previousOutputs, wp, seedPrompt
+          )
+
+          // user message is {input} resolved — already in system prompt for most agents
+          const userMessage = i === 0 ? seedPrompt : 'Continue based on your instructions.'
+
+          const output = await runAgent(
+            agentDef,
+            systemPrompt,
+            userMessage,
+            (token) => send({ type: 'token', agentName, token }),
+          )
+
+          previousOutputs.push(output)
+          writeAgentLog(runId, i, output)
+          send({ type: 'agent_done', agentName, step: i, output })
+        }
+
+        updateRunMeta(runId, {
+          status: 'complete',
+          completedAt: new Date().toISOString(),
+          agentOutputs: previousOutputs,
+        })
+
+        send({ type: 'run_complete', runId })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        send({ type: 'error', error: errorMessage })
+        updateRunMeta(runId, {
+          status: 'error',
+          agentOutputs: previousOutputs,
+        })
+      } finally {
+        controller.close()
+      }
     },
   })
 

@@ -5,7 +5,8 @@ import { RunMeta, AgentOutput } from './types'
 import { getWorkspacePath } from './fs/workspace'
 
 export function getRunDir(runId: string): string {
-  return path.join(getWorkspacePath(), 'logs', runId)
+  const safeRunId = path.basename(runId)
+  return path.join(getWorkspacePath(), 'logs', safeRunId)
 }
 
 export function initRunDir(meta: RunMeta) {
@@ -16,7 +17,8 @@ export function initRunDir(meta: RunMeta) {
 
 export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutput) {
   const dir = getRunDir(runId)
-  const filename = `${String(stepIdx).padStart(2, '0')}-${output.agentName}.md`
+  const safeAgentName = path.basename(output.agentName)
+  const filename = `${String(stepIdx).padStart(2, '0')}-${safeAgentName}.md`
   const frontmatter = {
     agent: output.agentName,
     run_id: runId,

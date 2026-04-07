@@ -8,7 +8,7 @@ export function parseAgent(filePath: string): AgentDef {
   const { data, content } = matter(raw)
   return {
     name: data.name,
-    model: data.model ?? 'anthropic/claude-3.5-sonnet',
+    model: process.env.AI_MODEL_NAME || data.model || 'anthropic/claude-3.5-sonnet',
     description: data.description ?? '',
     skills: data.skills ?? [],
     context: data.context ?? [],
