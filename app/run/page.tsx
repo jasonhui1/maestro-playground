@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { ChainSelector } from '@/components/ChainSelector'
+import { TemplateSelector } from '@/components/TemplateSelector'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
-import { ChainDef, AgentOutput } from '@/lib/types'
+import { ChainDef, AgentOutput, TemplateDef } from '@/lib/types'
 
 interface AgentState {
   agentName: string
@@ -18,6 +19,7 @@ interface AgentState {
 
 export default function RunPage() {
   const [chains, setChains] = useState<ChainDef[]>([])
+  const [templates, setTemplates] = useState<TemplateDef[]>([])
   const [selectedChain, setSelectedChain] = useState('')
   const [seedPrompt, setSeedPrompt] = useState('')
   const [agentStates, setAgentStates] = useState<AgentState[]>([])
@@ -29,9 +31,17 @@ export default function RunPage() {
       .then(r => r.json())
       .then(data => {
         setChains(data.chains)
+        setTemplates(data.templates)
         if (data.chains.length > 0) setSelectedChain(data.chains[0].name)
       })
   }, [])
+
+  function handleTemplateSelect(template: TemplateDef) {
+    setSeedPrompt(template.seedPrompt)
+    if (template.chain) {
+      setSelectedChain(template.chain)
+    }
+  }
 
   async function handleRun() {
     setAgentStates([])
@@ -46,14 +56,29 @@ export default function RunPage() {
 
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
-      const lines = decoder.decode(value).split('\n')
+      
+      const chunk = done 
+        ? decoder.decode() 
+        : decoder.decode(value, { stream: true })
+      
+      buffer += chunk
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
-        const event = JSON.parse(line.slice(6))
+        
+        let event
+        try {
+          event = JSON.parse(line.slice(6))
+        } catch (e) {
+          console.error('Error parsing SSE event:', e)
+          continue
+        }
 
         if (event.type === 'agent_start') {
           setAgentStates(prev => [...prev, {
@@ -88,6 +113,11 @@ export default function RunPage() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-zinc-800">Run a chain</h1>
+
+      <TemplateSelector
+        templates={templates}
+        onSelect={handleTemplateSelect}
+      />
 
       <ChainSelector
         chains={chains}

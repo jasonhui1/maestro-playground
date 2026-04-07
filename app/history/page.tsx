@@ -17,7 +17,7 @@ export default function HistoryPage() {
     fetch('/api/workspace')
       .then(res => res.json())
       .then(data => {
-        setChains(data.chains.map((c: any) => c.name))
+        setChains(data.chains.map((c: { name: string }) => c.name))
       })
   }, [])
 
@@ -27,13 +27,18 @@ export default function HistoryPage() {
     if (filterStatus) params.set('status', filterStatus)
     if (filterKeyword) params.set('keyword', filterKeyword)
 
-    setLoading(true)
-    fetch(`/api/runs?${params.toString()}`)
-      .then(res => res.json())
-      .then(data => {
+    const fetchRuns = async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/runs?${params.toString()}`)
+        const data = await res.json()
         setRuns(data)
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    fetchRuns()
   }, [filterChain, filterStatus, filterKeyword])
 
   return (

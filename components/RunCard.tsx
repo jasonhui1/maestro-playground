@@ -35,7 +35,7 @@ export default function RunCard({ run }: RunCardProps) {
       </div>
       
       <p className="text-sm text-zinc-600 line-clamp-2 mb-5 leading-relaxed italic">
-        "{run.seedPrompt}"
+        &quot;{run.seedPrompt}&quot;
       </p>
       
       <div className="flex justify-between items-center text-[11px] text-zinc-400 border-t border-zinc-100 pt-4">

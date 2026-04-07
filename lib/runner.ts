@@ -1,9 +1,7 @@
 import OpenAI from 'openai'
-import { AgentDef, AgentOutput, RunMeta } from './types'
+import { AgentDef, AgentOutput } from './types'
 import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
-import { writeAgentLog, updateRunMeta } from './logger'
-import { getWorkspacePath } from './fs/workspace'
 
 const client = new OpenAI({
   baseURL: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',

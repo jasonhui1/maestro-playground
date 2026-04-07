@@ -1,6 +1,7 @@
 import { loadAllAgents } from './parseAgent'
 import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
+import { loadAllTemplates } from './parseTemplate'
 import path from 'path'
 
 const WORKSPACE = process.env.WORKSPACE_PATH ?? './workspace'
@@ -15,5 +16,6 @@ export function loadWorkspace() {
     agents: loadAllAgents(wp),
     skills: loadAllSkills(wp),
     chains: loadAllChains(wp),
+    templates: loadAllTemplates(wp),
   }
 }

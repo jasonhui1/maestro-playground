@@ -5,7 +5,8 @@ export async function GET() {
   try {
     const workspace = loadWorkspace()
     return NextResponse.json(workspace)
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const error = err as Error
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

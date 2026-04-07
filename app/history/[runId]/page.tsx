@@ -60,15 +60,31 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let newRunId = ''
+    let buffer = ''
+
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
-      const lines = decoder.decode(value).split('\n')
+      
+      const chunk = done 
+        ? decoder.decode() 
+        : decoder.decode(value, { stream: true })
+      
+      buffer += chunk
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
-        const event = JSON.parse(line.slice(6))
-        if (event.type === 'run_complete') newRunId = event.runId
+        
+        try {
+          const event = JSON.parse(line.slice(6))
+          if (event.type === 'run_complete') newRunId = event.runId
+        } catch (e) {
+          console.error('Error parsing SSE event:', e)
+        }
       }
+      
+      if (done) break
     }
     if (newRunId) router.push(`/history/${newRunId}`)
     setIsBranching(false)
@@ -87,7 +103,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     return (
       <div className="max-w-4xl mx-auto px-6 py-24 text-center">
         <h1 className="text-2xl font-bold text-zinc-900 mb-4">Run Not Found</h1>
-        <p className="text-zinc-500 mb-8">The run ID you're looking for doesn't exist or has been deleted.</p>
+        <p className="text-zinc-500 mb-8">The run ID you&apos;re looking for doesn&apos;t exist or has been deleted.</p>
         <Link href="/history" className="text-sm font-bold underline underline-offset-4">Back to History</Link>
       </div>
     )
@@ -113,6 +129,20 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         </div>
 
         <div className="flex gap-3">
+          <a 
+            href={`/api/runs/${runId}/export?format=markdown`}
+            className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            EXPORT .MD
+          </a>
+          <a 
+            href={`/api/runs/${runId}/export?format=json`}
+            className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            EXPORT .JSON
+          </a>
           <button 
             onClick={() => setCompareMode(!compareMode)}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
@@ -129,7 +159,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       {/* Seed Prompt */}
       <div className="bg-zinc-50 rounded-2xl p-8 border border-zinc-100">
         <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-4">Seed Prompt</h2>
-        <p className="text-lg text-zinc-800 leading-relaxed font-medium italic">"{run.seedPrompt}"</p>
+        <p className="text-lg text-zinc-800 leading-relaxed font-medium italic">&quot;{run.seedPrompt}&quot;</p>
       </div>
 
       {compareMode ? (

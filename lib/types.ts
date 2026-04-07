@@ -52,3 +52,11 @@ export interface RunMeta {
   branchedFromRunId?: string
   branchedFromStep?: number
 }
+
+export interface TemplateDef {
+  name: string
+  description: string
+  chain: string
+  seedPrompt: string
+  filePath: string
+}
