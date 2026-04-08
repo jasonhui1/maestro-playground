@@ -1,5 +1,8 @@
+'use client';
+
 import Sidebar from '@/components/workspace/Sidebar';
 import { Suspense } from 'react';
+import { Group, Panel, Separator } from 'react-resizable-panels';
 
 export default function WorkspaceLayout({
   children,
@@ -7,13 +10,20 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
-      <Suspense fallback={<div className="w-64 border-r border-zinc-200 bg-white p-4">Loading sidebar...</div>}>
-        <Sidebar />
-      </Suspense>
-      <main className="flex-1 overflow-auto bg-white">
-        {children}
-      </main>
+    <div className="h-[calc(100vh-3.5rem)] overflow-hidden">
+      <Group orientation="horizontal">
+        <Panel defaultSize="20%" minSize="15%" maxSize="40%">
+          <Suspense fallback={<div className="h-full border-r border-zinc-200 bg-white p-4">Loading sidebar...</div>}>
+            <Sidebar />
+          </Suspense>
+        </Panel>
+        <Separator className="w-1 bg-zinc-100 hover:bg-zinc-200 transition-colors border-x border-zinc-200" />
+        <Panel>
+          <main className="h-full overflow-auto bg-white">
+            {children}
+          </main>
+        </Panel>
+      </Group>
     </div>
   );
 }

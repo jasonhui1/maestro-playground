@@ -19,6 +19,7 @@ export function parseAgent(filePath: string): AgentDef {
     output_format: data.output_format ?? 'markdown',
     systemPrompt: content.trim(),
     filePath,
+    isFavorite: false,
   }
 }
 

@@ -15,6 +15,7 @@ export function parseTemplate(filePath: string): TemplateDef {
     chain: data.chain ?? '',
     seedPrompt: content.trim(),
     filePath,
+    isFavorite: false,
   }
 }
 

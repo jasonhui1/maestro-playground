@@ -16,6 +16,7 @@ export function parseSkill(filePath: string): SkillDef {
     description: data.description ?? '',
     content: content.trim(),
     filePath,
+    isFavorite: false,
   }
 }
 

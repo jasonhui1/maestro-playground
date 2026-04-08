@@ -9,14 +9,18 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "chokidar": "^5.0.0",
+    "fuse.js": "^7.3.0",
     "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
     "nanoid": "^5.1.7",
     "next": "16.2.2",
     "openai": "^6.33.0",
     "prismjs": "^1.30.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-resizable-panels": "^4.9.0",
     "react-simple-code-editor": "^0.14.1"
   },
   "devDependencies": {

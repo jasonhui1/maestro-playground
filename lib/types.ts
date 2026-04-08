@@ -9,6 +9,7 @@ export interface AgentDef {
   output_format: 'markdown' | 'json'
   systemPrompt: string  // body of the .md file
   filePath: string
+  isFavorite?: boolean
 }
 
 export interface SkillDef {
@@ -19,6 +20,7 @@ export interface SkillDef {
   description: string
   content: string       // body of the .md file
   filePath: string
+  isFavorite?: boolean
 }
 
 export interface ChainDef {
@@ -28,6 +30,7 @@ export interface ChainDef {
   agents: string[]      // ordered agent names
   shared_context: string[]
   filePath: string
+  isFavorite?: boolean
 }
 
 export interface AgentOutput {
@@ -63,4 +66,16 @@ export interface TemplateDef {
   chain: string
   seedPrompt: string
   filePath: string
+  isFavorite?: boolean
+}
+
+export interface CreationParams {
+  type: 'agent' | 'skill' | 'chain' | 'template'
+  name: string
+  slug: string
+}
+
+export interface ValidationResult {
+  valid: boolean
+  errors: string[]
 }

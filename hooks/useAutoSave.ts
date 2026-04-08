@@ -9,14 +9,31 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
   const [content, setContent] = useState(initialContent);
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const lastSavedContentRef = useRef(initialContent);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update content when initialContent changes (e.g., when switching files)
   useEffect(() => {
     setContent(initialContent);
+    lastSavedContentRef.current = initialContent;
     setStatus('idle');
     setError(null);
+    setIsDirty(false);
   }, [initialContent]);
+
+  // Warn user before leaving if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   const save = useCallback(async (currentContent: string) => {
     if (!type || !slug) return;
@@ -26,7 +43,17 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
 
     try {
       // Parse the content into frontmatter and body
-      const { data, content: body } = matter(currentContent);
+      let data, body;
+      try {
+        const parsed = matter(currentContent);
+        data = parsed.data;
+        body = parsed.content;
+      } catch (err: any) {
+        // If YAML is invalid, don't trigger a server save, but don't show a hard error either
+        // The FileEditor will show the validation error
+        setStatus('idle');
+        return;
+      }
 
       const response = await fetch(`/api/workspace/${type}/${slug}`, {
         method: 'PUT',
@@ -41,17 +68,27 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
         throw new Error(errorData.error || 'Failed to save');
       }
 
+      lastSavedContentRef.current = currentContent;
       setStatus('saved');
-    } catch (err: any) {
+      setIsDirty(false);
+    } catch (err: unknown) {
       console.error('Auto-save error:', err);
       setStatus('error');
-      setError(err.message);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
     }
   }, [type, slug]);
 
   useEffect(() => {
-    // Don't trigger save on initial load or if content hasn't changed from initialContent
-    if (content === initialContent) return;
+    const dirty = content !== lastSavedContentRef.current;
+    setIsDirty(dirty);
+
+    // Don't trigger save if not dirty
+    if (!dirty) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      return;
+    }
 
     // Clear existing timer
     if (timerRef.current) {
@@ -68,12 +105,13 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
         clearTimeout(timerRef.current);
       }
     };
-  }, [content, initialContent, save]);
+  }, [content, save]);
 
   return {
     content,
     setContent,
     status,
     error,
+    isDirty,
   };
 }

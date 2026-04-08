@@ -15,6 +15,7 @@ export function parseChain(filePath: string): ChainDef {
     agents: data.agents ?? [],
     shared_context: data.shared_context ?? [],
     filePath,
+    isFavorite: false,
   }
 }
 

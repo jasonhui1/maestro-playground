@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { Group, Panel, Separator } from 'react-resizable-panels';
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
@@ -12,6 +13,11 @@ function WorkspaceContent() {
   const [initialContent, setInitialContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  
+  // Execution state
+  const [isOutputVisible, setIsOutputVisible] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [output, setOutput] = useState<string>('');
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
@@ -31,8 +37,8 @@ function WorkspaceContent() {
         }
         const data = await response.json();
         setInitialContent(data.raw || '');
-      } catch (err: any) {
-        setFetchError(err.message);
+      } catch (err: unknown) {
+        setFetchError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
         setLoading(false);
       }
@@ -40,6 +46,24 @@ function WorkspaceContent() {
 
     fetchContent();
   }, [type, slug]);
+
+  const handleRun = () => {
+    setIsOutputVisible(true);
+    setIsExecuting(true);
+    setOutput('Starting execution...\n');
+    
+    // Mock execution stream
+    let count = 0;
+    const interval = setInterval(() => {
+      count++;
+      setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] Step ${count}: Processing ${type} ${slug}...\n`);
+      if (count >= 5) {
+        clearInterval(interval);
+        setIsExecuting(false);
+        setOutput(prev => prev + '\nExecution completed successfully.');
+      }
+    }, 800);
+  };
 
   if (!type || !slug) {
     return (
@@ -69,25 +93,84 @@ function WorkspaceContent() {
   }
 
   return (
-    <div className="p-8 h-full flex flex-col">
-      <div className="mb-6">
-        <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-          <span>{type}</span>
-          <span>/</span>
-          <span>{slug}</span>
+    <div className="h-full flex flex-col">
+      {/* Toolbar */}
+      <div className="px-8 py-4 border-b border-zinc-100 flex items-center justify-between bg-white">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">
+            <span>{type}</span>
+            <span>/</span>
+            <span>{slug}</span>
+          </div>
+          <h1 className="text-lg font-bold text-zinc-900 capitalize leading-tight">
+            {slug.replace(/-/g, ' ')}
+          </h1>
         </div>
-        <h1 className="text-2xl font-bold text-zinc-900 capitalize">
-          {slug.replace(/-/g, ' ')}
-        </h1>
+        
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRun}
+            disabled={isExecuting}
+            className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded-md hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            {isExecuting ? 'Running...' : 'Run'}
+          </button>
+          
+          <button
+            onClick={() => setIsOutputVisible(!isOutputVisible)}
+            className={`p-1.5 rounded-md border transition-colors ${
+              isOutputVisible 
+                ? 'bg-zinc-100 border-zinc-300 text-zinc-900' 
+                : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+            }`}
+            title="Toggle Output"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+          </button>
+        </div>
       </div>
       
       <div className="flex-1 min-h-0">
-        <FileEditor 
-          content={content} 
-          onChange={setContent} 
-          status={status} 
-          error={saveError} 
-        />
+        <Group orientation="horizontal">
+          <Panel defaultSize="70%" minSize="30%">
+            <div className="h-full p-8 pt-4">
+              <FileEditor 
+                content={content} 
+                onChange={setContent} 
+                status={status} 
+                error={saveError} 
+                type={type}
+                language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+              />
+            </div>
+          </Panel>
+          
+          {isOutputVisible && (
+            <>
+              <Separator className="w-1 bg-zinc-50 hover:bg-zinc-100 transition-colors border-x border-zinc-100" />
+              <Panel defaultSize="30%" minSize="20%">
+                <div className="h-full border-l border-zinc-100 bg-zinc-50 flex flex-col">
+                  <div className="px-4 py-2 border-b border-zinc-200 flex items-center justify-between bg-white">
+                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Output</span>
+                    <button 
+                      onClick={() => setIsOutputVisible(false)}
+                      className="text-zinc-400 hover:text-zinc-600"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-700 whitespace-pre-wrap">
+                    {output || 'No output yet. Click "Run" to start execution.'}
+                    {isExecuting && (
+                      <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-1 align-middle"></span>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            </>
+          )}
+        </Group>
       </div>
     </div>
   );
