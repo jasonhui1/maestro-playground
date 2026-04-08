@@ -6,7 +6,10 @@ import { TemplateDef } from '../types'
 export function parseTemplate(filePath: string): TemplateDef {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
+  const slug = path.basename(filePath, '.md')
+  
   return {
+    slug,
     name: data.name,
     description: data.description ?? '',
     chain: data.chain ?? '',

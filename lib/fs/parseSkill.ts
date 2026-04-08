@@ -6,7 +6,10 @@ import { SkillDef } from '../types'
 export function parseSkill(filePath: string): SkillDef {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
+  const slug = path.basename(filePath, '.md')
+  
   return {
+    slug,
     name: data.name,
     type: data.type ?? 'behavioural',
     injected: data.injected,

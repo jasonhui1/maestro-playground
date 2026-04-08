@@ -6,7 +6,10 @@ import { AgentDef } from '../types'
 export function parseAgent(filePath: string): AgentDef {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
+  const slug = path.basename(filePath, '.md')
+  
   return {
+    slug,
     name: data.name,
     model: process.env.AI_MODEL_NAME || data.model || 'anthropic/claude-3.5-sonnet',
     description: data.description ?? '',

@@ -1,4 +1,5 @@
 export interface AgentDef {
+  slug: string
   name: string
   model: string
   description: string
@@ -11,6 +12,7 @@ export interface AgentDef {
 }
 
 export interface SkillDef {
+  slug: string
   name: string
   type: 'behavioural' | 'craft'
   injected?: 'always'   // if 'always', injected into every agent
@@ -20,6 +22,7 @@ export interface SkillDef {
 }
 
 export interface ChainDef {
+  slug: string
   name: string
   description: string
   agents: string[]      // ordered agent names
@@ -54,6 +57,7 @@ export interface RunMeta {
 }
 
 export interface TemplateDef {
+  slug: string
   name: string
   description: string
   chain: string

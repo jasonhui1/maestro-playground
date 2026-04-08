@@ -6,7 +6,10 @@ import { ChainDef } from '../types'
 export function parseChain(filePath: string): ChainDef {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data } = matter(raw)
+  const slug = path.basename(filePath, '.md')
+  
   return {
+    slug,
     name: data.name,
     description: data.description ?? '',
     agents: data.agents ?? [],
