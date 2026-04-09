@@ -3,10 +3,9 @@ name: story-chain
 description: Full story generation pipeline — world to dungeon
 agents:
   - world-builder
-  - dungeon-master
   - character-designer
   - event-writer
-  - event-writer
+  - dungeon-master
 shared_context: []
 ---
 

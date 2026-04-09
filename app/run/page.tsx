@@ -10,6 +10,7 @@ interface AgentState {
   step: number
   output: string
   isStreaming: boolean
+  systemPrompt?: string
   tokensIn?: number
   tokensOut?: number
   costUsd?: number

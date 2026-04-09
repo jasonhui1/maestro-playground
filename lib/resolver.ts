@@ -3,7 +3,10 @@ import path from 'path'
 import { AgentOutput } from './types'
 
 function extractSummary(markdown: string): string {
-  const match = markdown.match(/## Summary\n([\s\S]*?)(?:\n##|$)/)
+  // Matches # Summary, ## Summary, ### Summary etc. case-insensitive
+  // Handles trailing spaces, different newline styles, and stops at the next header or end of file.
+  const regex = /^#+\s*Summary\s*[\r\n]+([\s\S]*?)(?:\n#+|$)/mi
+  const match = markdown.match(regex)
   return match ? match[1].trim() : markdown.slice(0, 500)
 }
 

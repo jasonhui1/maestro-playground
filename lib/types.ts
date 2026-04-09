@@ -36,8 +36,8 @@ export interface ChainDef {
 
 export interface AgentOutput {
   agentName: string
-  input: string
   systemPrompt: string
+  input: string
   output: string
   tokensIn: number
   tokensOut: number

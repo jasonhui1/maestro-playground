@@ -1,9 +1,11 @@
 'use client'
+import { useState } from 'react'
 
 interface Props {
   agentName: string
   output: string
   isStreaming: boolean
+  systemPrompt?: string
   tokensIn?: number
   tokensOut?: number
   costUsd?: number
@@ -13,13 +15,25 @@ interface Props {
 }
 
 export function AgentStreamOutput({
-  agentName, output, isStreaming,
+  agentName, output, isStreaming, systemPrompt,
   tokensIn, tokensOut, costUsd, latencyMs, status, error
 }: Props) {
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false)
+
   return (
     <div className="rounded-xl border border-zinc-200 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-50 border-b border-zinc-200">
-        <span className="text-sm font-medium text-zinc-700">{agentName}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-zinc-700">{agentName}</span>
+          {systemPrompt && (
+            <button
+              onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+              className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
+            >
+              {showSystemPrompt ? 'Hide Prompt' : 'View Prompt'}
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3 text-xs text-zinc-400">
           {tokensIn != null && <span>{tokensIn + (tokensOut ?? 0)} tokens</span>}
           {costUsd != null && <span>${costUsd.toFixed(5)}</span>}
@@ -32,6 +46,14 @@ export function AgentStreamOutput({
           )}
         </div>
       </div>
+
+      {showSystemPrompt && (
+        <div className="p-4 bg-zinc-100 border-b border-zinc-200 text-[11px] text-zinc-500 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
+          <div className="mb-2 font-bold text-zinc-400 uppercase tracking-widest">System Prompt</div>
+          {systemPrompt}
+        </div>
+      )}
+
       <div className="p-4 text-sm text-zinc-700 whitespace-pre-wrap font-mono leading-relaxed min-h-16">
         {error ? (
           <span className="text-red-500">{error}</span>
