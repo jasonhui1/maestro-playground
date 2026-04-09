@@ -20,6 +20,7 @@ function WorkspaceContent() {
   const [isOutputVisible, setIsOutputVisible] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [output, setOutput] = useState<string>('');
+  const [seedPrompt, setSeedPrompt] = useState<string>('');
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
@@ -55,22 +56,68 @@ function WorkspaceContent() {
     fetchContent();
   }, [type, slug]);
 
-  const handleRun = () => {
+  const handleRun = async () => {
+    if (!type || !slug) return;
+    
     setIsOutputVisible(true);
     setIsExecuting(true);
-    setOutput('Starting execution...\n');
-    
-    // Mock execution stream
-    let count = 0;
-    const interval = setInterval(() => {
-      count++;
-      setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] Step ${count}: Processing ${type} ${slug}...\n`);
-      if (count >= 5) {
-        clearInterval(interval);
-        setIsExecuting(false);
-        setOutput(prev => prev + '\nExecution completed successfully.');
+    setOutput(`Starting execution for ${type} ${slug}...\n`);
+
+    try {
+      const response = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          [type === 'chain' ? 'chainName' : 'agentName']: slug,
+          seedPrompt: seedPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
       }
-    }, 800);
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'token') {
+                setOutput(prev => prev + data.token);
+              } else if (data.type === 'agent_start') {
+                setOutput(prev => prev + `\n\n--- Running Agent: ${data.agentName} ---\n\n`);
+              } else if (data.type === 'agent_done') {
+                setOutput(prev => prev + `\n\n[SUCCESS] Agent ${data.agentName} complete.\n`);
+              } else if (data.type === 'error') {
+                setOutput(prev => prev + `\n\n[ERROR] ${data.error}\n`);
+              } else if (data.type === 'run_complete') {
+                setOutput(prev => prev + `\n\nRun complete: ${data.runId}\n`);
+              }
+            } catch (_e) {
+              console.error('Failed to parse SSE line:', line);
+            }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setOutput(prev => prev + `\n\n[CRITICAL ERROR] ${errorMessage}\n`);
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   if (!type || !slug) {
@@ -197,6 +244,19 @@ function WorkspaceContent() {
                     </button>
                   </div>
                   <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-700 whitespace-pre-wrap">
+                    {!isExecuting && (type === 'agent' || type === 'chain') && (
+                      <div className="mb-6 p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
+                        <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                          Seed Prompt ({'{input}'})
+                        </label>
+                        <textarea
+                          value={seedPrompt}
+                          onChange={(e) => setSeedPrompt(e.target.value)}
+                          placeholder="Enter initial instructions or data..."
+                          className="w-full h-32 p-3 bg-zinc-50 border border-zinc-100 rounded text-sm font-sans focus:outline-none focus:ring-1 focus:ring-zinc-300 transition-all resize-none"
+                        />
+                      </div>
+                    )}
                     {output || 'No output yet. Click "Run" to start execution.'}
                     {isExecuting && (
                       <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-1 align-middle"></span>

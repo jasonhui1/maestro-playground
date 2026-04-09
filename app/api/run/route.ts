@@ -7,17 +7,30 @@ import { RunMeta, AgentOutput } from '@/lib/types'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
-  const { chainName, seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } =
+  const { chainName, agentName, seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } =
     await req.json()
 
   const { agents, skills, chains } = loadWorkspace()
-  const chain = chains.find(c => c.name === chainName)
-  if (!chain) return new Response('Chain not found', { status: 404 })
+  
+  let chainAgents: string[] = []
+  let runTitle = ''
+
+  if (chainName) {
+    const chain = chains.find(c => c.name === chainName)
+    if (!chain) return new Response('Chain not found', { status: 404 })
+    chainAgents = chain.agents
+    runTitle = chain.name
+  } else if (agentName) {
+    chainAgents = [agentName]
+    runTitle = agentName
+  } else {
+    return new Response('No chain or agent specified', { status: 400 })
+  }
 
   const runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
   const meta: RunMeta = {
     runId,
-    chainName,
+    chainName: runTitle,
     seedPrompt,
     startedAt: new Date().toISOString(),
     status: 'running',
@@ -47,8 +60,8 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        for (let i = startStep; i < chain.agents.length; i++) {
-          const agentName = chain.agents[i]
+        for (let i = startStep; i < chainAgents.length; i++) {
+          const agentName = chainAgents[i]
           const agentDef = agents.find(a => a.name === agentName)
           if (!agentDef) {
             send({ type: 'error', agentName, error: `Agent "${agentName}" not found` })
