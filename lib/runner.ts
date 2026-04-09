@@ -22,7 +22,7 @@ export async function runAgent(
   try {
     const stream = await client.chat.completions.create({
       model: agent.model,
-      max_tokens: 2048,
+      max_tokens: agent.max_tokens ?? 32768,
       messages: [
         { role: 'system', content: resolvedSystemPrompt },
         { role: 'user', content: userMessage }
@@ -46,6 +46,7 @@ export async function runAgent(
     return {
       agentName: agent.name,
       input: userMessage,
+      systemPrompt: resolvedSystemPrompt,
       output,
       tokensIn,
       tokensOut,
@@ -55,10 +56,12 @@ export async function runAgent(
       timestamp: new Date().toISOString(),
       status: 'success',
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
     return {
       agentName: agent.name,
       input: userMessage,
+      systemPrompt: resolvedSystemPrompt,
       output: '',
       tokensIn,
       tokensOut,
@@ -67,7 +70,7 @@ export async function runAgent(
       model: agent.model,
       timestamp: new Date().toISOString(),
       status: 'error',
-      error: err.message,
+      error: errorMessage,
     }
   }
 }

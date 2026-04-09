@@ -17,6 +17,7 @@ export function parseAgent(filePath: string): AgentDef {
     context: data.context ?? [],
     input_from: data.input_from ?? 'user',
     output_format: data.output_format ?? 'markdown',
+    max_tokens: data.max_tokens,
     systemPrompt: content.trim(),
     filePath,
     isFavorite: false,

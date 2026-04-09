@@ -9,6 +9,7 @@ export interface AgentDef {
   output_format: 'markdown' | 'json'
   systemPrompt: string  // body of the .md file
   filePath: string
+  max_tokens?: number
   isFavorite?: boolean
 }
 
@@ -36,6 +37,7 @@ export interface ChainDef {
 export interface AgentOutput {
   agentName: string
   input: string
+  systemPrompt: string
   output: string
   tokensIn: number
   tokensOut: number
