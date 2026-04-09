@@ -6,6 +6,7 @@ interface Props {
   output: string
   isStreaming: boolean
   systemPrompt?: string
+  thought?: string
   tokensIn?: number
   tokensOut?: number
   costUsd?: number
@@ -15,10 +16,11 @@ interface Props {
 }
 
 export function AgentStreamOutput({
-  agentName, output, isStreaming, systemPrompt,
+  agentName, output, isStreaming, systemPrompt, thought,
   tokensIn, tokensOut, costUsd, latencyMs, status, error
 }: Props) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
+  const [showThought, setShowThought] = useState(false)
 
   return (
     <div className="rounded-xl border border-zinc-200 overflow-hidden">
@@ -31,6 +33,14 @@ export function AgentStreamOutput({
               className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
             >
               {showSystemPrompt ? 'Hide Prompt' : 'View Prompt'}
+            </button>
+          )}
+          {thought && (
+            <button
+              onClick={() => setShowThought(!showThought)}
+              className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
+            >
+              {showThought ? 'Hide Thinking' : 'Thinking'}
             </button>
           )}
         </div>
@@ -51,6 +61,13 @@ export function AgentStreamOutput({
         <div className="p-4 bg-zinc-100 border-b border-zinc-200 text-[11px] text-zinc-500 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
           <div className="mb-2 font-bold text-zinc-400 uppercase tracking-widest">System Prompt</div>
           {systemPrompt}
+        </div>
+      )}
+
+      {showThought && (
+        <div className="p-4 bg-zinc-50 border-b border-zinc-200 text-[11px] text-zinc-400 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto italic">
+          <div className="mb-2 font-bold text-zinc-300 uppercase tracking-widest not-italic">Thinking Process</div>
+          {thought}
         </div>
       )}
 

@@ -9,6 +9,7 @@ interface AgentState {
   agentName: string
   step: number
   output: string
+  thought?: string
   isStreaming: boolean
   systemPrompt?: string
   tokensIn?: number
@@ -91,11 +92,15 @@ export default function RunPage() {
           }])
         }
         if (event.type === 'token') {
-          setAgentStates(prev => prev.map(a =>
-            a.agentName === event.agentName && a.step === event.step
-              ? { ...a, output: a.output + event.token }
-              : a
-          ))
+          setAgentStates(prev => prev.map(a => {
+            if (a.agentName === event.agentName && a.step === event.step) {
+              if (event.tokenType === 'thought') {
+                return { ...a, thought: (a.thought || '') + event.token }
+              }
+              return { ...a, output: a.output + event.token }
+            }
+            return a
+          }))
         }
         if (event.type === 'agent_done') {
           const o: AgentOutput = event.output

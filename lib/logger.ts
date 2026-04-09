@@ -31,6 +31,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     status: output.status,
     input: output.input,
     system_prompt: output.systemPrompt,
+    thought: output.thought,
   }
   const fileContent = matter.stringify(output.output, frontmatter)
   fs.writeFileSync(path.join(dir, filename), fileContent)

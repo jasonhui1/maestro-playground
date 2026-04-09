@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { RunMeta } from '@/lib/types'
+import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
@@ -221,14 +222,6 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
-                    {output.systemPrompt && (
-                      <button
-                        onClick={() => togglePrompt(idx)}
-                        className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50"
-                      >
-                        {expandedPrompts[idx] ? 'HIDE PROMPT' : 'VIEW PROMPT'}
-                      </button>
-                    )}
                     <button
                       onClick={() => handleBranch(idx)}
                       disabled={isBranching}
@@ -245,20 +238,11 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
                     </div>
                   </div>
                 </div>
-                <div className="p-8">
-                  {expandedPrompts[idx] && (
-                    <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-3">System Prompt</h3>
-                      <pre className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap text-zinc-500 bg-zinc-100 p-6 rounded-xl border border-zinc-200 max-h-96 overflow-y-auto">
-                        {output.systemPrompt}
-                      </pre>
-                    </div>
-                  )}
-                  <div className="prose prose-zinc max-w-none">
-                    <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap text-zinc-800 bg-zinc-50 p-6 rounded-xl border border-zinc-100">
-                      {output.output}
-                    </pre>
-                  </div>
+                <div className="p-4">
+                  <AgentStreamOutput 
+                    {...output}
+                    isStreaming={false}
+                  />
                 </div>
               </div>
             ))}

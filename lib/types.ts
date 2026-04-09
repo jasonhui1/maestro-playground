@@ -39,6 +39,7 @@ export interface AgentOutput {
   systemPrompt: string
   input: string
   output: string
+  thought?: string
   tokensIn: number
   tokensOut: number
   costUsd: number
