@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
             agentDef,
             systemPrompt,
             userMessage,
-            (token) => send({ type: 'token', agentName, token }),
+            (token) => send({ type: 'token', agentName, token, step: i }),
           )
 
           previousOutputs.push(output)

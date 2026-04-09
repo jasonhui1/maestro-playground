@@ -7,6 +7,7 @@ import { ChainDef, AgentOutput, TemplateDef } from '@/lib/types'
 
 interface AgentState {
   agentName: string
+  step: number
   output: string
   isStreaming: boolean
   tokensIn?: number
@@ -83,13 +84,14 @@ export default function RunPage() {
         if (event.type === 'agent_start') {
           setAgentStates(prev => [...prev, {
             agentName: event.agentName,
+            step: event.step,
             output: '',
             isStreaming: true,
           }])
         }
         if (event.type === 'token') {
           setAgentStates(prev => prev.map(a =>
-            a.agentName === event.agentName
+            a.agentName === event.agentName && a.step === event.step
               ? { ...a, output: a.output + event.token }
               : a
           ))
@@ -97,7 +99,7 @@ export default function RunPage() {
         if (event.type === 'agent_done') {
           const o: AgentOutput = event.output
           setAgentStates(prev => prev.map(a =>
-            a.agentName === event.agentName
+            a.agentName === event.agentName && a.step === event.step
               ? { ...a, isStreaming: false, ...o }
               : a
           ))
@@ -148,7 +150,7 @@ export default function RunPage() {
       </button>
 
       {agentStates.map(a => (
-        <AgentStreamOutput key={a.agentName} {...a} />
+        <AgentStreamOutput key={`${a.agentName}-${a.step}`} {...a} />
       ))}
 
       {completedRunId && (
