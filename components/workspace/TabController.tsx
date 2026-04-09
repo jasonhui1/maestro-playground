@@ -27,6 +27,10 @@ export function TabController() {
   const handleCloseTab = (e: React.MouseEvent, tabToClose: WorkspaceTab) => {
     e.stopPropagation();
     
+    const closedIndex = tabs.findIndex(
+      t => t.type === tabToClose.type && t.slug === tabToClose.slug
+    );
+    
     const newTabs = tabs.filter(
       t => !(t.type === tabToClose.type && t.slug === tabToClose.slug)
     );
@@ -40,9 +44,10 @@ export function TabController() {
     } else {
       params.set('tabs', serializeTabs(newTabs));
       
-      // If we closed the active tab, switch to the last remaining tab
+      // If we closed the active tab, switch to the adjacent tab
       if (tabToClose.active) {
-        const nextTab = newTabs[newTabs.length - 1];
+        const nextTabIndex = Math.max(0, closedIndex - 1);
+        const nextTab = newTabs[nextTabIndex];
         params.set('type', nextTab.type);
         params.set('slug', nextTab.slug);
       }
@@ -59,6 +64,13 @@ export function TabController() {
         <div
           key={`${tab.type}:${tab.slug}`}
           onClick={() => handleTabClick(tab)}
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              handleCloseTab(e, tab);
+            }
+          }}
+          title={tab.slug}
           className={`flex items-center h-full px-4 border-r border-zinc-200 cursor-pointer transition-colors min-w-[120px] max-w-[200px] group ${
             tab.active 
               ? 'bg-white text-zinc-900 border-b-2 border-b-zinc-900 -mb-[1px]' 
