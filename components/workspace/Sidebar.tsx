@@ -107,6 +107,21 @@ export default function Sidebar() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('type', type);
     params.set('slug', slug);
+    
+    // Update tabs parameter
+    const currentTabs = searchParams.get('tabs');
+    const tabString = `${type}:${slug}`;
+    
+    if (!currentTabs) {
+      params.set('tabs', tabString);
+    } else {
+      const tabsArray = currentTabs.split(',');
+      if (!tabsArray.includes(tabString)) {
+        tabsArray.push(tabString);
+        params.set('tabs', tabsArray.join(','));
+      }
+    }
+    
     router.push(`/workspace?${params.toString()}`);
   };
 

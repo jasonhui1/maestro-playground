@@ -6,6 +6,7 @@ agents:
   - dungeon-master
   - character-designer
   - event-writer
+  - event-writer
 shared_context: []
 ---
 

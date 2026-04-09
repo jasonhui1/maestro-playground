@@ -79,3 +79,16 @@ export interface ValidationResult {
   valid: boolean
   errors: string[]
 }
+
+export type WorkspaceTabType = 'agent' | 'chain' | 'skill' | 'template' | 'context'
+
+export interface WorkspaceTab {
+  type: WorkspaceTabType
+  slug: string
+  active: boolean
+}
+
+export interface WorkspaceState {
+  tabs: WorkspaceTab[]
+  activeTab?: WorkspaceTab
+}

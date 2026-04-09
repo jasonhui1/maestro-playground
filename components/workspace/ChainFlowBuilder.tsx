@@ -16,8 +16,10 @@ import {
   type Node,
   type NodeTypes,
   type FitViewOptions,
+  Position,
 } from '@xyflow/react';
 import matter from 'gray-matter';
+import dagre from 'dagre';
 
 import '@xyflow/react/dist/style.css';
 import AgentNode, { type AgentNodeData } from './AgentNode';
@@ -29,6 +31,44 @@ const nodeTypes: NodeTypes = {
 const fitViewOptions: FitViewOptions = {
   padding: 0.2,
   duration: 800,
+};
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+const nodeWidth = 200;
+const nodeHeight = 100;
+
+const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => {
+  const isHorizontal = direction === 'LR';
+  dagreGraph.setGraph({ rankdir: direction });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    node.targetPosition = isHorizontal ? Position.Left : Position.Top;
+    node.sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
+
+    // We are shifting the dagre node position (which is actually the center)
+    // to the top left, so it matches the React Flow node anchor point.
+    node.position = {
+      x: nodeWithPosition.x - nodeWidth / 2,
+      y: nodeWithPosition.y - nodeHeight / 2,
+    };
+
+    return node;
+  });
+
+  return { nodes: layoutedNodes, edges };
 };
 
 interface ChainFlowBuilderProps {
@@ -66,6 +106,22 @@ function FlowInner({
     setShowPicker(true);
   }, []);
 
+  const onLayout = useCallback(
+    (direction: string) => {
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+        nodes,
+        edges,
+        direction
+      );
+
+      setNodes([...layoutedNodes]);
+      setEdges([...layoutedEdges]);
+      
+      setTimeout(() => fitView(fitViewOptions), 50);
+    },
+    [nodes, edges, setNodes, setEdges, fitView]
+  );
+
   // Parse content and update nodes/edges
   useEffect(() => {
     try {
@@ -84,16 +140,14 @@ function FlowInner({
         // Determine if we should force a layout reset (e.g. on first load or when count changes)
         const shouldForceLayout = prevNodes.length === 0 || prevNodes.length !== agentSlugs.length;
 
-        return agentSlugs.map((slug, index) => {
+        const newNodes: Node[] = agentSlugs.map((slug, index) => {
           const id = nodeIds[index];
           const existingNode = prevNodes.find(n => n.id === id);
           
           return {
             id,
             type: 'agent',
-            position: (shouldForceLayout || !existingNode) 
-              ? { x: 0, y: index * 200 } 
-              : existingNode.position,
+            position: existingNode ? existingNode.position : { x: 0, y: index * 200 },
             data: {
               label: slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
               agentSlug: slug,
@@ -101,10 +155,8 @@ function FlowInner({
             },
           };
         });
-      });
 
-      // Update edges with stable IDs
-      setEdges(() => {
+        // Update edges with stable IDs
         const newEdges: Edge[] = [];
         for (let i = 0; i < nodeIds.length - 1; i++) {
           const source = nodeIds[i];
@@ -117,7 +169,15 @@ function FlowInner({
             style: { stroke: '#18181b', strokeWidth: 2 },
           });
         }
-        return newEdges;
+
+        if (shouldForceLayout) {
+          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(newNodes, newEdges);
+          setEdges(layoutedEdges);
+          return layoutedNodes;
+        }
+
+        setEdges(newEdges);
+        return newNodes;
       });
     } catch (err) {
       console.error('Failed to parse chain content:', err);
@@ -210,6 +270,18 @@ function FlowInner({
         <Background color="#e5e7eb" gap={20} />
         <Controls />
         <Panel position="top-right" className="bg-white p-2 rounded-md shadow-md border border-zinc-200 flex gap-2">
+          <button
+            onClick={() => onLayout('TB')}
+            className="px-3 py-1.5 bg-white text-zinc-600 text-sm font-medium rounded border border-zinc-200 hover:bg-zinc-50 transition-colors flex items-center gap-1.5"
+            title="Auto Layout"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21l18-18"></path>
+              <path d="M15 3h6v6"></path>
+              <path d="M9 21H3v-6"></path>
+            </svg>
+            Auto-Layout
+          </button>
           <button
             onClick={() => fitView(fitViewOptions)}
             className="px-3 py-1.5 bg-white text-zinc-600 text-sm font-medium rounded border border-zinc-200 hover:bg-zinc-50 transition-colors flex items-center gap-1.5"
