@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@xyflow/react": "^12.10.2",
+    "@xyflow/system": "^0.0.76",
     "chokidar": "^5.0.0",
     "fuse.js": "^7.3.0",
     "gray-matter": "^4.0.3",
