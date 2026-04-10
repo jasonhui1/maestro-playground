@@ -1,0 +1,53 @@
+cases:
+  # --- Positive cases ---
+  - id: evolve_skill_from_domain
+    prompt: "Evolve a skill for SQL query optimization. It should analyze slow queries, suggest index additions, and rewrite suboptimal joins. Generate it through co-evolutionary refinement."
+    fixtures: []
+    rubric:
+      - "Activates test-engineer agent for skill evolution"
+      - "Generates a complete skill package with SKILL.md, evals/cases.yaml, and references"
+      - "Runs surrogate verification in an isolated session"
+      - "Produces an evolution log tracking refinement iterations"
+    trigger_expected: true
+
+  - id: improve_existing_skill
+    prompt: "This skill for API documentation generation only scores 55% on the package evaluator. Improve it through automated co-evolutionary refinement until it passes the 70% threshold."
+    fixtures: []
+    rubric:
+      - "Reads the existing skill as baseline v0"
+      - "Runs the generate-verify-refine loop with oracle execution"
+      - "Applies surrogate verifier diagnostics to fix quality gaps"
+      - "Tracks improvement in evolution log across iterations"
+    trigger_expected: true
+
+  - id: auto_generate_skill_for_task
+    prompt: "Auto-generate a skill that handles regex pattern building. It should accept natural language descriptions and produce tested regex patterns with explanations. Use evo-skill methodology."
+    fixtures: []
+    rubric:
+      - "Creates skills/regex-builder or equivalent directory"
+      - "Follows NEW_PACKAGE_CHECKLIST.md conventions"
+      - "Generates assertions via surrogate-verifier"
+      - "Runs package-evaluator quality gate"
+    trigger_expected: true
+
+  # --- Negative cases ---
+  - id: not_code_review
+    prompt: "Review my pull request for code quality issues and naming convention violations"
+    fixtures: []
+    rubric:
+      - "Should NOT activate test-engineer — this is a code review task for code-reviewer agent"
+    trigger_expected: false
+
+  - id: not_test_harness
+    prompt: "Generate pytest unit tests for this Python function that parses CSV files"
+    fixtures: []
+    rubric:
+      - "Should NOT activate — this is application test generation for test-harness skill"
+    trigger_expected: false
+
+  - id: not_package_evaluator
+    prompt: "Score this skill's frontmatter quality and check if it meets the 70% threshold"
+    fixtures: []
+    rubric:
+      - "Should NOT activate — this is package metadata evaluation for package-evaluator skill"
+    trigger_expected: false
