@@ -22,9 +22,9 @@ export function validateContext(filename: string, content: string): ValidationRe
   if (!content || content.trim() === '') {
     return { valid: false, error: 'Content is required' }
   }
-  // Slug-like: alphanumeric, dashes, underscores
-  if (!/^[a-z0-9-_]+$/i.test(filename)) {
-    return { valid: false, error: 'Filename must be slug-like (alphanumeric, dashes, underscores)' }
+  // Slug-like: alphanumeric, dashes, underscores, and dots
+  if (!/^[a-z0-9-_.]+$/i.test(filename)) {
+    return { valid: false, error: 'Filename must be slug-like (alphanumeric, dashes, underscores, dots)' }
   }
   return { valid: true }
 }

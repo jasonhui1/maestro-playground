@@ -26,7 +26,7 @@ export function AgentStreamOutput({
   const handleSaveToContext = async () => {
     if (!output) return;
     
-    const defaultFilename = `${agentName.toLowerCase().replace(/\s+/g, '-')}-${new Date().getTime()}.md`;
+    const defaultFilename = `${agentName.toLowerCase().replace(/\s+/g, '-')}-${new Date().getTime()}`;
     const filename = window.prompt('Enter filename to save to context:', defaultFilename);
     
     if (!filename) return;

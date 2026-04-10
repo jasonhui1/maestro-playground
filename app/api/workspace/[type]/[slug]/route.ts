@@ -19,7 +19,7 @@ export async function GET(
     const { type, slug } = await params
     
     // Validate type
-    const validTypes = ['agent', 'skill', 'chain', 'template']
+    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
@@ -35,6 +35,7 @@ export async function GET(
     else if (type === 'skill') data = parseSkill(filePath)
     else if (type === 'chain') data = parseChain(filePath)
     else if (type === 'template') data = parseTemplate(filePath)
+    else if (type === 'context') data = { slug, name: slug }
     else return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
     const raw = fs.readFileSync(filePath, 'utf-8')
@@ -54,6 +55,13 @@ export async function PUT(
 ) {
   try {
     const { type, slug } = await params
+    
+    // Validate type
+    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
+    if (!validTypes.includes(type)) {
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+    }
+
     const body = await request.json()
     const { data, content } = body
 
@@ -70,7 +78,7 @@ export async function PUT(
     }
 
     const result = saveWorkspaceEntity({
-      type: type as 'agent' | 'skill' | 'chain' | 'template',
+      type: type as 'agent' | 'skill' | 'chain' | 'template' | 'context',
       slug,
       data,
       content,
@@ -91,7 +99,7 @@ export async function DELETE(
     const { type, slug } = await params
     
     // Validate type
-    const validTypes = ['agent', 'skill', 'chain', 'template']
+    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }

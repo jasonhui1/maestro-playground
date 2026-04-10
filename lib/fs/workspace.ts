@@ -31,7 +31,8 @@ export function resolveEntityPath(type: string, slug: string) {
   }
 
   const safeSlug = sanitizeSlug(slug)
-  const targetPath = path.join(wp, subDir, `${safeSlug}.md`)
+  const filename = safeSlug.toLowerCase().endsWith('.md') ? safeSlug : `${safeSlug}.md`
+  const targetPath = path.join(wp, subDir, filename)
   
   // Security check: Ensure the resolved path is still within the workspace subdirectory
   if (!targetPath.startsWith(absoluteSubDir)) {
