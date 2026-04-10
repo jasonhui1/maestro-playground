@@ -21,9 +21,39 @@ export function AgentStreamOutput({
 }: Props) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const [showThought, setShowThought] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveToContext = async () => {
+    if (!output) return;
+    
+    const defaultFilename = `${agentName.toLowerCase().replace(/\s+/g, '-')}-${new Date().getTime()}.md`;
+    const filename = window.prompt('Enter filename to save to context:', defaultFilename);
+    
+    if (!filename) return;
+
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/workspace/context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content: output }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save to context');
+      }
+      
+      alert(`Saved to context/${filename}`);
+    } catch (err) {
+      console.error(err);
+      alert('Error saving to context');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <div className="rounded-xl border border-zinc-200 overflow-hidden">
+    <div className="rounded-xl border border-zinc-200 overflow-hidden bg-white shadow-sm">
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-50 border-b border-zinc-200">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-zinc-700">{agentName}</span>
@@ -53,6 +83,15 @@ export function AgentStreamOutput({
           )}
           {status === 'error' && (
             <span className="text-red-500">error</span>
+          )}
+          {!isStreaming && output && (
+            <button
+              onClick={handleSaveToContext}
+              disabled={isSaving}
+              className="text-[10px] bg-zinc-900 text-white px-2 py-0.5 rounded hover:bg-zinc-800 transition-colors uppercase tracking-wider font-bold disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save to Context'}
+            </button>
           )}
         </div>
       </div>

@@ -8,6 +8,33 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { TabController } from '@/components/workspace/TabController';
 import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
+import { AgentStreamOutput } from '@/components/AgentStreamOutput';
+import { AgentOutput } from '@/lib/types';
+import { nanoid } from 'nanoid';
+
+interface AgentState {
+  runIndex: number;
+  agentName: string;
+  step: number;
+  output: string;
+  thought?: string;
+  isStreaming: boolean;
+  systemPrompt?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number;
+  latencyMs?: number;
+  status?: 'success' | 'error';
+  error?: string;
+}
+
+interface RunInstance { 
+  id: string; 
+  timestamp: string; 
+  parallelCount: number; 
+  instances: AgentState[]; 
+  status: 'running' | 'complete' | 'error'; 
+}
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
@@ -21,9 +48,27 @@ function WorkspaceContent() {
   
   // Execution state
   const [isOutputVisible, setIsOutputVisible] = useState(false);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [output, setOutput] = useState<string>('');
+  const [runsByFile, setRunsByFile] = useState<Record<string, RunInstance[]>>({});
   const [seedPrompt, setSeedPrompt] = useState<string>('');
+  const [parallelCount, setParallelCount] = useState(1);
+
+  const currentFileKey = `${type}:${slug}`;
+  const currentRuns = runsByFile[currentFileKey] || [];
+  const isExecuting = currentRuns.some(r => r.status === 'running');
+
+  const clearAllRuns = () => {
+    setRunsByFile(prev => ({
+      ...prev,
+      [currentFileKey]: []
+    }));
+  };
+
+  const deleteRun = (runId: string) => {
+    setRunsByFile(prev => ({
+      ...prev,
+      [currentFileKey]: (prev[currentFileKey] || []).filter(r => r.id !== runId)
+    }));
+  };
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
@@ -59,12 +104,8 @@ function WorkspaceContent() {
     fetchContent();
   }, [type, slug]);
 
-  const handleRun = async () => {
+  const runSingleInstance = async (runId: string, runIndex: number) => {
     if (!type || !slug) return;
-    
-    setIsOutputVisible(true);
-    setIsExecuting(true);
-    setOutput(`Starting execution for ${type} ${slug}...\n`);
 
     try {
       const response = await fetch('/api/run', {
@@ -98,16 +139,78 @@ function WorkspaceContent() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.type === 'token') {
-                setOutput(prev => prev + data.token);
-              } else if (data.type === 'agent_start') {
-                setOutput(prev => prev + `\n\n--- Running Agent: ${data.agentName} ---\n\n`);
+              if (data.type === 'agent_start') {
+                setRunsByFile(prev => {
+                  const fileRuns = prev[currentFileKey] || [];
+                  return {
+                    ...prev,
+                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                      ...r,
+                      instances: [...r.instances, {
+                        runIndex,
+                        agentName: data.agentName,
+                        step: data.step || 0,
+                        output: '',
+                        isStreaming: true,
+                      }]
+                    } : r)
+                  };
+                });
+              } else if (data.type === 'token') {
+                setRunsByFile(prev => {
+                  const fileRuns = prev[currentFileKey] || [];
+                  return {
+                    ...prev,
+                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                      ...r,
+                      instances: r.instances.map(a => {
+                        if (a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)) {
+                          if (data.tokenType === 'thought') {
+                            return { ...a, thought: (a.thought || '') + data.token };
+                          }
+                          return { ...a, output: a.output + data.token };
+                        }
+                        return a;
+                      })
+                    } : r)
+                  };
+                });
               } else if (data.type === 'agent_done') {
-                setOutput(prev => prev + `\n\n[SUCCESS] Agent ${data.agentName} complete.\n`);
+                const o: AgentOutput = data.output;
+                setRunsByFile(prev => {
+                  const fileRuns = prev[currentFileKey] || [];
+                  return {
+                    ...prev,
+                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                      ...r,
+                      instances: r.instances.map(a =>
+                        a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)
+                          ? { ...a, isStreaming: false, ...o }
+                          : a
+                      )
+                    } : r)
+                  };
+                });
               } else if (data.type === 'error') {
-                setOutput(prev => prev + `\n\n[ERROR] ${data.error}\n`);
-              } else if (data.type === 'run_complete') {
-                setOutput(prev => prev + `\n\nRun complete: ${data.runId}\n`);
+                setRunsByFile(prev => {
+                  const fileRuns = prev[currentFileKey] || [];
+                  return {
+                    ...prev,
+                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                      ...r,
+                      status: 'error',
+                      instances: [...r.instances, {
+                        runIndex,
+                        agentName: 'System',
+                        step: -1,
+                        output: '',
+                        isStreaming: false,
+                        status: 'error',
+                        error: data.error
+                      }]
+                    } : r)
+                  };
+                });
               }
             } catch {
               console.error('Failed to parse SSE line:', line);
@@ -117,9 +220,65 @@ function WorkspaceContent() {
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setOutput(prev => prev + `\n\n[CRITICAL ERROR] ${errorMessage}\n`);
-    } finally {
-      setIsExecuting(false);
+      setRunsByFile(prev => {
+        const fileRuns = prev[currentFileKey] || [];
+        return {
+          ...prev,
+          [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+            ...r,
+            status: 'error',
+            instances: [...r.instances, {
+              runIndex,
+              agentName: 'Critical Error',
+              step: -1,
+              output: '',
+              isStreaming: false,
+              status: 'error',
+              error: errorMessage
+            }]
+          } : r)
+        };
+      });
+    }
+  };
+
+  const handleRun = async () => {
+    if (!type || !slug) return;
+    
+    setIsOutputVisible(true);
+    const runId = nanoid();
+    const newRun: RunInstance = {
+      id: runId,
+      timestamp: new Date().toISOString(),
+      parallelCount,
+      instances: [],
+      status: 'running',
+    };
+
+    setRunsByFile(prev => ({
+      ...prev,
+      [currentFileKey]: [newRun, ...(prev[currentFileKey] || [])]
+    }));
+
+    try {
+      await Promise.all(
+        Array.from({ length: parallelCount }).map((_, i) => runSingleInstance(runId, i))
+      );
+      
+      setRunsByFile(prev => ({
+        ...prev,
+        [currentFileKey]: prev[currentFileKey].map(r => 
+          r.id === runId ? { ...r, status: r.status === 'error' ? 'error' : 'complete' } : r
+        )
+      }));
+    } catch (err) {
+      console.error('Parallel run failed:', err);
+      setRunsByFile(prev => ({
+        ...prev,
+        [currentFileKey]: prev[currentFileKey].map(r => 
+          r.id === runId ? { ...r, status: 'error' } : r
+        )
+      }));
     }
   };
 
@@ -189,13 +348,26 @@ function WorkspaceContent() {
               </button>
             </div>
           )}
+
+          <div className="flex items-center gap-2 mr-2">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={parallelCount}
+              onChange={(e) => setParallelCount(parseInt(e.target.value) || 1)}
+              className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300"
+            />
+          </div>
+
           <button
             onClick={handleRun}
-            disabled={isExecuting || loading}
+            disabled={loading || (type !== 'agent' && type !== 'chain')}
             className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded-md hover:bg-zinc-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            {isExecuting ? 'Running...' : 'Run'}
+            {isExecuting ? 'Run Another' : 'Run'}
           </button>
           
           <button
@@ -245,16 +417,26 @@ function WorkspaceContent() {
                   <div className="h-full border-l border-zinc-100 bg-zinc-50/50 flex flex-col">
                     <div className="px-4 py-2.5 border-b border-zinc-200 flex items-center justify-between bg-white">
                       <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Output Console</span>
-                      <button 
-                        onClick={() => setIsOutputVisible(false)}
-                        className="text-zinc-400 hover:text-zinc-600 transition-colors"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {currentRuns.length > 0 && (
+                          <button 
+                            onClick={clearAllRuns}
+                            className="text-[10px] font-bold text-zinc-400 hover:text-red-500 uppercase tracking-widest transition-colors mr-2"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => setIsOutputVisible(false)}
+                          className="text-zinc-400 hover:text-zinc-600 transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-700 whitespace-pre-wrap selection:bg-zinc-200">
-                      {!isExecuting && (type === 'agent' || type === 'chain') && (
-                        <div className="mb-6 p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
+                    <div className="flex-1 overflow-auto p-4 flex flex-col gap-6">
+                      {(type === 'agent' || type === 'chain') && (
+                        <div className="p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
                           <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
                             Seed Prompt ({'{input}'})
                           </label>
@@ -266,9 +448,71 @@ function WorkspaceContent() {
                           />
                         </div>
                       )}
-                      {output || <span className="text-zinc-400 italic">No output yet. Click &quot;Run&quot; to start execution.</span>}
-                      {isExecuting && (
-                        <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-1 align-middle"></span>
+
+                      {currentRuns.map((run) => (
+                        <div key={run.id} className="flex flex-col gap-3 border-t border-zinc-200 pt-6 first:border-t-0 first:pt-0">
+                          <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                                Run at {new Date(run.timestamp).toLocaleTimeString()}
+                              </span>
+                              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                run.status === 'running' ? 'bg-blue-50 text-blue-600 animate-pulse' :
+                                run.status === 'complete' ? 'bg-green-50 text-green-600' :
+                                'bg-red-50 text-red-600'
+                              }`}>
+                                {run.status}
+                              </span>
+                              {run.parallelCount > 1 && (
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase">
+                                  {run.parallelCount} Instances
+                                </span>
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => deleteRun(run.id)}
+                              className="text-zinc-400 hover:text-red-500 transition-colors"
+                              title="Delete Run"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                          </div>
+
+                          <div className={`grid gap-4 ${run.parallelCount > 1 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+                            {Array.from({ length: run.parallelCount }).map((_, runIndex) => {
+                              const instances = run.instances.filter(a => a.runIndex === runIndex);
+                              return (
+                                <div key={runIndex} className="flex flex-col gap-2 p-3 bg-white/50 border border-zinc-100 rounded-lg">
+                                  {run.parallelCount > 1 && (
+                                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                                      Instance #{runIndex + 1}
+                                    </div>
+                                  )}
+                                  <div className="flex flex-col gap-3">
+                                    {instances.length === 0 ? (
+                                      run.status === 'running' ? (
+                                        <div className="text-[10px] text-zinc-400 italic animate-pulse">Starting...</div>
+                                      ) : (
+                                        <div className="text-[10px] text-zinc-400 italic">No output</div>
+                                      )
+                                    ) : (
+                                      instances.map(a => (
+                                        <AgentStreamOutput key={`${a.runIndex}-${a.agentName}-${a.step}`} {...a} />
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
+                      {currentRuns.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2 opacity-20"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                          <span className="italic text-xs">No output yet. Click &quot;Run&quot; to start execution.</span>
+                        </div>
                       )}
                     </div>
                   </div>

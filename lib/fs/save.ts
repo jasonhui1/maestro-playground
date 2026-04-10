@@ -7,7 +7,7 @@ import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTempla
 import { CreationParams } from '../types'
 
 export interface SaveEntityRequest {
-  type: 'agent' | 'skill' | 'chain' | 'template'
+  type: 'agent' | 'skill' | 'chain' | 'template' | 'context'
   slug: string
   data: Record<string, any>
   content: string
@@ -49,6 +49,9 @@ export function createWorkspaceEntity({ type, name, slug }: CreationParams) {
     case 'template':
       template = getTemplateTemplate(name, cleanSlug)
       break
+    case 'context':
+      template = { content: '' }
+      break
     default:
       throw new Error(`Unknown entity type: ${type}`)
   }
@@ -64,7 +67,7 @@ export function createWorkspaceEntity({ type, name, slug }: CreationParams) {
   })
 }
 
-export function deleteWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template', slug: string) {
+export function deleteWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string) {
   const filePath = resolveEntityPath(type, slug)
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath)

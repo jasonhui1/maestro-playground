@@ -10,9 +10,10 @@ interface WorkspaceData {
   skills: SkillDef[];
   chains: ChainDef[];
   templates: TemplateDef[];
+  context: { slug: string; name: string; filePath: string }[];
 }
 
-type EntityType = 'agent' | 'skill' | 'chain' | 'template';
+type EntityType = 'agent' | 'skill' | 'chain' | 'template' | 'context';
 
 export default function Sidebar() {
   const [data, setData] = useState<WorkspaceData | null>(null);
@@ -24,10 +25,10 @@ export default function Sidebar() {
   const [modalType, setModalType] = useState<EntityType>('agent');
   const [newName, setNewName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  
+
   const searchParams = useSearchParams();
   const router = useRouter();
-  
+
   const activeType = searchParams.get('type');
   const activeSlug = searchParams.get('slug');
 
@@ -63,7 +64,7 @@ export default function Sidebar() {
     const newFavorites = favorites.includes(id)
       ? favorites.filter((f) => f !== id)
       : [...favorites, id];
-    
+
     setFavorites(newFavorites);
     localStorage.setItem('maestro_favorites', JSON.stringify(newFavorites));
   };
@@ -86,7 +87,7 @@ export default function Sidebar() {
       }
 
       const result = await res.json();
-      
+
       // Refresh data
       const dataRes = await fetch('/api/workspace');
       const newData = await dataRes.json();
@@ -107,11 +108,11 @@ export default function Sidebar() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('type', type);
     params.set('slug', slug);
-    
+
     // Update tabs parameter
     const currentTabs = searchParams.get('tabs');
     const tabString = `${type}:${slug}`;
-    
+
     if (!currentTabs) {
       params.set('tabs', tabString);
     } else {
@@ -121,7 +122,7 @@ export default function Sidebar() {
         params.set('tabs', tabsArray.join(','));
       }
     }
-    
+
     router.push(`/workspace?${params.toString()}`);
   };
 
@@ -160,6 +161,7 @@ export default function Sidebar() {
       ...data.skills.map(i => ({ ...i, entityType: 'skill' as EntityType })),
       ...data.chains.map(i => ({ ...i, entityType: 'chain' as EntityType })),
       ...data.templates.map(i => ({ ...i, entityType: 'template' as EntityType })),
+      ...data.context.map(i => ({ ...i, entityType: 'context' as EntityType })),
     ];
   }, [data]);
 
@@ -175,12 +177,13 @@ export default function Sidebar() {
     if (!searchQuery) return data;
 
     const results = fuse.search(searchQuery).map(r => r.item);
-    
+
     return {
       agents: results.filter(i => i.entityType === 'agent') as AgentDef[],
       skills: results.filter(i => i.entityType === 'skill') as SkillDef[],
       chains: results.filter(i => i.entityType === 'chain') as ChainDef[],
       templates: results.filter(i => i.entityType === 'template') as TemplateDef[],
+      context: results.filter(i => i.entityType === 'context') as { slug: string; name: string; filePath: string }[],
     };
   }, [data, searchQuery, fuse]);
 
@@ -197,6 +200,7 @@ export default function Sidebar() {
     { title: 'Skills', type: 'skill' as EntityType, items: filteredData.skills },
     { title: 'Chains', type: 'chain' as EntityType, items: filteredData.chains },
     { title: 'Templates', type: 'template' as EntityType, items: filteredData.templates },
+    { title: 'Context', type: 'context' as EntityType, items: filteredData.context },
   ];
 
   return (
@@ -288,7 +292,7 @@ export default function Sidebar() {
                 const slug = item.slug;
                 const isActive = activeType === section.type && activeSlug === slug;
                 const isFav = favorites.includes(`${section.type}:${slug}`);
-                
+
                 return (
                   <li key={slug} className="group relative">
                     <button

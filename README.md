@@ -21,6 +21,14 @@ The Workspace UI has been recently upgraded with several Quality of Life (QOL) i
 - **Run & Output**: Execute your agents or chains directly from the workspace.
 - **Split-pane View**: View your code and execution output side-by-side with a resizable output panel.
 - **Execution Status**: Real-time feedback on the execution progress.
+- **Parallel Runs**: Run multiple instances of an agent or chain simultaneously by specifying a count. This is useful for comparing different outputs or generating multiple variations.
+- **Save to Context**: Save any agent output directly to the `workspace/context/` directory. These saved files can be referenced in future prompts.
+
+### 🧠 Context & Referencing
+- **Context Files**: Store persistent information in `workspace/context/*.md`.
+- **Dynamic Referencing**: Use `{filename}` in your agent's system prompt to automatically inject the content of `workspace/context/filename.md`.
+- **Output Referencing**: Use `{agent-name.output}` or `{agent-name.summary}` to reference outputs from previous agents in a chain.
+- **Input Referencing**: Use `{input}` to reference the initial user prompt or the output of the immediately preceding agent.
 
 ## Getting Started
 

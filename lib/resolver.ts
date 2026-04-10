@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import matter from 'gray-matter'
 import { AgentOutput } from './types'
 
 function extractSummary(markdown: string): string {
@@ -41,7 +42,9 @@ export function resolveRefs(
     // {file-name} → contents of workspace/context/file-name.md
     const contextPath = path.join(workspacePath, 'context', `${k}.md`)
     if (fs.existsSync(contextPath)) {
-      return fs.readFileSync(contextPath, 'utf-8')
+      const raw = fs.readFileSync(contextPath, 'utf-8')
+      const { content } = matter(raw)
+      return content.trim()
     }
 
     return `[${k}: not found]`

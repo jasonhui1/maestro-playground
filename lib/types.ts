@@ -73,7 +73,7 @@ export interface TemplateDef {
 }
 
 export interface CreationParams {
-  type: 'agent' | 'skill' | 'chain' | 'template'
+  type: 'agent' | 'skill' | 'chain' | 'template' | 'context'
   name: string
   slug: string
 }
