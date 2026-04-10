@@ -7,6 +7,7 @@ import ChainFlowBuilder from '@/components/workspace/ChainFlowBuilder';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { TabController } from '@/components/workspace/TabController';
+import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
@@ -131,15 +132,6 @@ function WorkspaceContent() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center h-full text-zinc-500">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-300 mb-4"></div>
-        <p>Loading file content...</p>
-      </div>
-    );
-  }
-
   if (fetchError) {
     return (
       <div className="p-8 text-red-500">
@@ -199,7 +191,7 @@ function WorkspaceContent() {
           )}
           <button
             onClick={handleRun}
-            disabled={isExecuting}
+            disabled={isExecuting || loading}
             className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded-md hover:bg-zinc-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -221,62 +213,70 @@ function WorkspaceContent() {
       </div>
       
       <div className="flex-1 min-h-0">
-        <Group orientation="horizontal">
-          <Panel defaultSize="70%" minSize="30%">
-            <div className="h-full p-6 pt-4">
-              {viewMode === 'visual' && type === 'chain' ? (
-                <ChainFlowBuilder content={content} onChange={setContent} />
-              ) : (
-                <FileEditor 
-                  content={content} 
-                  onChange={setContent} 
-                  status={status} 
-                  error={saveError} 
-                  type={type}
-                  language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
-                />
-              )}
+        {loading ? (
+          <div className="h-full overflow-hidden">
+            <div className="-mt-14 h-[calc(100%+3.5rem)]">
+              <WorkspaceSkeleton />
             </div>
-          </Panel>
-          
-          {isOutputVisible && (
-            <>
-              <Separator className="w-1 bg-zinc-50 hover:bg-zinc-100 transition-colors border-x border-zinc-100 cursor-col-resize" />
-              <Panel defaultSize="30%" minSize="20%">
-                <div className="h-full border-l border-zinc-100 bg-zinc-50/50 flex flex-col">
-                  <div className="px-4 py-2.5 border-b border-zinc-200 flex items-center justify-between bg-white">
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Output Console</span>
-                    <button 
-                      onClick={() => setIsOutputVisible(false)}
-                      className="text-zinc-400 hover:text-zinc-600 transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
+          </div>
+        ) : (
+          <Group orientation="horizontal">
+            <Panel defaultSize="70%" minSize="30%">
+              <div className="h-full p-6 pt-4">
+                {viewMode === 'visual' && type === 'chain' ? (
+                  <ChainFlowBuilder content={content} onChange={setContent} />
+                ) : (
+                  <FileEditor 
+                    content={content} 
+                    onChange={setContent} 
+                    status={status} 
+                    error={saveError} 
+                    type={type}
+                    language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                  />
+                )}
+              </div>
+            </Panel>
+            
+            {isOutputVisible && (
+              <>
+                <Separator className="w-1 bg-zinc-50 hover:bg-zinc-100 transition-colors border-x border-zinc-100 cursor-col-resize" />
+                <Panel defaultSize="30%" minSize="20%">
+                  <div className="h-full border-l border-zinc-100 bg-zinc-50/50 flex flex-col">
+                    <div className="px-4 py-2.5 border-b border-zinc-200 flex items-center justify-between bg-white">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Output Console</span>
+                      <button 
+                        onClick={() => setIsOutputVisible(false)}
+                        className="text-zinc-400 hover:text-zinc-600 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-700 whitespace-pre-wrap selection:bg-zinc-200">
+                      {!isExecuting && (type === 'agent' || type === 'chain') && (
+                        <div className="mb-6 p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
+                          <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                            Seed Prompt ({'{input}'})
+                          </label>
+                          <textarea
+                            value={seedPrompt}
+                            onChange={(e) => setSeedPrompt(e.target.value)}
+                            placeholder="Enter initial instructions or data..."
+                            className="w-full h-32 p-3 bg-zinc-50 border border-zinc-100 rounded text-sm font-sans focus:outline-none focus:ring-1 focus:ring-zinc-300 transition-all resize-none"
+                          />
+                        </div>
+                      )}
+                      {output || <span className="text-zinc-400 italic">No output yet. Click &quot;Run&quot; to start execution.</span>}
+                      {isExecuting && (
+                        <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-1 align-middle"></span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-700 whitespace-pre-wrap selection:bg-zinc-200">
-                    {!isExecuting && (type === 'agent' || type === 'chain') && (
-                      <div className="mb-6 p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
-                        <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                          Seed Prompt ({'{input}'})
-                        </label>
-                        <textarea
-                          value={seedPrompt}
-                          onChange={(e) => setSeedPrompt(e.target.value)}
-                          placeholder="Enter initial instructions or data..."
-                          className="w-full h-32 p-3 bg-zinc-50 border border-zinc-100 rounded text-sm font-sans focus:outline-none focus:ring-1 focus:ring-zinc-300 transition-all resize-none"
-                        />
-                      </div>
-                    )}
-                    {output || <span className="text-zinc-400 italic">No output yet. Click &quot;Run&quot; to start execution.</span>}
-                    {isExecuting && (
-                      <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-1 align-middle"></span>
-                    )}
-                  </div>
-                </div>
-              </Panel>
-            </>
-          )}
-        </Group>
+                </Panel>
+              </>
+            )}
+          </Group>
+        )}
       </div>
     </div>
   );
