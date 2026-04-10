@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveEntityPath } from '@/lib/fs/workspace'
+import { resolveEntityPath, isValidEntityType, EntityType } from '@/lib/fs/workspace'
 import { parseAgent } from '@/lib/fs/parseAgent'
 import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
@@ -18,9 +18,7 @@ export async function GET(
   try {
     const { type, slug } = await params
     
-    // Validate type
-    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
-    if (!validTypes.includes(type)) {
+    if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
@@ -36,7 +34,6 @@ export async function GET(
     else if (type === 'chain') data = parseChain(filePath)
     else if (type === 'template') data = parseTemplate(filePath)
     else if (type === 'context') data = { slug, name: slug }
-    else return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
     const raw = fs.readFileSync(filePath, 'utf-8')
     return NextResponse.json({ ...data, raw })
@@ -56,9 +53,7 @@ export async function PUT(
   try {
     const { type, slug } = await params
     
-    // Validate type
-    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
-    if (!validTypes.includes(type)) {
+    if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
@@ -78,7 +73,7 @@ export async function PUT(
     }
 
     const result = saveWorkspaceEntity({
-      type: type as 'agent' | 'skill' | 'chain' | 'template' | 'context',
+      type: type as EntityType,
       slug,
       data,
       content,
@@ -98,13 +93,11 @@ export async function DELETE(
   try {
     const { type, slug } = await params
     
-    // Validate type
-    const validTypes = ['agent', 'skill', 'chain', 'template', 'context']
-    if (!validTypes.includes(type)) {
+    if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
-    const result = deleteWorkspaceEntity(type as any, slug)
+    const result = deleteWorkspaceEntity(type as EntityType, slug)
     return NextResponse.json(result)
   } catch (err: unknown) {
     const error = err as Error
@@ -114,3 +107,4 @@ export async function DELETE(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
+

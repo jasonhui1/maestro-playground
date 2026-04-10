@@ -7,6 +7,20 @@ import fs from 'fs'
 
 const WORKSPACE = process.env.WORKSPACE_PATH ?? './workspace'
 
+export const ENTITY_TYPES = {
+  agent: 'agents',
+  skill: 'skills',
+  chain: 'chains',
+  template: 'templates',
+  context: 'context'
+} as const;
+
+export type EntityType = keyof typeof ENTITY_TYPES;
+
+export function isValidEntityType(type: string): type is EntityType {
+  return type in ENTITY_TYPES;
+}
+
 export function getWorkspacePath() {
   return path.resolve(WORKSPACE)
 }
@@ -18,13 +32,11 @@ export function sanitizeSlug(slug: string) {
 
 export function resolveEntityPath(type: string, slug: string) {
   const wp = getWorkspacePath()
-  const subDir = type === 'agent' ? 'agents' : 
-                 type === 'skill' ? 'skills' : 
-                 type === 'chain' ? 'chains' : 
-                 type === 'template' ? 'templates' : 
-                 type === 'context' ? 'context' : ''
-  if (!subDir) throw new Error(`Invalid entity type: ${type}`)
+  if (!isValidEntityType(type)) {
+    throw new Error(`Invalid entity type: ${type}`)
+  }
   
+  const subDir = ENTITY_TYPES[type]
   const absoluteSubDir = path.join(wp, subDir)
   if (!fs.existsSync(absoluteSubDir)) {
     fs.mkdirSync(absoluteSubDir, { recursive: true })

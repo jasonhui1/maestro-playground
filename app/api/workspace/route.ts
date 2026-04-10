@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadWorkspace, resolveEntityPath, sanitizeSlug } from '@/lib/fs/workspace'
+import { loadWorkspace, resolveEntityPath, sanitizeSlug, isValidEntityType } from '@/lib/fs/workspace'
 import { createWorkspaceEntity } from '@/lib/fs/save'
 import fs from 'fs'
 
@@ -22,8 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing type or name' }, { status: 400 })
     }
 
-    const validTypes = ['agent', 'skill', 'chain', 'template']
-    if (!validTypes.includes(type)) {
+    if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
