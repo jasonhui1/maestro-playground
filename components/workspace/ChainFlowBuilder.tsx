@@ -20,6 +20,7 @@ import {
 } from '@xyflow/react';
 import matter from 'gray-matter';
 import dagre from 'dagre';
+import { GitBranch, Target, Trash2, Save, X } from 'lucide-react';
 
 import '@xyflow/react/dist/style.css';
 import AgentNode, { type AgentNodeData } from './AgentNode';
@@ -275,11 +276,7 @@ function FlowInner({
             className="px-3 py-1.5 bg-white text-zinc-600 text-sm font-medium rounded border border-zinc-200 hover:bg-zinc-50 transition-colors flex items-center gap-1.5"
             title="Auto Layout"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 21l18-18"></path>
-              <path d="M15 3h6v6"></path>
-              <path d="M9 21H3v-6"></path>
-            </svg>
+            <GitBranch size={14} />
             Auto-Layout
           </button>
           <button
@@ -287,21 +284,14 @@ function FlowInner({
             className="px-3 py-1.5 bg-white text-zinc-600 text-sm font-medium rounded border border-zinc-200 hover:bg-zinc-50 transition-colors flex items-center gap-1.5"
             title="Center View"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
+            <Target size={14} />
             Center
           </button>
           <button
             onClick={handleClear}
             className="px-3 py-1.5 bg-white text-red-600 text-sm font-medium rounded border border-zinc-200 hover:bg-red-50 transition-colors flex items-center gap-1.5"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18"></path>
-              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-            </svg>
+            <Trash2 size={14} />
             Clear
           </button>
           <div className="w-px h-8 bg-zinc-200 mx-1" />
@@ -309,11 +299,7 @@ function FlowInner({
             onClick={handleSave}
             className="px-3 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-800 transition-colors flex items-center gap-1.5 shadow-sm"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
-            </svg>
+            <Save size={14} />
             Save Chain
           </button>
         </Panel>
@@ -330,10 +316,7 @@ function FlowInner({
                   onClick={() => setShowPicker(false)}
                   className="p-1 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-md transition-colors"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
+                  <X size={16} />
                 </button>
               </div>
               <div className="space-y-1">

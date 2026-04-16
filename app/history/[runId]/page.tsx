@@ -7,6 +7,7 @@ import TokenCostBar from '@/components/TokenCostBar'
 import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ChevronLeft, Download } from 'lucide-react'
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params)
@@ -121,7 +122,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-2">
           <Link href="/history" className="text-xs font-bold text-zinc-400 hover:text-zinc-900 flex items-center gap-1 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            <ChevronLeft size={12} strokeWidth={3} />
             BACK TO HISTORY
           </Link>
           <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">{run.chainName}</h1>
@@ -139,14 +140,14 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
             href={`/api/runs/${runId}/export?format=markdown`}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            <Download size={14} />
             EXPORT .MD
           </a>
           <a 
             href={`/api/runs/${runId}/export?format=json`}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            <Download size={14} />
             EXPORT .JSON
           </a>
           <button 
