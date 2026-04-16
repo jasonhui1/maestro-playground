@@ -1,0 +1,47 @@
+test_cases:
+  - id: marketplace_oakhaven
+    prompt: "Describe a bustling medieval marketplace in the city of Oakhaven."
+    assertions:
+      - type: contains
+        target: "Oakhaven"
+        weight: 1.0
+      - type: matches_regex
+        target: "^## .+"
+        weight: 0.8
+      - type: not_contains
+        target: "hooded figure"
+        weight: 0.5
+      - type: not_contains
+        target: "pickpocket"
+        weight: 0.5
+      - type: matches_regex
+        target: "(?i)(vibration|hum|resonance|anomaly|sensory)"
+        weight: 0.6
+      - type: contains
+        target: "history"
+        weight: 0.4
+      - type: matches_regex
+        target: "(?i)(Gritty|Hard-boiled|Lyrical|Atmospheric|Scholarly|Detached)"
+        weight: 0.3 # Low weight because it might be subtle
+
+  - id: space_marine_derelict
+    prompt: "Write a short scene where a space marine enters a derelict ship."
+    assertions:
+      - type: contains
+        target: "ship"
+        weight: 1.0
+      - type: not_contains
+        target: "alien"
+        weight: 0.5
+      - type: not_contains
+        target: "jump scare"
+        weight: 0.5
+      - type: matches_regex
+        target: "(?i)(anomaly|glitch|static|hum|gravity|sensory)"
+        weight: 0.6
+      - type: contains
+        target: "records"
+        weight: 0.4
+      - type: matches_regex
+        target: "(?i)(Gritty|Hard-boiled|Lyrical|Atmospheric|Scholarly|Detached)"
+        weight: 0.3

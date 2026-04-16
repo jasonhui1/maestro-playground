@@ -1,0 +1,35 @@
+cases:
+  - id: fantasy-start
+    name: High Fantasy Opening
+    prompt: "Write the opening of a fantasy story where a young farmhand discovers they have magic. Setting: The village of Oakheart."
+    assertions:
+      - type: not_contains
+        value: "orphan"
+        reason: "Avoids the most basic 'orphan hero' trope."
+      - type: not_contains
+        value: "tavern"
+        reason: "Avoids the cliché starting location."
+      - type: contains_any: ["smell", "sound", "temperature", "texture"]
+        reason: "Ensures chaotic anchoring/sensory detail is present."
+  
+  - id: sci-fi-conflict
+    name: Space Opera Conflict
+    prompt: "A diplomatic meeting between two warring alien species on a neutral space station. Context: The Zalthar and the Humans."
+    assertions:
+      - type: not_contains
+        value: "war"
+        reason: "Tries to focus on a different aspect of their relationship (e.g., trade, biology)."
+      - type: custom_check
+        assertion: "introduces a non-verbal communication barrier or a specific cultural taboo"
+        reason: "Ensures Wildcard Lore is being added."
+
+  - id: noir-investigation
+    name: Urban Noir Mystery
+    prompt: "A detective finds a missing locket in a rainy alleyway. Context: Neo-Tokyo 2088."
+    assertions:
+      - type: not_contains
+        value: "neon"
+        reason: "Subverts the standard Cyberpunk visual aesthetic."
+      - type: custom_check
+        assertion: "the locket contains something other than a photo or a key"
+        reason: "Divergent outcome check."
