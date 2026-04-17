@@ -4,7 +4,7 @@ import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { initRunDir, writeAgentLog, updateRunMeta } from '@/lib/logger'
 import { snapshotVersion } from '@/lib/fs/versions'
-import { RunMeta, AgentOutput } from '@/lib/types'
+import { RunMeta, AgentOutput, AgentDef } from '@/lib/types'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
                  null;
     
     if (item) {
-      currentVersion = snapshotVersion(type, slug, item.systemPrompt || (item as any).raw || '');
+      const content = type === 'agent' ? (item as AgentDef).systemPrompt : (item as any).raw || '';
+      currentVersion = snapshotVersion(type, slug, content);
     }
   }
 

@@ -25,6 +25,12 @@ export default function Nav() {
               History
             </Link>
             <Link 
+              href="/chat" 
+              className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-800"
+            >
+              Chat
+            </Link>
+            <Link 
               href="/workspace" 
               className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-800"
             >

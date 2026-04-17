@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { AgentDef, AgentOutput } from './types'
+import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
 
@@ -13,6 +13,7 @@ export async function runAgent(
   resolvedSystemPrompt: string,
   userMessage: string,
   onToken?: (token: string, type?: 'thought' | 'output') => void,
+  history?: ChatMessage[],
 ): Promise<AgentOutput> {
   const start = Date.now()
   let output = ''
@@ -25,13 +26,17 @@ export async function runAgent(
   let buffer = ''
 
   try {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = history && history.length > 0
+      ? history as OpenAI.Chat.ChatCompletionMessageParam[]
+      : [
+          { role: 'system', content: resolvedSystemPrompt },
+          { role: 'user', content: userMessage }
+        ]
+
     const stream = await client.chat.completions.create({
       model: agent.model,
       max_tokens: agent.max_tokens ?? 32768,
-      messages: [
-        { role: 'system', content: resolvedSystemPrompt },
-        { role: 'user', content: userMessage }
-      ],
+      messages,
       stream: true,
       stream_options: { include_usage: true },
     })

@@ -15,9 +15,12 @@ export default function RunCard({ run }: RunCardProps) {
     error: 'bg-rose-50 text-rose-700 border-rose-100',
   }
 
+  const isChat = run.chainName.startsWith('Chat with ')
+  const href = isChat ? `/chat?runId=${run.runId}` : `/history/${run.runId}`
+
   return (
     <Link 
-      href={`/history/${run.runId}`}
+      href={href}
       className="group block p-5 border border-zinc-200 rounded-xl hover:border-zinc-400 transition-all bg-white shadow-sm hover:shadow-md"
     >
       <div className="flex justify-between items-start mb-3">
@@ -44,7 +47,7 @@ export default function RunCard({ run }: RunCardProps) {
             {new Date(run.startedAt).toLocaleDateString()} {new Date(run.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </time>
           <span className="w-1 h-1 rounded-full bg-zinc-200" />
-          <span>{run.agentOutputs.length} steps</span>
+          <span>{run.agentOutputs.length} {isChat ? 'turns' : 'steps'}</span>
         </div>
         <div className="flex gap-4 items-center font-medium">
           <span>{totalTokens.toLocaleString()} tokens</span>
