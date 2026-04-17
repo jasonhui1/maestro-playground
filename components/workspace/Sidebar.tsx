@@ -14,8 +14,10 @@ import {
   Plus, 
   Trash2, 
   Search, 
-  X 
+  X,
+  AlertTriangle
 } from 'lucide-react';
+import { useToastStore } from '@/hooks/store/useToastStore';
 
 interface WorkspaceData {
   agents: AgentDef[];
@@ -38,7 +40,10 @@ export default function Sidebar() {
   const [newName, setNewName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [activeCategory, setActiveCategory] = useState<EntityType>('agent');
+  const [itemToDelete, setItemToDelete] = useState<{ type: EntityType, slug: string, name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
+  const addToast = useToastStore((state) => state.addToast);
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -112,12 +117,14 @@ export default function Sidebar() {
       const newData = await dataRes.json();
       setData(newData);
 
+      addToast(`Created new ${modalType}: ${newName}`, 'success');
+
       // Close modal and redirect
       setIsModalOpen(false);
       setNewName('');
       handleSelect(modalType, result.slug);
     } catch (err: any) {
-      alert(err.message);
+      addToast(err.message, 'error');
     } finally {
       setIsCreating(false);
     }
@@ -149,10 +156,11 @@ export default function Sidebar() {
     router.push(`/workspace?${params.toString()}`);
   };
 
-  const handleDelete = async (e: React.MouseEvent, type: string, slug: string) => {
-    e.stopPropagation();
-    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+  const handleDelete = async () => {
+    if (!itemToDelete) return;
+    const { type, slug, name } = itemToDelete;
 
+    setIsDeleting(true);
     try {
       const res = await fetch(`/api/workspace/${type}/${slug}`, {
         method: 'DELETE',
@@ -167,6 +175,8 @@ export default function Sidebar() {
       const dataRes = await fetch('/api/workspace');
       const newData = await dataRes.json();
       setData(newData);
+
+      addToast(`Deleted ${type}: ${name}`, 'success');
 
       // Update URL parameters to remove the deleted tab
       const params = new URLSearchParams(searchParams.toString());
@@ -200,9 +210,17 @@ export default function Sidebar() {
       
       const newQuery = params.toString();
       router.push(newQuery ? `/workspace?${newQuery}` : '/workspace');
+      setItemToDelete(null);
     } catch (err: any) {
-      alert(err.message);
+      addToast(err.message, 'error');
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const confirmDelete = (e: React.MouseEvent, type: EntityType, slug: string, name: string) => {
+    e.stopPropagation();
+    setItemToDelete({ type, slug, name });
   };
 
   const activeItems = useMemo(() => {
@@ -349,7 +367,7 @@ export default function Sidebar() {
                       <Star size={14} className={isFav ? "fill-current" : ""} />
                     </button>
                     <button
-                      onClick={(e) => handleDelete(e, item.entityType, item.slug)}
+                      onClick={(e) => confirmDelete(e, item.entityType, item.slug, item.name)}
                       className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
                       title="Delete"
                     >
@@ -371,7 +389,7 @@ export default function Sidebar() {
       {/* Creation Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-96 p-6">
+          <div className="bg-white rounded-lg shadow-xl w-96 p-6 animate-in fade-in zoom-in-95 duration-200">
             <h3 className="text-lg font-semibold text-zinc-900 mb-4">
               Create New {modalType.charAt(0).toUpperCase() + modalType.slice(1)}
             </h3>
@@ -411,6 +429,44 @@ export default function Sidebar() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-96 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4 text-red-600">
+              <div className="p-2 bg-red-50 rounded-full">
+                <AlertTriangle size={20} />
+              </div>
+              <h3 className="text-lg font-semibold">Delete {itemToDelete.type}</h3>
+            </div>
+            
+            <p className="text-sm text-zinc-600 mb-6">
+              Are you sure you want to delete <span className="font-bold text-zinc-900">"{itemToDelete.name}"</span>? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50 flex items-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting && <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,18 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { 
-  Eye, 
-  EyeOff, 
-  Lightbulb, 
   Save, 
   Info, 
-  ChevronDown, 
-  ChevronUp, 
   CheckCircle2, 
   AlertCircle,
   Brain,
-  MessageSquare
+  MessageSquare,
+  X
 } from 'lucide-react'
+import { useToastStore } from '@/hooks/store/useToastStore'
+import { CollapsibleDetail } from '@/components/ui/CollapsibleDetail'
 
 interface Props {
   agentName: string
@@ -26,89 +24,63 @@ interface Props {
   latencyMs?: number
   status?: 'success' | 'error'
   error?: string
-}
-
-interface PropType {
-  title: string
-  label: string
-  icon: React.ReactNode
-  isOpen: boolean
-  onToggle: () => void
-  children: React.ReactNode
   className?: string
-  iconClassName?: string
-}
-
-function CollapsibleDetail({ title, label, icon, isOpen, onToggle, children, className, iconClassName }: PropType) {
-  return (
-    <div className="flex flex-col border-b border-zinc-100 bg-zinc-50/20">
-      <button
-        onClick={onToggle}
-        className={`w-full py-2 px-4 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-between gap-1.5 ${
-          isOpen 
-            ? 'bg-zinc-100/50 text-zinc-900' 
-            : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <div className={iconClassName}>{icon}</div>
-          {title}
-        </div>
-        {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </button>
-      
-      {isOpen && (
-        <div className={`bg-white p-4 max-h-60 overflow-y-auto text-[11px] font-mono leading-relaxed border-b border-zinc-100 last:border-b-0 ${className}`}>
-          <div className="mb-2 text-[9px] font-bold text-zinc-300 uppercase tracking-widest not-italic">
-            {label}
-          </div>
-          {children}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function AgentStreamOutput({
   agentName, output, isStreaming, systemPrompt, thought,
-  tokensIn, tokensOut, costUsd, latencyMs, status, error
+  tokensIn, tokensOut, costUsd, latencyMs, status, error,
+  className
 }: Props) {
   const [isSaving, setIsSaving] = useState(false)
   const [showInput, setShowInput] = useState(false)
   const [showThinking, setShowThinking] = useState(false)
   const [showMetrics, setShowMetrics] = useState(false)
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saveFilename, setSaveFilename] = useState('')
+  
+  const addToast = useToastStore((state) => state.addToast)
+  const metricsButtonRef = useRef<HTMLButtonElement>(null)
 
-  const handleSaveToContext = async () => {
-    if (!output) return;
-    
+  const handleOpenSaveDialog = () => {
     const defaultFilename = `${agentName.toLowerCase().replace(/\s+/g, '-')}-${new Date().getTime()}`;
-    const filename = window.prompt('Enter filename to save to context:', defaultFilename);
-    
-    if (!filename) return;
+    setSaveFilename(defaultFilename);
+    setShowSaveDialog(true);
+  };
 
+  const handleSaveToContext = useCallback(async () => {
+    if (!output || !saveFilename) return;
+    
     setIsSaving(true);
     try {
       const response = await fetch('/api/workspace/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, content: output }),
+        body: JSON.stringify({ filename: saveFilename, content: output }),
       });
 
       if (!response.ok) {
         throw new Error('Failed to save to context');
       }
       
-      alert(`Saved to context/${filename}`);
+      addToast(`Saved to context/${saveFilename}`, 'success');
+      setShowSaveDialog(false);
     } catch (err) {
       console.error(err);
-      alert('Error saving to context');
+      addToast('Error saving to context', 'error');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [output, saveFilename, addToast]);
+
+  const formatCost = (cost: number) => {
+    if (cost === 0) return '$0.00'
+    if (cost < 0.00001) return '<$0.00001'
+    return `$${cost.toFixed(5)}`
+  }
 
   return (
-    <div className="rounded-xl border border-zinc-200 overflow-hidden bg-white shadow-sm flex flex-col">
+    <div className={`rounded-xl border border-zinc-200 overflow-hidden bg-white shadow-sm flex flex-col relative ${className || ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-50 border-b border-zinc-200">
         <div className="flex items-center gap-2">
@@ -133,15 +105,19 @@ export function AgentStreamOutput({
           {/* Metrics Info Icon */}
           <div className="relative">
             <button
+              ref={metricsButtonRef}
               onMouseEnter={() => setShowMetrics(true)}
               onMouseLeave={() => setShowMetrics(false)}
-              className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors"
+              onFocus={() => setShowMetrics(true)}
+              onBlur={() => setShowMetrics(false)}
+              className="p-1 text-zinc-400 hover:text-zinc-600 focus:text-zinc-600 outline-none transition-colors"
+              aria-label="View Metrics"
             >
               <Info size={16} />
             </button>
             
             {showMetrics && (tokensIn != null || latencyMs != null) && (
-              <div className="absolute right-0 top-full mt-1 z-20 bg-zinc-900 text-white p-3 rounded-lg shadow-xl border border-zinc-800 min-w-40 flex flex-col gap-2">
+              <div className="absolute right-0 top-full mt-1 z-20 bg-zinc-900 text-white p-3 rounded-lg shadow-xl border border-zinc-800 min-w-40 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100">
                 <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1 mb-1">
                   Agent Metrics
                 </div>
@@ -154,7 +130,7 @@ export function AgentStreamOutput({
                 {costUsd != null && (
                   <div className="flex justify-between items-center gap-4">
                     <span className="text-[10px] text-zinc-400">Cost</span>
-                    <span className="text-xs font-mono">${costUsd.toFixed(5)}</span>
+                    <span className="text-xs font-mono">{formatCost(costUsd)}</span>
                   </div>
                 )}
                 {latencyMs != null && (
@@ -169,7 +145,7 @@ export function AgentStreamOutput({
 
           {!isStreaming && output && (
             <button
-              onClick={handleSaveToContext}
+              onClick={handleOpenSaveDialog}
               disabled={isSaving}
               className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors disabled:opacity-50"
               title="Save to Context"
@@ -183,6 +159,41 @@ export function AgentStreamOutput({
           )}
         </div>
       </div>
+
+      {/* Save to Context Inline Dialog */}
+      {showSaveDialog && (
+        <div className="bg-zinc-100/50 p-4 border-b border-zinc-200 flex flex-col gap-3 animate-in slide-in-from-top duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Save to Context</span>
+            <button onClick={() => setShowSaveDialog(false)} className="text-zinc-400 hover:text-zinc-600 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={saveFilename}
+              onChange={(e) => setSaveFilename(e.target.value)}
+              placeholder="filename.md"
+              className="flex-1 bg-white border border-zinc-200 rounded-md px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:border-transparent transition-all"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveToContext()}
+            />
+            <button
+              onClick={handleSaveToContext}
+              disabled={isSaving || !saveFilename}
+              className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSaving ? (
+                <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {isSaving ? 'Saving' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Collapsible Sections (Input & Thinking) */}
       {systemPrompt && (
