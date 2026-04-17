@@ -137,6 +137,10 @@ export default function Sidebar() {
     } else {
       const tabsArray = currentTabs.split(',');
       if (!tabsArray.includes(tabString)) {
+        // Limit to 15 tabs to prevent URL overflow
+        if (tabsArray.length >= 15) {
+          tabsArray.shift();
+        }
         tabsArray.push(tabString);
         params.set('tabs', tabsArray.join(','));
       }
@@ -164,10 +168,38 @@ export default function Sidebar() {
       const newData = await dataRes.json();
       setData(newData);
 
-      // If the deleted item was active, clear the selection
-      if (activeType === type && activeSlug === slug) {
-        router.push('/workspace');
+      // Update URL parameters to remove the deleted tab
+      const params = new URLSearchParams(searchParams.toString());
+      const currentTabs = params.get('tabs');
+      const tabToDelete = `${type}:${slug}`;
+      
+      if (currentTabs) {
+        const tabsArray = currentTabs.split(',').filter(t => t !== tabToDelete);
+        if (tabsArray.length === 0) {
+          params.delete('tabs');
+        } else {
+          params.set('tabs', tabsArray.join(','));
+        }
       }
+
+      // If the deleted item was active, switch to another tab if available
+      if (activeType === type && activeSlug === slug) {
+        const updatedTabs = params.get('tabs');
+        if (updatedTabs) {
+          const tabsArray = updatedTabs.split(',');
+          // Switch to the most recently added tab
+          const lastTab = tabsArray[tabsArray.length - 1];
+          const [nextType, nextSlug] = lastTab.split(':');
+          params.set('type', nextType);
+          params.set('slug', nextSlug);
+        } else {
+          params.delete('type');
+          params.delete('slug');
+        }
+      }
+      
+      const newQuery = params.toString();
+      router.push(newQuery ? `/workspace?${newQuery}` : '/workspace');
     } catch (err: any) {
       alert(err.message);
     }
