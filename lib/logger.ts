@@ -19,7 +19,8 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
   const dir = getRunDir(runId)
   const safeAgentName = path.basename(output.agentName)
   const filename = `${String(stepIdx).padStart(2, '0')}-${safeAgentName}.md`
-  const frontmatter = {
+  
+  const frontmatter: any = {
     agent: output.agentName,
     run_id: runId,
     timestamp: output.timestamp,
@@ -34,6 +35,14 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     system_prompt: output.systemPrompt,
     thought: output.thought,
   }
+
+  // Remove undefined properties to prevent js-yaml from throwing
+  Object.keys(frontmatter).forEach(key => {
+    if (frontmatter[key] === undefined) {
+      delete frontmatter[key]
+    }
+  })
+
   const fileContent = matter.stringify(output.output, frontmatter)
   fs.writeFileSync(path.join(dir, filename), fileContent)
 }
