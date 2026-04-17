@@ -17,7 +17,8 @@ function ChatContent() {
   const [selectedAgent, setSelectedAgent] = useState<string>('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [currentStream, setCurrentStream] = useState('')
+  const [streamingContent, setStreamingContent] = useState('')
+  const [streamingThought, setStreamingThought] = useState('')
   const [isLoadingAgents, setIsLoadingAgents] = useState(true)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -121,7 +122,8 @@ function ChatContent() {
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setIsStreaming(true)
-    setCurrentStream('')
+    setStreamingContent('')
+    setStreamingThought('')
     setError(null)
 
     try {
@@ -170,25 +172,21 @@ function ChatContent() {
             } else if (data.type === 'token') {
               if (data.tokenType === 'thought') {
                 accumulatedThought += data.token
+                setStreamingThought(accumulatedThought)
               } else {
                 accumulatedResponse += data.token
-                setCurrentStream(accumulatedResponse)
+                setStreamingContent(accumulatedResponse)
               }
-            } else if (data.type === 'agent_done') {
+            } else if (data.type === 'done') {
               const assistantMessage: ChatMessage = { 
                 role: 'assistant', 
-                content: data.output.output,
-                thought: data.output.thought
+                content: data.result.output,
+                thought: data.result.thought
               }
               setMessages(prev => [...prev, assistantMessage])
               setIsStreaming(false)
-              setCurrentStream('')
-              
-              // Ensure runId is set if it came back in agent_done
-              if (data.runId && !activeRunIdRef.current) {
-                setActiveRunId(data.runId)
-                window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
-              }
+              setStreamingContent('')
+              setStreamingThought('')
             } else if (data.type === 'error') {
               throw new Error(data.error)
             }
@@ -201,7 +199,8 @@ function ChatContent() {
       console.error('Chat error:', err)
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
       setIsStreaming(false)
-      setCurrentStream('')
+      setStreamingContent('')
+      setStreamingThought('')
     }
   }, [selectedAgent, messages, isStreaming, activeRunId])
 
@@ -209,6 +208,8 @@ function ChatContent() {
     setMessages([])
     setError(null)
     setActiveRunId(null)
+    setStreamingContent('')
+    setStreamingThought('')
     router.push('/chat')
   }
 
@@ -361,7 +362,8 @@ function ChatContent() {
             messages={messages} 
             agentName={selectedAgent}
             isStreaming={isStreaming}
-            currentStream={currentStream}
+            streamingContent={streamingContent}
+            streamingThought={streamingThought}
           />
         )}
 

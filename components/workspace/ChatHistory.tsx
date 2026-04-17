@@ -2,84 +2,92 @@
 import { useEffect, useRef } from 'react'
 import { ChatMessage } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
-import { User, Bot } from 'lucide-react'
+import { User } from 'lucide-react'
 
 interface Props {
   messages: ChatMessage[]
   agentName: string
-  isStreaming?: boolean
-  currentStream?: string
+  isStreaming: boolean
+  streamingThought?: string
+  streamingContent?: string
 }
 
-export function ChatHistory({ messages, agentName, isStreaming, currentStream }: Props) {
+export function ChatHistory({ 
+  messages, 
+  agentName, 
+  isStreaming, 
+  streamingThought, 
+  streamingContent 
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const endRef = useRef<HTMLDivElement>(null)
+  const isAtBottom = useRef(true)
 
-  // Auto-scroll to bottom
+  // Detect if user has scrolled up
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50
+    isAtBottom.current = atBottom
+  }
+
+  // Auto-scroll logic
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (isAtBottom.current) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, currentStream])
+  }, [messages.length, isStreaming]) // Only scroll when message count changes or stream starts/ends
 
   return (
     <div 
       ref={scrollRef}
-      className="flex-1 overflow-y-auto p-4 space-y-6 bg-zinc-50/50 scroll-smooth"
+      onScroll={handleScroll}
+      className="flex-1 overflow-y-auto p-4 space-y-6"
     >
-      {messages.map((msg, idx) => (
-        <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-            msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-zinc-200 text-zinc-600'
-          }`}>
-            {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-          </div>
-          
-          <div className={`max-w-[85%] ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-            {msg.role === 'user' ? (
-              <div className="inline-block bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-tr-none text-sm shadow-sm leading-relaxed">
-                {msg.content}
+      <div className="max-w-4xl mx-auto flex flex-col gap-6">
+        {messages.map((msg, idx) => {
+          if (msg.role === 'system') return null;
+
+          if (msg.role === 'user') {
+            return (
+              <div key={idx} className="flex gap-4 items-start pl-12 justify-end">
+                <div className="bg-zinc-100 text-zinc-900 rounded-2xl px-4 py-2 text-sm max-w-[80%]">
+                  {msg.content}
+                </div>
+                <div className="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center shrink-0 border border-zinc-300">
+                  <User size={16} className="text-zinc-500" />
+                </div>
               </div>
-            ) : (
+            );
+          }
+
+          // Assistant message
+          return (
+            <div key={idx} className="flex flex-col gap-2">
               <AgentStreamOutput
                 agentName={agentName}
                 output={msg.content}
-                thought={msg.thought}
                 isStreaming={false}
+                thought={msg.thought}
                 status="success"
-                className="shadow-sm"
               />
-            )}
-          </div>
-        </div>
-      ))}
+            </div>
+          );
+        })}
 
-      {isStreaming && currentStream && (
-        <div className="flex gap-4 flex-row">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-white border border-zinc-200 text-zinc-600 shadow-sm">
-            <Bot size={16} />
-          </div>
-          <div className="max-w-[85%] text-left">
+        {/* Streaming Assistant Message */}
+        {isStreaming && (
+          <div className="flex flex-col gap-2">
             <AgentStreamOutput
               agentName={agentName}
-              output={currentStream}
+              output={streamingContent || ''}
               isStreaming={true}
-              className="shadow-sm"
+              thought={streamingThought}
             />
           </div>
-        </div>
-      )}
-      
-      {messages.length === 0 && !isStreaming && (
-        <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-4 opacity-50 py-20">
-          <div className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center">
-            <Bot size={32} />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold text-zinc-900 uppercase tracking-widest mb-1">New Session</p>
-            <p className="text-xs">No messages yet. Start a conversation with {agentName}!</p>
-          </div>
-        </div>
-      )}
+        )}
+
+        <div ref={endRef} className="h-4" />
+      </div>
     </div>
   )
 }

@@ -16,11 +16,6 @@ export function ChatInput({ onSend, isLoading, placeholder = "Type a message..."
     if (input.trim() && !isLoading) {
       onSend(input.trim())
       setInput('')
-      
-      // Reset height after send
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
-      }
     }
   }
 
@@ -41,33 +36,31 @@ export function ChatInput({ onSend, isLoading, placeholder = "Type a message..."
   }, [input])
 
   return (
-    <div className="flex items-end gap-2 p-4 bg-white border-t border-zinc-200">
-      <div className="flex-1 relative">
+    <div className="border-t border-zinc-200 bg-white p-4">
+      <div className="max-w-4xl mx-auto relative flex items-end gap-2">
         <textarea
           ref={textareaRef}
-          rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          rows={1}
           disabled={isLoading}
-          className="w-full resize-none bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 max-h-[200px] pr-12"
+          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:border-transparent transition-all resize-none min-h-[46px] max-h-[200px]"
         />
-        <div className="absolute right-3 bottom-3 text-[10px] text-zinc-400 font-medium pointer-events-none">
-          Enter to send
-        </div>
+        <button
+          onClick={handleSend}
+          disabled={!input.trim() || isLoading}
+          className="bg-zinc-900 text-white p-3 rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:hover:bg-zinc-900 h-[46px] w-[46px] flex items-center justify-center shrink-0"
+        >
+          {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+        </button>
       </div>
-      <button
-        onClick={handleSend}
-        disabled={isLoading || !input.trim()}
-        className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:bg-zinc-400 transition-all flex-shrink-0 shadow-sm"
-      >
-        {isLoading ? (
-          <Loader2 size={20} className="animate-spin" />
-        ) : (
-          <Send size={20} />
-        )}
-      </button>
+      <div className="max-w-4xl mx-auto mt-2 flex justify-center">
+        <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">
+          Press Enter to send, Shift+Enter for new line
+        </span>
+      </div>
     </div>
   )
 }

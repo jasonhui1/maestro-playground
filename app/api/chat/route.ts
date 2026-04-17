@@ -1,109 +1,129 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
-import { ChatMessage, RunMeta } from '@/lib/types'
+import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta } from '@/lib/logger'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
-  const { agentName, messages, runId: reqRunId } = await req.json()
+  try {
+    const { agentName, messages: history, runId: existingRunId } = await req.json()
 
-  if (!agentName) return new Response('Agent name is required', { status: 400 })
-  if (!messages || !Array.isArray(messages)) return new Response('Messages history is required', { status: 400 })
-
-  const { agents, skills } = loadWorkspace()
-  const agentDef = agents.find(a => a.name === agentName)
-  if (!agentDef) return new Response('Agent not found', { status: 404 })
-
-  const runId = reqRunId || `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
-  const isNewRun = !reqRunId
-
-  if (isNewRun) {
-    const meta: RunMeta = {
-      runId,
-      chainName: `Chat with ${agentName}`,
-      seedPrompt: messages[0]?.content || '',
-      startedAt: new Date().toISOString(),
-      status: 'running',
-      agentOutputs: [],
+    if (!agentName) {
+      return new Response('agentName is required', { status: 400 })
     }
-    initRunDir(meta)
-  }
 
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: object) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
-      }
+    if (!history || !Array.isArray(history) || history.length === 0) {
+      return new Response('messages array is required', { status: 400 })
+    }
 
+    const { agents, skills } = loadWorkspace()
+    const agentDef = agents.find(a => a.name === agentName || a.slug === agentName)
+    
+    if (!agentDef) {
+      return new Response(`Agent "${agentName}" not found`, { status: 404 })
+    }
+
+    const wp = getWorkspacePath()
+    const lastUserMessage = history[history.length - 1].content
+
+    // Handle Run Metadata
+    let runId = existingRunId
+    let meta: RunMeta
+    let currentStep = 0
+
+    if (runId) {
       try {
-        if (isNewRun) {
-          send({ type: 'run_id', runId })
+        meta = readRunMeta(runId)
+        currentStep = meta.agentOutputs.length
+      } catch (e) {
+        // If runId not found, fallback to new
+        runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+        meta = {
+          runId,
+          chainName: `Chat with ${agentDef.name}`,
+          seedPrompt: history[0].content, // First message is the seed
+          startedAt: new Date().toISOString(),
+          status: 'running',
+          agentOutputs: [],
         }
-
-        send({ type: 'agent_start', agentName })
-
-        const wp = getWorkspacePath()
-        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
-        
-        const systemPrompt = await buildSystemPrompt(
-          agentDef, skills, [], wp, lastUserMessage
-        )
-
-        let history: ChatMessage[] = [...messages]
-        const systemMessageIndex = history.findIndex(m => m.role === 'system')
-        
-        if (systemMessageIndex !== -1) {
-          history[systemMessageIndex] = { role: 'system', content: systemPrompt }
-        } else {
-          history.unshift({ role: 'system', content: systemPrompt })
-        }
-
-        const output = await runAgent(
-          agentDef,
-          systemPrompt,
-          lastUserMessage,
-          (token, tokenType) => send({ type: 'token', agentName, token, tokenType }),
-          history
-        )
-
-        // Persist the turn
-        const stepIdx = Math.floor((messages.length - 1) / 2)
-        writeAgentLog(runId, stepIdx, output)
-
-        // Update RunMeta
-        const currentMeta = readRunMeta(runId)
-        const updatedOutputs = [...currentMeta.agentOutputs]
-        updatedOutputs[stepIdx] = output
-        
-        updateRunMeta(runId, {
-          agentOutputs: updatedOutputs,
-          status: 'complete',
-          completedAt: new Date().toISOString()
-        })
-
-        send({ type: 'agent_done', agentName, output, runId })
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        send({ type: 'error', error: errorMessage })
-        
-        try {
-          updateRunMeta(runId, { status: 'error' })
-        } catch (e) {
-          // Ignore if meta doesn't exist yet
-        }
-      } finally {
-        controller.close()
+        initRunDir(meta)
       }
-    },
-  })
+    } else {
+      runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+      meta = {
+        runId,
+        chainName: `Chat with ${agentDef.name}`,
+        seedPrompt: history[0].content,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+        agentOutputs: [],
+      }
+      initRunDir(meta)
+    }
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
+    const systemPrompt = await buildSystemPrompt(
+      agentDef, 
+      skills, 
+      [], // For chat, we don't want history to resolve into {input}, we want history as messages
+      wp, 
+      lastUserMessage
+    )
+
+    // Prepend system prompt to the history for the LLM
+    const fullHistory: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...history
+    ]
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
+
+        // Send run_id early so frontend can update URL
+        send({ type: 'run_id', runId })
+
+        try {
+          const result = await runAgent(
+            agentDef,
+            systemPrompt,
+            lastUserMessage,
+            (token, tokenType) => send({ type: 'token', token, tokenType }),
+            fullHistory
+          )
+
+          // Persist the output
+          writeAgentLog(runId, currentStep, result)
+          
+          const updatedOutputs = [...meta.agentOutputs, result]
+          updateRunMeta(runId, {
+            agentOutputs: updatedOutputs,
+            status: 'complete',
+            completedAt: new Date().toISOString(),
+          })
+
+          send({ type: 'done', result, runId })
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          send({ type: 'error', error: errorMessage })
+          updateRunMeta(runId, { status: 'error' })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
+  } catch (error) {
+    return new Response(error instanceof Error ? error.message : 'Internal Server Error', { status: 500 })
+  }
 }
