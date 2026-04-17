@@ -3,26 +3,51 @@ import path from 'path'
 import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { initRunDir, writeAgentLog, updateRunMeta } from '@/lib/logger'
+import { snapshotVersion } from '@/lib/fs/versions'
 import { RunMeta, AgentOutput } from '@/lib/types'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
-  const { chainName, agentName, seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } =
+  const { chainName, agentName, seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs, type, slug } =
     await req.json()
 
   const { agents, skills, chains } = loadWorkspace()
   
   let chainAgents: string[] = []
   let runTitle = ''
+  let currentVersion = 0
+
+  // Snapshot the current version if we have type and slug
+  if (type && slug) {
+    const item = type === 'agent' ? agents.find(a => a.slug === slug) :
+                 type === 'chain' ? chains.find(c => c.slug === slug) :
+                 null;
+    
+    if (item) {
+      currentVersion = snapshotVersion(type, slug, item.systemPrompt || (item as any).raw || '');
+    }
+  }
 
   if (chainName) {
     const chain = chains.find(c => c.name === chainName)
     if (!chain) return new Response('Chain not found', { status: 404 })
     chainAgents = chain.agents
     runTitle = chain.name
+    
+    // If we didn't get type/slug but have chainName, resolve it
+    if (!currentVersion) {
+      currentVersion = snapshotVersion('chain', chain.slug, (chain as any).raw || '');
+    }
   } else if (agentName) {
+    const agent = agents.find(a => a.name === agentName)
+    if (!agent) return new Response('Agent not found', { status: 404 })
     chainAgents = [agentName]
     runTitle = agentName
+
+    // If we didn't get type/slug but have agentName, resolve it
+    if (!currentVersion) {
+      currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt);
+    }
   } else {
     return new Response('No chain or agent specified', { status: 400 })
   }
@@ -37,6 +62,7 @@ export async function POST(req: NextRequest) {
     agentOutputs: [],
     branchedFromRunId: branchedFromRunId ? path.basename(branchedFromRunId) : undefined,
     branchedFromStep,
+    versionNumber: currentVersion > 0 ? currentVersion : undefined,
   }
   initRunDir(meta)
 
@@ -83,6 +109,10 @@ export async function POST(req: NextRequest) {
             userMessage,
             (token, tokenType) => send({ type: 'token', agentName, token, tokenType, step: i }),
           )
+          
+          if (currentVersion > 0) {
+            output.versionNumber = currentVersion;
+          }
 
           previousOutputs.push(output)
           writeAgentLog(runId, i, output)

@@ -7,6 +7,8 @@ export async function GET(req: NextRequest) {
     const chainName = searchParams.get('chainName')
     const status = searchParams.get('status')
     const keyword = searchParams.get('keyword')
+    const entityType = searchParams.get('entityType')
+    const slug = searchParams.get('slug')
 
     let runs = listAllRuns()
 
@@ -15,6 +17,14 @@ export async function GET(req: NextRequest) {
 
     if (chainName) {
       runs = runs.filter(r => r.chainName === chainName)
+    }
+
+    if (entityType && slug) {
+      if (entityType === 'agent') {
+        runs = runs.filter(r => r.agentOutputs.some(o => o.agentName === slug))
+      } else if (entityType === 'chain') {
+        runs = runs.filter(r => r.chainName === slug)
+      }
     }
 
     if (status) {

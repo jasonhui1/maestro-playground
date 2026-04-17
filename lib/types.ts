@@ -48,6 +48,7 @@ export interface AgentOutput {
   timestamp: string
   status: 'success' | 'error'
   error?: string
+  versionNumber?: number
 }
 
 export interface RunMeta {
@@ -60,6 +61,7 @@ export interface RunMeta {
   agentOutputs: AgentOutput[]
   branchedFromRunId?: string
   branchedFromStep?: number
+  versionNumber?: number
 }
 
 export interface TemplateDef {

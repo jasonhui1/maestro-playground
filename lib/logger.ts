@@ -23,6 +23,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     agent: output.agentName,
     run_id: runId,
     timestamp: output.timestamp,
+    version_number: output.versionNumber,
     tokens_in: output.tokensIn,
     tokens_out: output.tokensOut,
     cost_usd: Number(output.costUsd.toFixed(6)),

@@ -9,9 +9,10 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { TabController } from '@/components/workspace/TabController';
 import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { AgentStreamOutput } from '@/components/AgentStreamOutput';
+import { HistoryPane } from '@/components/workspace/HistoryPane';
 import { AgentOutput } from '@/lib/types';
 import { nanoid } from 'nanoid';
-import { Play, Columns2, X, Trash2, Activity } from 'lucide-react';
+import { Play, Columns2, X, Trash2, Activity, History } from 'lucide-react';
 
 interface AgentState {
   runIndex: number;
@@ -49,6 +50,7 @@ function WorkspaceContent() {
   
   // Execution state
   const [isOutputVisible, setIsOutputVisible] = useState(false);
+  const [isHistoryVisible, setIsHistoryVisible] = useState(false);
   const [runsByFile, setRunsByFile] = useState<Record<string, RunInstance[]>>({});
   const [seedPrompt, setSeedPrompt] = useState<string>('');
   const [parallelCount, setParallelCount] = useState(1);
@@ -115,6 +117,8 @@ function WorkspaceContent() {
         body: JSON.stringify({
           [type === 'chain' ? 'chainName' : 'agentName']: slug,
           seedPrompt: seedPrompt,
+          type,
+          slug,
         }),
       });
 
@@ -382,6 +386,18 @@ function WorkspaceContent() {
           >
             <Columns2 size={18} />
           </button>
+
+          <button
+            onClick={() => setIsHistoryVisible(!isHistoryVisible)}
+            className={`p-1.5 rounded-md border transition-all duration-200 ${
+              isHistoryVisible 
+                ? 'bg-zinc-100 border-zinc-300 text-zinc-900' 
+                : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300'
+            }`}
+            title="Toggle History"
+          >
+            <History size={18} />
+          </button>
         </div>
       </div>
       
@@ -394,7 +410,7 @@ function WorkspaceContent() {
           </div>
         ) : (
           <Group orientation="horizontal">
-            <Panel defaultSize="70%" minSize="30%">
+            <Panel defaultSize={isOutputVisible || isHistoryVisible ? 50 : 100} minSize={30}>
               <div className="h-full p-6 pt-4">
                 {viewMode === 'visual' && type === 'chain' ? (
                   <ChainFlowBuilder content={content} onChange={setContent} />
@@ -414,7 +430,7 @@ function WorkspaceContent() {
             {isOutputVisible && (
               <>
                 <Separator className="w-1 bg-zinc-50 hover:bg-zinc-100 transition-colors border-x border-zinc-100 cursor-col-resize" />
-                <Panel defaultSize="30%" minSize="20%">
+                <Panel defaultSize={isHistoryVisible ? 25 : 30} minSize={20}>
                   <div className="h-full border-l border-zinc-100 bg-zinc-50/50 flex flex-col">
                     <div className="px-4 py-2.5 border-b border-zinc-200 flex items-center justify-between bg-white">
                       <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Output Console</span>
@@ -517,6 +533,19 @@ function WorkspaceContent() {
                       )}
                     </div>
                   </div>
+                </Panel>
+              </>
+            )}
+
+            {isHistoryVisible && (
+              <>
+                <Separator className="w-1 bg-zinc-50 hover:bg-zinc-100 transition-colors border-x border-zinc-100 cursor-col-resize" />
+                <Panel defaultSize={isOutputVisible ? 25 : 30} minSize={20}>
+                  <HistoryPane 
+                    entityType={type} 
+                    slug={slug} 
+                    onClose={() => setIsHistoryVisible(false)} 
+                  />
                 </Panel>
               </>
             )}

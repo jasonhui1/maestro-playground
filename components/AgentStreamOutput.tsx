@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { Eye, EyeOff, Lightbulb, Save } from 'lucide-react'
 
 interface Props {
   agentName: string
@@ -60,17 +61,28 @@ export function AgentStreamOutput({
           {systemPrompt && (
             <button
               onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-              className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
+              className="flex items-center gap-1 text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
             >
-              {showSystemPrompt ? 'Hide Prompt' : 'View Prompt'}
+              {showSystemPrompt ? (
+                <>
+                  <EyeOff size={12} />
+                  <span>Hide Prompt</span>
+                </>
+              ) : (
+                <>
+                  <Eye size={12} />
+                  <span>View Prompt</span>
+                </>
+              )}
             </button>
           )}
           {thought && (
             <button
               onClick={() => setShowThought(!showThought)}
-              className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
+              className="flex items-center gap-1 text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded hover:bg-zinc-300 transition-colors uppercase tracking-wider font-bold"
             >
-              {showThought ? 'Hide Thinking' : 'Thinking'}
+              <Lightbulb size={12} className={showThought ? "text-amber-500" : ""} />
+              <span>{showThought ? 'Hide Thinking' : 'Thinking'}</span>
             </button>
           )}
         </div>
@@ -88,9 +100,10 @@ export function AgentStreamOutput({
             <button
               onClick={handleSaveToContext}
               disabled={isSaving}
-              className="text-[10px] bg-zinc-900 text-white px-2 py-0.5 rounded hover:bg-zinc-800 transition-colors uppercase tracking-wider font-bold disabled:opacity-50"
+              className="flex items-center gap-1 text-[10px] bg-zinc-900 text-white px-2 py-0.5 rounded hover:bg-zinc-800 transition-colors uppercase tracking-wider font-bold disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save to Context'}
+              <Save size={12} />
+              <span>{isSaving ? 'Saving...' : 'Save to Context'}</span>
             </button>
           )}
         </div>
