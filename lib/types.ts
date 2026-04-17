@@ -101,6 +101,7 @@ export interface WorkspaceState {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  thought?: string
 }
 
 export interface ChatSession {

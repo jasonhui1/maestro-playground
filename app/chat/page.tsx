@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ChatHistory } from '@/components/workspace/ChatHistory'
 import { ChatInput } from '@/components/workspace/ChatInput'
@@ -22,6 +22,14 @@ function ChatContent() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeRunId, setActiveRunId] = useState<string | null>(runIdParam)
+  const [recentChats, setRecentChats] = useState<RunMeta[]>([])
+  const [isLoadingRecent, setIsLoadingRecent] = useState(false)
+  const activeRunIdRef = useRef<string | null>(runIdParam)
+
+  // Sync ref with state
+  useEffect(() => {
+    activeRunIdRef.current = activeRunId
+  }, [activeRunId])
 
   // Fetch agents on mount
   useEffect(() => {
@@ -32,7 +40,7 @@ function ChatContent() {
         if (data.agents) {
           setAgents(data.agents)
           // Only set default agent if we're not loading a history
-          if (data.agents.length > 0 && !runIdParam) {
+          if (data.agents.length > 0 && !activeRunIdRef.current) {
             setSelectedAgent(data.agents[0].name)
           }
         }
@@ -44,11 +52,33 @@ function ChatContent() {
       }
     }
     fetchAgents()
-  }, [runIdParam])
+  }, [])
+
+  // Fetch recent chats for the selected agent
+  useEffect(() => {
+    if (!selectedAgent) return
+
+    async function fetchRecent() {
+      setIsLoadingRecent(true)
+      try {
+        const res = await fetch('/api/runs')
+        const allRuns: RunMeta[] = await res.json()
+        const agentChats = allRuns
+          .filter(run => run.chainName === `Chat with ${selectedAgent}`)
+          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+        setRecentChats(agentChats)
+      } catch (err) {
+        console.error('Failed to fetch recent chats:', err)
+      } finally {
+        setIsLoadingRecent(false)
+      }
+    }
+    fetchRecent()
+  }, [selectedAgent, activeRunId])
 
   // Load history if runId is present
   useEffect(() => {
-    if (!runIdParam) return
+    if (!runIdParam || runIdParam === activeRunIdRef.current && messages.length > 0) return
 
     async function fetchHistory() {
       setIsLoadingHistory(true)
@@ -62,7 +92,7 @@ function ChatContent() {
         const history: ChatMessage[] = []
         meta.agentOutputs.forEach(output => {
           history.push({ role: 'user', content: output.input })
-          history.push({ role: 'assistant', content: output.output })
+          history.push({ role: 'assistant', content: output.output, thought: output.thought })
         })
         
         setMessages(history)
@@ -115,6 +145,7 @@ function ChatContent() {
 
       const decoder = new TextDecoder()
       let accumulatedResponse = ''
+      let accumulatedThought = ''
       let buffer = ''
 
       while (true) {
@@ -132,24 +163,29 @@ function ChatContent() {
           try {
             const data = JSON.parse(trimmedLine.slice(6))
             
-            if (data.type === 'run_id' && !activeRunId) {
+            if (data.type === 'run_id' && !activeRunIdRef.current) {
               setActiveRunId(data.runId)
               // Update URL without refreshing
               window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
             } else if (data.type === 'token') {
-              accumulatedResponse += data.token
-              setCurrentStream(accumulatedResponse)
+              if (data.tokenType === 'thought') {
+                accumulatedThought += data.token
+              } else {
+                accumulatedResponse += data.token
+                setCurrentStream(accumulatedResponse)
+              }
             } else if (data.type === 'agent_done') {
               const assistantMessage: ChatMessage = { 
                 role: 'assistant', 
-                content: data.output.output 
+                content: data.output.output,
+                thought: data.output.thought
               }
               setMessages(prev => [...prev, assistantMessage])
               setIsStreaming(false)
               setCurrentStream('')
               
               // Ensure runId is set if it came back in agent_done
-              if (data.runId && !activeRunId) {
+              if (data.runId && !activeRunIdRef.current) {
                 setActiveRunId(data.runId)
                 window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
               }
@@ -176,10 +212,14 @@ function ChatContent() {
     router.push('/chat')
   }
 
+  const loadRun = (runId: string) => {
+    router.push(`/chat?runId=${runId}`)
+  }
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)] bg-white overflow-hidden">
-      {/* Sidebar - Agent Selection */}
-      <div className="w-64 border-r border-zinc-200 flex flex-col bg-zinc-50/50">
+      {/* Sidebar - Agent Selection & History */}
+      <div className="w-72 border-r border-zinc-200 flex flex-col bg-zinc-50/50">
         <div className="p-4 border-b border-zinc-200 bg-white">
           <h2 className="text-sm font-bold text-zinc-900 uppercase tracking-widest flex items-center gap-2">
             <Bot size={16} className="text-blue-600" />
@@ -187,30 +227,75 @@ function ChatContent() {
           </h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {isLoadingAgents ? (
-            <div className="flex items-center justify-center py-8 text-zinc-400">
-              <Loader2 size={20} className="animate-spin" />
+        <div className="flex-1 overflow-y-auto flex flex-col">
+          <div className="p-2 space-y-1 border-b border-zinc-200 bg-white/50">
+            {isLoadingAgents ? (
+              <div className="flex items-center justify-center py-4 text-zinc-400">
+                <Loader2 size={16} className="animate-spin" />
+              </div>
+            ) : (
+              agents.map((agent) => (
+                <button
+                  key={agent.name}
+                  onClick={() => {
+                    if (selectedAgent !== agent.name) {
+                      setSelectedAgent(agent.name)
+                      clearChat()
+                    }
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-3 ${
+                    selectedAgent === agent.name
+                      ? 'bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-200'
+                      : 'text-zinc-600 hover:bg-zinc-100'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${selectedAgent === agent.name ? 'bg-blue-500' : 'bg-zinc-300'}`} />
+                  {agent.name}
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="p-4 border-b border-zinc-200 bg-zinc-50/80">
+              <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                <MessageSquare size={12} />
+                Recent Chats
+              </h3>
             </div>
-          ) : (
-            agents.map((agent) => (
-              <button
-                key={agent.name}
-                onClick={() => {
-                  setSelectedAgent(agent.name)
-                  clearChat()
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-3 ${
-                  selectedAgent === agent.name
-                    ? 'bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-200'
-                    : 'text-zinc-600 hover:bg-zinc-100'
-                }`}
-              >
-                <div className={`w-2 h-2 rounded-full ${selectedAgent === agent.name ? 'bg-blue-500' : 'bg-zinc-300'}`} />
-                {agent.name}
-              </button>
-            ))
-          )}
+            
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {isLoadingRecent ? (
+                <div className="flex items-center justify-center py-8 text-zinc-400">
+                  <Loader2 size={20} className="animate-spin" />
+                </div>
+              ) : recentChats.length > 0 ? (
+                recentChats.map((run) => (
+                  <button
+                    key={run.runId}
+                    onClick={() => loadRun(run.runId)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all flex flex-col gap-1 ${
+                      activeRunId === run.runId
+                        ? 'bg-white text-blue-700 font-medium shadow-sm ring-1 ring-blue-200'
+                        : 'text-zinc-500 hover:bg-white hover:shadow-sm'
+                    }`}
+                  >
+                    <span className="truncate pr-2 font-semibold">{run.seedPrompt}</span>
+                    <div className="flex items-center gap-2 text-[9px] text-zinc-400 uppercase tracking-tight">
+                      <span>{new Date(run.startedAt).toLocaleDateString()}</span>
+                      <span>•</span>
+                      <span>{run.agentOutputs.length} turns</span>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-zinc-400 opacity-50 px-4 text-center">
+                  <MessageSquare size={24} className="mb-2" />
+                  <p className="text-[10px] font-medium leading-relaxed">No recent chats with {selectedAgent}</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="p-4 border-t border-zinc-200 bg-white">
@@ -237,7 +322,7 @@ function ChatContent() {
                 {selectedAgent || 'Select an Agent'}
               </h1>
               <p className="text-[10px] text-zinc-500 mt-1 uppercase tracking-wider font-medium">
-                {activeRunId ? `Session: ${activeRunId}` : 'Multi-turn Chat Session'}
+                {activeRunId ? `Session: ${activeRunId}` : ''}
               </p>
             </div>
           </div>

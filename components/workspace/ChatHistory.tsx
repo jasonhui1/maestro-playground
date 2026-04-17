@@ -43,6 +43,7 @@ export function ChatHistory({ messages, agentName, isStreaming, currentStream }:
               <AgentStreamOutput
                 agentName={agentName}
                 output={msg.content}
+                thought={msg.thought}
                 isStreaming={false}
                 status="success"
                 className="shadow-sm"

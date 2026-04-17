@@ -5,6 +5,6 @@ description: An agent to test max_tokens
 skills: []
 context: []
 input_from: user
-max_tokens: 50
+max_tokens: 100
 ---
 You are a test agent. Repeat the word 'test' as many times as possible.
