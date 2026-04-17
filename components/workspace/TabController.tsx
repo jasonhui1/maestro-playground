@@ -72,6 +72,8 @@ export function TabController() {
             }
           }}
           title={tab.slug}
+          role="tab"
+          aria-selected={tab.active}
           className={`flex items-center h-full px-4 border-r border-zinc-200 cursor-pointer transition-colors min-w-[120px] max-w-[200px] group ${
             tab.active 
               ? 'bg-white text-zinc-900 border-b-2 border-b-zinc-900 -mb-[1px]' 

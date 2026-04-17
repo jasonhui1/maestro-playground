@@ -267,6 +267,8 @@ export default function Sidebar() {
                   : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50'
               }`}
               title={cat.label}
+              aria-label={cat.label}
+              aria-pressed={isActive}
             >
               <Icon size={20} />
             </button>

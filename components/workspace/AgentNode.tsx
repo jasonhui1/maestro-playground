@@ -60,7 +60,7 @@ function AgentNode({ id, data, selected }: NodeProps<AgentNode>) {
         className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-zinc-200 rounded-full flex items-center justify-center shadow-sm hover:border-zinc-900 hover:text-zinc-900 text-zinc-400 transition-all z-10 opacity-0 group-hover:opacity-100"
         title="Insert agent after"
       >
-        <Plus size={14} strokeWidth={3} />
+        <Plus size={14} strokeWidth={2} />
       </button>
     </div>
   );
