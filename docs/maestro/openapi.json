@@ -1,0 +1,165 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Maestro Workspace API",
+    "version": "1.0.0",
+    "description": "API for managing Maestro workspace entities including agents, skills, chains, templates, and context files. This API is exposed via CORS for local/external automation."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/api/workspace": {
+      "get": {
+        "summary": "Load workspace",
+        "description": "Retrieves all entities in the workspace grouped by type.",
+        "responses": {
+          "200": {
+            "description": "Workspace data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } },
+                    "skills": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } },
+                    "chains": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } },
+                    "templates": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } },
+                    "context": { "type": "array", "items": { "$ref": "#/components/schemas/ContextFile" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create workspace entity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["type", "name"],
+                "properties": {
+                  "type": { "type": "string", "enum": ["agent", "skill", "chain", "template"] },
+                  "name": { "type": "string" },
+                  "slug": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Entity created successfully" },
+          "400": { "description": "Invalid input or missing fields" },
+          "409": { "description": "Entity already exists" }
+        }
+      }
+    },
+    "/api/workspace/context": {
+      "post": {
+        "summary": "Save context file",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["filename", "content"],
+                "properties": {
+                  "filename": { "type": "string" },
+                  "content": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Context file saved" },
+          "400": { "description": "Invalid context or validation failed" }
+        }
+      }
+    },
+    "/api/workspace/{type}/{slug}": {
+      "parameters": [
+        { "name": "type", "in": "path", "required": true, "schema": { "type": "string", "enum": ["agent", "skill", "chain", "template", "context"] } },
+        { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "summary": "Get entity",
+        "responses": {
+          "200": { "description": "Entity data and raw content" },
+          "404": { "description": "Entity not found" }
+        }
+      },
+      "put": {
+        "summary": "Update entity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["data", "content"],
+                "properties": {
+                  "data": { "type": "object", "description": "The structured metadata for the entity" },
+                  "content": { "type": "string", "description": "The raw markdown/text content" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Entity updated" },
+          "400": { "description": "Invalid data or validation failed" }
+        }
+      },
+      "delete": {
+        "summary": "Delete entity",
+        "responses": {
+          "200": { "description": "Entity deleted" }
+        }
+      }
+    },
+    "/api/workspace/{type}/{slug}/versions": {
+      "parameters": [
+        { "name": "type", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "summary": "Get versions",
+        "parameters": [
+          { "name": "version", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "Specific version number to retrieve" }
+        ],
+        "responses": {
+          "200": { "description": "List of versions or specific version content" },
+          "404": { "description": "Version not found" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Entity": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      },
+      "ContextFile": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "name": { "type": "string" },
+          "filePath": { "type": "string" }
+        }
+      }
+    }
+  }
+}
