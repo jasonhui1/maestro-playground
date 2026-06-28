@@ -39,24 +39,31 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
 
+  const stateNamesByZone = new Map<string, string[]>()
+  for (const n of chain.nodes) if (n.kind === 'loop-start' && n.zone) stateNamesByZone.set(n.zone, n.state || [])
+  const zoneStateOf = (n: ChainNode): string[] => (n.zone ? stateNamesByZone.get(n.zone) || [] : [])
+
   const inputSlotsOf = (n: ChainNode): string[] => {
     if (n.kind === 'agent' || n.kind === 'decider') {
       const a = n.agent ? agentBySlug.get(n.agent) : undefined
       return a ? parseSlots(a.systemPrompt) : []
     }
     if (n.kind === 'gate' || n.kind === 'branch') return ['in']
+    if (n.kind === 'loop-start' || n.kind === 'loop-end') return zoneStateOf(n)
     return []
   }
   const outputSocketsOf = (n: ChainNode): string[] => {
     if (n.kind === 'seed' || n.kind === 'context') return ['output']
     if (n.kind === 'gate') return ['output']
     if (n.kind === 'branch') return [...(n.cases || []).map(c => c.label), ...(n.default ? [n.default] : [])]
+    if (n.kind === 'loop-start' || n.kind === 'loop-end') return zoneStateOf(n)
     const a = n.agent ? agentBySlug.get(n.agent) : undefined
     return ['output', ...(a?.outputs || []).map(s => slugify(s.name))]
   }
-  const acceptsInputs = (n: ChainNode): boolean => n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch'
+  const acceptsInputs = (n: ChainNode): boolean =>
+    n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' || n.kind === 'loop-start' || n.kind === 'loop-end'
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider'])
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end'])
   const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined) => {
     if (!expr) return
@@ -108,5 +115,36 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
 
   if (topoOrder(chain).length !== chain.nodes.length) errors.push('Chain has a cycle')
 
+  validateZones(chain, errors)
   return { valid: errors.length === 0, errors }
+}
+
+function validateZones(chain: ChainDef, errors: string[]) {
+  const byZone = new Map<string, ChainNode[]>()
+  for (const n of chain.nodes) {
+    if (!n.zone) continue
+    const arr = byZone.get(n.zone) ?? []
+    arr.push(n); byZone.set(n.zone, arr)
+  }
+  const zoneOf = new Map(chain.nodes.map(n => [n.id, n.zone]))
+  for (const [zid, members] of byZone) {
+    const starts = members.filter(n => n.kind === 'loop-start')
+    const ends = members.filter(n => n.kind === 'loop-end')
+    if (starts.length !== 1) errors.push(`Zone "${zid}": needs exactly one loop-start (found ${starts.length})`)
+    if (ends.length !== 1) errors.push(`Zone "${zid}": needs exactly one loop-end (found ${ends.length})`)
+    const end = ends[0]
+    if (end) {
+      if (!end.until || !end.until.trim()) errors.push(`Zone "${zid}": loop-end needs an "until" condition`)
+      if (!end.maxIterations || end.maxIterations < 1 || !Number.isInteger(end.maxIterations)) errors.push(`Zone "${zid}": loop-end needs a positive integer maxIterations`)
+    }
+  }
+  // boundary rule: an edge between different zones is allowed only into loop-start or out of loop-end
+  const kindOf = new Map(chain.nodes.map(n => [n.id, n.kind]))
+  for (const e of chain.edges) {
+    const fz = zoneOf.get(e.fromNode); const tz = zoneOf.get(e.toNode)
+    if (fz === tz) continue
+    const intoStart = kindOf.get(e.toNode) === 'loop-start'
+    const outOfEnd = kindOf.get(e.fromNode) === 'loop-end'
+    if (!intoStart && !outOfEnd) errors.push(`Edge "${e.fromNode}.${e.fromSocket}" -> "${e.toNode}.${e.toSocket}" crosses a zone boundary (only loop-start/loop-end may cross)`)
+  }
 }
