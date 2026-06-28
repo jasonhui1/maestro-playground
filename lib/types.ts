@@ -1,4 +1,4 @@
-export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider'
+export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end'
 
 export interface BranchCase {
   label: string
@@ -14,6 +14,10 @@ export interface ChainNode {
   condition?: string     // gate
   cases?: BranchCase[]   // branch
   default?: string       // branch default case label
+  zone?: string          // loop-start / loop-end / body members
+  state?: string[]       // loop-start: names of carried state items
+  until?: string         // loop-end: exit condition
+  maxIterations?: number // loop-end
 }
 
 export interface ChainEdge {
@@ -90,6 +94,7 @@ export interface AgentOutput {
   status: 'success' | 'error' | 'skipped'
   error?: string
   versionNumber?: number
+  round?: number         // loop iteration (0-based), set for loop-body outputs
 }
 
 export interface RunMeta {
