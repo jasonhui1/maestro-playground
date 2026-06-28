@@ -23,15 +23,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   const [compareMode, setCompareMode] = useState(false)
   const [leftIdx, setLeftIdx] = useState<number>(0)
   const [rightIdx, setRightIdx] = useState<number>(1)
-  const [expandedPrompts, setExpandedPrompts] = useState<Record<number, boolean>>({})
 
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
   const [agents, setAgents] = useState<AgentDef[]>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-
-  const togglePrompt = (idx: number) => {
-    setExpandedPrompts(prev => ({ ...prev, [idx]: !prev[idx] }))
-  }
 
   useEffect(() => {
     fetch(`/api/runs/${runId}`)

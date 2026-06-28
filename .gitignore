@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 **/logs*
+
+workspace/agents
+workspace/chains
+workspace/context
+workspace/skills
