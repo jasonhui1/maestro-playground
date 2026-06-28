@@ -1,5 +1,5 @@
 'use client'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import dagre from 'dagre'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
@@ -49,9 +49,9 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
   const [runError, setRunError] = useState<string | null>(null)
 
   // Push every graph change into the autosave pipeline as serialized markdown.
-  const sync = useCallback((nextNodes: ChainNode[], nextEdges: ChainEdge[]) => {
-    setContent(serializeChain(meta, nextNodes, nextEdges))
-  }, [meta, setContent])
+  useEffect(() => {
+    setContent(serializeChain(meta, nodes, edges))
+  }, [meta, nodes, edges, setContent])
 
   const chain: ChainDef = useMemo(() => ({ ...initialChain, nodes, edges }), [initialChain, nodes, edges])
   const validation = useMemo(() => validateChain(chain, agents), [chain, agents])
@@ -96,61 +96,41 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
   }, [flush, meta, nodes, edges, slug, seedPrompt])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => {
-    setNodes(prev => {
-      const next = prev.map(n => n.id === id ? { ...n, ...patch } : n)
-      sync(next, edges)
-      return next
-    })
-  }, [edges, sync])
+    setNodes(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n))
+  }, [])
 
   const moveNode = useCallback((id: string, pos: [number, number]) => {
-    setNodes(prev => {
-      const next = prev.map(n => n.id === id ? { ...n, pos } : n)
-      sync(next, edges)
-      return next
-    })
-  }, [edges, sync])
+    setNodes(prev => prev.map(n => n.id === id ? { ...n, pos } : n))
+  }, [])
 
   const addNodeOfKind = useCallback((kind: ChainNodeKind) => {
     setNodes(prev => {
       const id = uniqueNodeId(kind, prev.map(n => n.id))
       const node: ChainNode = { id, kind, pos: [80, 80] }
-      const next = [...prev, node]
-      sync(next, edges)
-      return next
+      return [...prev, node]
     })
-  }, [edges, sync])
+  }, [])
 
   const addLoopZone = useCallback(() => {
     setNodes(prev => {
       const pair = makeLoopZone(prev.map(n => n.id), [120, 120])
-      const next = [...prev, ...pair]
-      sync(next, edges)
-      return next
+      return [...prev, ...pair]
     })
-  }, [edges, sync])
+  }, [])
 
   const connect = useCallback((edge: ChainEdge) => {
-    setEdges(prev => {
-      const next = connectEdge(prev, edge)
-      sync(nodes, next)
-      return next
-    })
-  }, [nodes, sync])
+    setEdges(prev => connectEdge(prev, edge))
+  }, [])
 
   const deleteNode = useCallback((id: string) => {
-    const res = opDeleteNode(nodes, edges, id)
-    setNodes(res.nodes); setEdges(res.edges); sync(res.nodes, res.edges)
+    setNodes(prev => prev.filter(n => n.id !== id))
+    setEdges(prev => prev.filter(e => e.fromNode !== id && e.toNode !== id))
     if (selectedId === id) setSelectedId(null)
-  }, [nodes, edges, sync, selectedId])
+  }, [selectedId])
 
   const deleteEdge = useCallback((edge: ChainEdge) => {
-    setEdges(prev => {
-      const next = opDeleteEdge(prev, edge)
-      sync(nodes, next)
-      return next
-    })
-  }, [nodes, sync])
+    setEdges(prev => opDeleteEdge(prev, edge))
+  }, [])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,

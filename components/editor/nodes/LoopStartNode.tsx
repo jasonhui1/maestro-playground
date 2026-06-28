@@ -22,6 +22,7 @@ function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
           className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2" />
 
         <div className="space-y-1">
+          {/* Using index as key is necessary because items are editable strings; using the value as key would cause text inputs to lose focus on every keystroke. */}
           {state.map((s, i) => (
             <div key={i} className="relative flex items-center gap-1 text-[10px] font-mono text-zinc-400">
               <Handle type="target" id={s} position={Position.Left}

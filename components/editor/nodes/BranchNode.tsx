@@ -30,6 +30,7 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         </div>
 
         <div className="space-y-1.5">
+          {/* Using index as key is necessary because items are editable objects; using unique field values like label as key would cause text inputs to lose focus on every keystroke. */}
           {cases.map((c, i) => (
             <div key={i} className="relative flex items-center gap-1">
               <input value={c.label} onChange={e => setCase(i, { label: e.target.value })}
