@@ -2,11 +2,18 @@ import OpenAI from 'openai'
 import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
+import { injectSkills } from './prompt'
 
-const client = new OpenAI({
-  baseURL: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
-  apiKey: process.env.AI_API_KEY,
-})
+let _client: OpenAI | null = null
+function getClient(): OpenAI {
+  if (!_client) {
+    _client = new OpenAI({
+      baseURL: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
+      apiKey: process.env.AI_API_KEY,
+    })
+  }
+  return _client
+}
 
 export async function runAgent(
   agent: AgentDef,
@@ -33,7 +40,7 @@ export async function runAgent(
           { role: 'user', content: userMessage }
         ]
 
-    const stream = await client.chat.completions.create({
+    const stream = await getClient().chat.completions.create({
       model: agent.model,
       max_tokens: agent.max_tokens ?? 32768,
       messages,
@@ -158,20 +165,6 @@ export async function buildSystemPrompt(
   workspacePath: string,
   userInput: string,
 ): Promise<string> {
-  // 1. Inject always-on skills first
-  const alwaysSkills = allSkills
-    .filter(s => s.injected === 'always')
-    .map(s => s.content)
-    .join('\n\n---\n\n')
-
-  // 2. Inject agent-declared skills
-  const agentSkills = agent.skills
-    .filter(name => name !== 'base-protocol') // already in always
-    .map(name => allSkills.find(s => s.name === name)?.content ?? '')
-    .filter(Boolean)
-    .join('\n\n---\n\n')
-
-  // 3. Resolve {} refs in the agent's system prompt body
   const resolvedBody = resolveRefs(
     agent.systemPrompt,
     previousOutputs,
@@ -179,5 +172,5 @@ export async function buildSystemPrompt(
     userInput,
   )
 
-  return [alwaysSkills, agentSkills, resolvedBody].filter(Boolean).join('\n\n---\n\n')
+  return injectSkills(agent, allSkills, resolvedBody)
 }

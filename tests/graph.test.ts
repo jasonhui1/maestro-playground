@@ -5,7 +5,7 @@ import { AgentDef, RunMeta, AgentOutput, OutputSocketDef } from '../lib/types'
 function mkAgent(name: string, systemPrompt: string, outputs: OutputSocketDef[] = [{ name: 'output' }]): AgentDef {
   return {
     slug: name, name, model: 'm', description: '', skills: [], context: [],
-    input_from: 'user', output_format: 'markdown', outputs,
+    input_from: 'user', output_format: 'markdown', outputs, inputs: [],
     systemPrompt, filePath: `${name}.md`,
   }
 }
