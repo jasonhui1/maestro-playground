@@ -40,23 +40,50 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
 
   const inputSlotsOf = (n: ChainNode): string[] => {
-    if (n.kind !== 'agent') return []
-    const a = n.agent ? agentBySlug.get(n.agent) : undefined
-    return a ? parseSlots(a.systemPrompt) : []
+    if (n.kind === 'agent' || n.kind === 'decider') {
+      const a = n.agent ? agentBySlug.get(n.agent) : undefined
+      return a ? parseSlots(a.systemPrompt) : []
+    }
+    if (n.kind === 'gate' || n.kind === 'branch') return ['in']
+    return []
   }
   const outputSocketsOf = (n: ChainNode): string[] => {
-    if (n.kind !== 'agent') return ['output']
+    if (n.kind === 'seed' || n.kind === 'context') return ['output']
+    if (n.kind === 'gate') return ['output']
+    if (n.kind === 'branch') return [...(n.cases || []).map(c => c.label), ...(n.default ? [n.default] : [])]
     const a = n.agent ? agentBySlug.get(n.agent) : undefined
     return ['output', ...(a?.outputs || []).map(s => slugify(s.name))]
   }
+  const acceptsInputs = (n: ChainNode): boolean => n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch'
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent'])
-  for (const n of chain.nodes) {
-    if (!allowedKinds.has(n.kind)) {
-      errors.push(`Node "${n.id}": invalid or missing kind "${n.kind}"`)
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider'])
+  const refRe = /\{([^.}]+)\.[^}]+\}/g
+  const checkRefs = (label: string, expr: string | undefined) => {
+    if (!expr) return
+    let m: RegExpExecArray | null
+    refRe.lastIndex = 0
+    while ((m = refRe.exec(expr)) !== null) {
+      if (!nodeById.has(m[1])) errors.push(`${label}: condition references unknown node "${m[1]}"`)
     }
-    if (n.kind === 'agent' && (!n.agent || !agentBySlug.has(n.agent))) errors.push(`Node "${n.id}": agent "${n.agent ?? ''}" not found`)
+  }
+
+  for (const n of chain.nodes) {
+    if (!allowedKinds.has(n.kind)) errors.push(`Node "${n.id}": invalid or missing kind "${n.kind}"`)
+    if ((n.kind === 'agent' || n.kind === 'decider') && (!n.agent || !agentBySlug.has(n.agent))) errors.push(`Node "${n.id}": agent "${n.agent ?? ''}" not found`)
     if (n.kind === 'context' && !n.file) errors.push(`Node "${n.id}": context node missing "file"`)
+    if (n.kind === 'gate') {
+      if (!n.condition || !n.condition.trim()) errors.push(`Node "${n.id}": gate needs a condition`)
+      checkRefs(`Node "${n.id}"`, n.condition)
+    }
+    if (n.kind === 'branch') {
+      if (!n.cases || n.cases.length === 0) errors.push(`Node "${n.id}": branch needs at least one case`)
+      const labels = new Set<string>()
+      for (const c of n.cases || []) {
+        if (labels.has(c.label)) errors.push(`Node "${n.id}": duplicate case label "${c.label}"`)
+        labels.add(c.label)
+        checkRefs(`Node "${n.id}" case "${c.label}"`, c.condition)
+      }
+    }
   }
 
   const incoming = new Map<string, number>()
@@ -65,9 +92,15 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
     const dst = nodeById.get(e.toNode)
     if (!src) { errors.push(`Edge from unknown node "${e.fromNode}"`); continue }
     if (!dst) { errors.push(`Edge to unknown node "${e.toNode}"`); continue }
-    if (dst.kind !== 'agent') errors.push(`Edge targets non-agent node "${e.toNode}" (sources have no inputs)`)
-    if (!outputSocketsOf(src).includes(slugify(e.fromSocket))) errors.push(`Edge "${e.fromNode}.${e.fromSocket}": no such output socket`)
-    if (dst.kind === 'agent' && !inputSlotsOf(dst).includes(e.toSocket)) errors.push(`Edge "${e.toNode}.${e.toSocket}": no such input slot`)
+    if (!acceptsInputs(dst)) errors.push(`Edge targets node "${e.toNode}" which has no inputs`)
+    if (!outputSocketsOf(src).includes(slugify(e.fromSocket))) {
+      if (src.kind === 'branch') {
+        errors.push(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`)
+      } else {
+        errors.push(`Edge "${e.fromNode}.${e.fromSocket}": no such output socket`)
+      }
+    }
+    if (acceptsInputs(dst) && !inputSlotsOf(dst).includes(e.toSocket)) errors.push(`Edge "${e.toNode}.${e.toSocket}": no such input slot`)
     const key = `${e.toNode}.${e.toSocket}`
     incoming.set(key, (incoming.get(key) || 0) + 1)
   }
