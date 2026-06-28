@@ -127,9 +127,18 @@ export interface CreationParams {
   slug: string
 }
 
+export interface ValidationIssue {
+  message: string
+  severity: 'error'
+  nodeId?: string
+  edge?: ChainEdge
+  zone?: string
+}
+
 export interface ValidationResult {
   valid: boolean
   errors: string[]
+  issues: ValidationIssue[]
 }
 
 export type WorkspaceTabType = 'agent' | 'chain' | 'skill' | 'template' | 'context'
