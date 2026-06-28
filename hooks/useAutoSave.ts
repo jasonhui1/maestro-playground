@@ -78,6 +78,17 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
     }
   }, [type, slug]);
 
+  const flush = useCallback(async (override?: string) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const target = override ?? content;
+    if (target !== lastSavedContentRef.current) {
+      await save(target);
+    }
+  }, [content, save]);
+
   useEffect(() => {
     const dirty = content !== lastSavedContentRef.current;
     setIsDirty(dirty);
@@ -113,5 +124,6 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
     status,
     error,
     isDirty,
+    flush,
   };
 }
