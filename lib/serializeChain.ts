@@ -4,6 +4,7 @@ import { ChainNode, ChainEdge } from './types'
 function serializeNode(n: ChainNode): Record<string, unknown> {
   const out: Record<string, unknown> = { id: n.id, kind: n.kind }
   if (n.pos) out.pos = n.pos
+  if (n.zone !== undefined) out.zone = n.zone
   switch (n.kind) {
     case 'agent':
     case 'decider':
@@ -20,11 +21,9 @@ function serializeNode(n: ChainNode): Record<string, unknown> {
       if (n.default !== undefined) out.default = n.default
       break
     case 'loop-start':
-      if (n.zone !== undefined) out.zone = n.zone
       if (n.state) out.state = n.state
       break
     case 'loop-end':
-      if (n.zone !== undefined) out.zone = n.zone
       if (n.until !== undefined) out.until = n.until
       if (n.maxIterations !== undefined) out.maxIterations = n.maxIterations
       break
