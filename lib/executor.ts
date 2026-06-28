@@ -110,7 +110,11 @@ export async function runChainGraph(
     return src ? socketValue(src, e.fromSocket, nodeOutputs, seedPrompt, readContext) : ''
   }
   const setStateSockets = (nodeId: string, state: Map<string, string>) => {
-    for (const [name, val] of state) nodeOutputs.set(`${nodeId}::${slugify(name)}`, controlOutput(`${nodeId}::${name}`, nodeId, val, 'success'))
+    for (const [name, val] of state) {
+      const rec = controlOutput(`${nodeId}::${name}`, nodeId, val, 'success')
+      nodeOutputs.set(`${nodeId}::${slugify(name)}`, rec)
+      results.push(rec)
+    }
   }
   const bodyOrder = (zone: Zone): string[] => {
     const set = new Set(zone.bodyIds)
@@ -140,7 +144,14 @@ export async function runChainGraph(
         const bn = nodeById.get(id)!
         if (bn.kind === 'agent' || bn.kind === 'decider') {
           const a = bn.agent ? agentBySlug.get(bn.agent) : undefined
-          if (a) await runAgentNode(bn, a, round)
+          if (a) {
+            const replayed = startOutputs.find(o => o.nodeId === bn.id && o.round === round)
+            if (replayed) {
+              nodeOutputs.set(bn.id, replayed)
+            } else {
+              await runAgentNode(bn, a, round)
+            }
+          }
         }
       }
       const newState = new Map<string, string>()
@@ -168,13 +179,22 @@ export async function runChainGraph(
     if (handledByZone.has(nodeId)) continue
     const startZone = zonesByStart.get(nodeId)
     if (startZone) {
+      if (nodeOutputs.has(startZone.endId)) {
+        handledByZone.add(startZone.startId)
+        handledByZone.add(startZone.endId)
+        startZone.bodyIds.forEach(id => handledByZone.add(id))
+        markOut(startZone.endId, () => true)
+        continue
+      }
       const inc = incomingByNode.get(nodeId) || []
       const anyLive = inc.length === 0 || inc.some(i => live.has(i))
       if (anyLive) { await runZone(startZone); continue }
       // zone is unreachable (blocked upstream): record members skipped
       for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
         handledByZone.add(id)
-        const rec = controlOutput(id, nodeById.get(id)?.kind || 'node', '', 'skipped')
+        const subNode = nodeById.get(id)
+        const label = subNode ? (subNode.agent || subNode.kind) : 'node'
+        const rec = controlOutput(id, label, '', 'skipped')
         nodeOutputs.set(id, rec); results.push(rec); callbacks.onDone(id, rec)
       }
       continue
@@ -188,7 +208,7 @@ export async function runChainGraph(
     const slots = usedSlots(node)
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
     if (!available) {
-      const rec = controlOutput(nodeId, node.kind, '', 'skipped')
+      const rec = controlOutput(nodeId, node.agent || node.kind, '', 'skipped')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       continue // out-edges remain dead
     }

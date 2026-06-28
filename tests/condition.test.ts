@@ -9,12 +9,14 @@ const ctx = new Map<string, AgentOutput>([
   ['v', out('v', 'Result: VALID')],
   ['t', out('t', '## Verdict\nAPPROVED')],
   ['e', out('e', '')],
+  ['ls::draft', out('ls::draft', 'CURRENT DRAFT')],
 ])
 
 assert.strictEqual(evalCondition('{v.output} contains "valid"', ctx), true)   // case-insensitive
 assert.strictEqual(evalCondition('{v.output} == "result: valid"', ctx), true) // trimmed + ci
 assert.strictEqual(evalCondition('{v.output} != "nope"', ctx), true)
 assert.strictEqual(evalCondition('{t.verdict} == "approved"', ctx), true)     // section slice
+assert.strictEqual(evalCondition('{ls.draft} == "current draft"', ctx), true) // compound loop key
 assert.strictEqual(evalCondition('exists {v.output}', ctx), true)
 assert.strictEqual(evalCondition('exists {e.output}', ctx), false)            // empty
 assert.strictEqual(evalCondition('exists {missing.output}', ctx), false)      // unknown node

@@ -57,6 +57,50 @@ async function main() {
   // report receives the final draft (draft-3)
   const rep = res.find(o => o.nodeId === 'rep')!
   assert.ok(rep.output.includes('draft-3'), 'final draft flows downstream')
+
+  // --- Test Case 2: Resume/Branch from fully completed loop ---
+  const originalPatchCalls = patchCalls
+  patchCalls = 0
+  const stubNoCalls = (async (a: AgentDef, sp: string) => {
+    throw new Error(`Should not be called! Node: ${a.slug}`)
+  }) as never
+
+  // Re-run with the completed results as startOutputs
+  const resCompletedBranch = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, stubNoCalls, res)
+  // The result should contain the same outputs and not have failed
+  assert.strictEqual(resCompletedBranch.length, res.length, 'Resumed completed run has same length')
+  const repCompleted = resCompletedBranch.find(o => o.nodeId === 'rep')!
+  assert.ok(repCompleted.output.includes('draft-3'), 'Final report output preserved')
+
+  // --- Test Case 3: Resume/Branch from round 1 (partial completion) ---
+  patchCalls = 2 // Since round 0 and 1 are already completed
+  const stubFromRound2 = (async (a: AgentDef, sp: string) => {
+    let output = ''
+    if (a.slug === 'patch') {
+      patchCalls++
+      output = `draft-${patchCalls}`
+    } else if (a.slug === 'review') {
+      output = sp.includes('draft-3') ? 'APPROVED' : 'REVISE'
+    } else {
+      output = `REPORT(${sp})`
+    }
+    return { agentName: a.name, systemPrompt: sp, input: '', output,
+      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput
+  }) as never
+
+  // Take elements up to review (round 1)
+  const partialOutputs = res.slice(0, 9)
+  const resPartialBranch = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, stubFromRound2, partialOutputs)
+  
+  // Since we started with round 0 & 1 completed, it should run round 2:
+  // patch round 2 -> output "draft-3"
+  // review round 2 -> APPROVED
+  // loop-end -> completed
+  // rep -> final report
+  const finalPatchRounds = resPartialBranch.filter(o => o.nodeId === 'patch')
+  assert.strictEqual(finalPatchRounds.length, 3, 'Total patch rounds is 3')
+  assert.strictEqual(patchCalls, 3, 'Stub for patch was called exactly once (to generate draft-3)')
+
   console.log('✅ executor-loop tests passed')
 }
 

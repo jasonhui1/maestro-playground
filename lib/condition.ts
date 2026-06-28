@@ -55,6 +55,9 @@ export function evalCondition(expr: string, nodeOutputs: Map<string, AgentOutput
   const norm = (s: string) => s.trim().toLowerCase()
   const resolve = (tk: Tok): string => {
     if (tk.t !== 'ref') return ''
+    const compoundKey = `${tk.node}::${slugify(tk.socket)}`
+    const compoundOut = nodeOutputs.get(compoundKey)
+    if (compoundOut) return compoundOut.output || ''
     const o = nodeOutputs.get(tk.node)
     if (!o) return ''
     return slugify(tk.socket) === 'output' ? (o.output || '') : extractSection(o.output || '', tk.socket)
