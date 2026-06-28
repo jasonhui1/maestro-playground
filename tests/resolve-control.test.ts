@@ -1,0 +1,27 @@
+import assert from 'node:assert'
+import { socketValue } from '../lib/resolveNode'
+import { ChainNode, AgentOutput } from '../lib/types'
+
+function out(nodeId: string, output: string): AgentOutput {
+  return { nodeId, agentName: nodeId, systemPrompt: '', input: '', output, tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' }
+}
+const outs = new Map<string, AgentOutput>([
+  ['a', out('a', 'AGENT BODY\n## Summary\nSHORT')],
+  ['g', out('g', 'PASSED VALUE')],
+  ['r', out('r', 'ROUTED VALUE')],
+])
+const read = (f: string) => `CTX:${f}`
+
+const seed: ChainNode = { id: 's', kind: 'seed' }
+const ctx: ChainNode = { id: 'c', kind: 'context', file: 'lore' }
+const agent: ChainNode = { id: 'a', kind: 'agent', agent: 'a' }
+const gate: ChainNode = { id: 'g', kind: 'gate' }
+const branch: ChainNode = { id: 'r', kind: 'branch' }
+
+assert.strictEqual(socketValue(seed, 'output', outs, 'SEED', read), 'SEED')
+assert.strictEqual(socketValue(ctx, 'output', outs, 'SEED', read), 'CTX:lore')
+assert.strictEqual(socketValue(agent, 'output', outs, 'SEED', read), 'AGENT BODY\n## Summary\nSHORT')
+assert.strictEqual(socketValue(agent, 'summary', outs, 'SEED', read), 'SHORT')
+assert.strictEqual(socketValue(gate, 'output', outs, 'SEED', read), 'PASSED VALUE')
+assert.strictEqual(socketValue(branch, 'urgent', outs, 'SEED', read), 'ROUTED VALUE') // socket ignored
+console.log('✅ resolve-control tests passed')

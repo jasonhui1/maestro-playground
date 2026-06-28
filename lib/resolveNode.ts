@@ -2,6 +2,27 @@ import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
 import { parseSlots } from './slots'
 import { extractSection, slugify } from './graph'
 
+// Resolves the value carried on a source node's socket.
+// seed -> seed prompt; context -> file; gate/branch -> their pass-through output
+// (socket ignored); agent/decider -> output (full) or a named section.
+export function socketValue(
+  src: ChainNode,
+  socket: string,
+  nodeOutputs: Map<string, AgentOutput>,
+  seedPrompt: string,
+  readContext: (file: string) => string,
+): string {
+  if (src.kind === 'seed') return seedPrompt
+  if (src.kind === 'context') return readContext(src.file || '')
+  if (src.kind === 'gate' || src.kind === 'branch') {
+    const o = nodeOutputs.get(src.id)
+    return o ? o.output : ''
+  }
+  const o = nodeOutputs.get(src.id)
+  if (!o) return ''
+  return slugify(socket) === 'output' ? o.output : extractSection(o.output, socket)
+}
+
 export function resolveNodePrompt(
   node: ChainNode,
   chain: ChainDef,
@@ -18,17 +39,9 @@ export function resolveNodePrompt(
       value = `[${slot}: not wired]`
     } else {
       const src = chain.nodes.find(n => n.id === edge.fromNode)
-      if (!src) value = `[${slot}: source "${edge.fromNode}" missing]`
-      else if (src.kind === 'seed') value = seedPrompt
-      else if (src.kind === 'context') value = readContext(src.file || '')
-      else {
-        const o = nodeOutputs.get(src.id)
-        if (!o) value = `[${slot}: ${src.id} not run]`
-        else {
-          const sock = slugify(edge.fromSocket)
-          value = sock === 'output' ? o.output : extractSection(o.output, edge.fromSocket)
-        }
-      }
+      value = src
+        ? socketValue(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext)
+        : `[${slot}: source "${edge.fromNode}" missing]`
     }
     const re = new RegExp(`\\{\\s*${slot}\\s*\\}`, 'g')
     out = out.replace(re, value)
