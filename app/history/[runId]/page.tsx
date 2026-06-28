@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { RunMeta } from '@/lib/types'
+import { RunMeta, AgentDef } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
+import { buildRunGraph } from '@/lib/graph'
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params)
@@ -21,6 +22,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   const [leftIdx, setLeftIdx] = useState<number>(0)
   const [rightIdx, setRightIdx] = useState<number>(1)
   const [expandedPrompts, setExpandedPrompts] = useState<Record<number, boolean>>({})
+
+  const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+  const [agents, setAgents] = useState<AgentDef[]>([])
 
   const togglePrompt = (idx: number) => {
     setExpandedPrompts(prev => ({ ...prev, [idx]: !prev[idx] }))
@@ -46,6 +50,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         setLoading(false)
       })
   }, [runId])
+
+  useEffect(() => {
+    fetch('/api/workspace')
+      .then(res => res.json())
+      .then(data => setAgents(data.agents || []))
+      .catch(err => console.error('Failed to fetch agents for graph:', err))
+  }, [])
 
   async function handleBranch(fromStep: number) {
     if (!run) return
@@ -116,6 +127,8 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     )
   }
 
+  const graph = buildRunGraph(run, agents)
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
       {/* Header */}
@@ -136,6 +149,22 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         </div>
 
         <div className="flex gap-3">
+          {!compareMode && (
+            <div className="flex rounded-xl border border-zinc-200 overflow-hidden">
+              <button
+                onClick={() => setViewMode('graph')}
+                className={`px-4 py-2 text-xs font-bold transition-all ${viewMode === 'graph' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:text-zinc-900'}`}
+              >
+                GRAPH
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-4 py-2 text-xs font-bold transition-all border-l border-zinc-200 ${viewMode === 'list' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:text-zinc-900'}`}
+              >
+                LIST
+              </button>
+            </div>
+          )}
           <a 
             href={`/api/runs/${runId}/export?format=markdown`}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
@@ -205,6 +234,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
             rightTitle={`${run.agentOutputs[rightIdx]?.agentName} (${run.agentOutputs[rightIdx]?.model})`}
             rightContent={run.agentOutputs[rightIdx]?.output || ''}
           />
+        </div>
+      ) : viewMode === 'graph' ? (
+        <div className="border border-zinc-200 rounded-2xl p-8 text-sm text-zinc-600">
+          Graph: {graph.nodes.length} nodes, {graph.edges.length} wires (renderer added in next task)
         </div>
       ) : (
         <div className="flex flex-col gap-6">
