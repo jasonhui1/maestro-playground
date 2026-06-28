@@ -1,3 +1,9 @@
+export interface OutputSocketDef {
+  name: string
+  type?: string
+  description?: string
+}
+
 export interface AgentDef {
   slug: string
   name: string
@@ -7,6 +13,7 @@ export interface AgentDef {
   context: string[]
   input_from: string   // 'user' | agent name
   output_format: 'markdown' | 'json'
+  outputs: OutputSocketDef[]
   systemPrompt: string  // body of the .md file
   filePath: string
   max_tokens?: number
