@@ -29,8 +29,8 @@ export function getChainTemplate(name: string, slug: string): Partial<ChainDef> 
     name,
     slug,
     description: `A new chain named ${name}`,
-    agents: [],
-    shared_context: []
+    nodes: [],
+    edges: [],
   }
 }
 
