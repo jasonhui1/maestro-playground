@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
 import { buildRunGraph } from '@/lib/graph'
+import RunGraph from '@/components/trace/RunGraph'
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params)
@@ -25,6 +26,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
 
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
   const [agents, setAgents] = useState<AgentDef[]>([])
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   const togglePrompt = (idx: number) => {
     setExpandedPrompts(prev => ({ ...prev, [idx]: !prev[idx] }))
@@ -236,9 +238,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           />
         </div>
       ) : viewMode === 'graph' ? (
-        <div className="border border-zinc-200 rounded-2xl p-8 text-sm text-zinc-600">
-          Graph: {graph.nodes.length} nodes, {graph.edges.length} wires (renderer added in next task)
-        </div>
+        <RunGraph graph={graph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
       ) : (
         <div className="flex flex-col gap-6">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Agent Execution Chain</h2>
