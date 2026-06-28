@@ -1,6 +1,6 @@
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
-import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
+import { ChainDef, AgentDef } from '../lib/types'
 
 function agent(slug: string, prompt: string): AgentDef {
   return { slug, name: slug, model: 'm', description: '', skills: [], context: [],
