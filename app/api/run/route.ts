@@ -6,6 +6,7 @@ import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput, AgentDef, ChainDef } from '@/lib/types'
 import { nanoid } from 'nanoid'
+import fs from 'fs'
 import path from 'path'
 
 export async function POST(req: NextRequest) {
@@ -23,7 +24,11 @@ export async function POST(req: NextRequest) {
     if (!found) return new Response('Chain not found', { status: 404 })
     chain = found
     runTitle = found.name
-    currentVersion = snapshotVersion('chain', found.slug, '')
+    let rawContent = ''
+    try {
+      if (found.filePath) rawContent = fs.readFileSync(found.filePath, 'utf-8')
+    } catch {}
+    currentVersion = snapshotVersion('chain', found.slug, rawContent)
   } else if (agentName) {
     const agent = agents.find(a => a.name === agentName) || agents.find(a => a.slug === agentName)
     if (!agent) return new Response('Agent not found', { status: 404 })

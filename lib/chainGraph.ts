@@ -26,6 +26,16 @@ export function topoOrder(chain: ChainDef): string[] {
 
 export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationResult {
   const errors: string[] = []
+  const seenIds = new Set<string>()
+  for (const n of chain.nodes) {
+    if (!n.id) {
+      errors.push('Node is missing ID')
+    } else if (seenIds.has(n.id)) {
+      errors.push(`Duplicate node ID "${n.id}"`)
+    }
+    seenIds.add(n.id)
+  }
+
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
 
@@ -40,7 +50,11 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
     return ['output', ...(a?.outputs || []).map(s => slugify(s.name))]
   }
 
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent'])
   for (const n of chain.nodes) {
+    if (!allowedKinds.has(n.kind)) {
+      errors.push(`Node "${n.id}": invalid or missing kind "${n.kind}"`)
+    }
     if (n.kind === 'agent' && (!n.agent || !agentBySlug.has(n.agent))) errors.push(`Node "${n.id}": agent "${n.agent ?? ''}" not found`)
     if (n.kind === 'context' && !n.file) errors.push(`Node "${n.id}": context node missing "file"`)
   }

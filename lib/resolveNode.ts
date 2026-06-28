@@ -30,7 +30,8 @@ export function resolveNodePrompt(
         }
       }
     }
-    out = out.split(`{${slot}}`).join(value)
+    const re = new RegExp(`\\{\\s*${slot}\\s*\\}`, 'g')
+    out = out.replace(re, value)
   }
   return out
 }

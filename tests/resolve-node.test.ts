@@ -41,6 +41,11 @@ assert.strictEqual(
   resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: {world}\nLore: {lore}'), nodeOutputs, 'MY SEED', readContext),
   'World: short world\nLore: LORE TEXT'
 )
+// agent .summary source + context source with spaces in brackets
+assert.strictEqual(
+  resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: { world }\nLore: {   lore   }'), nodeOutputs, 'MY SEED', readContext),
+  'World: short world\nLore: LORE TEXT'
+)
 // unwired slot
 assert.strictEqual(
   resolveNodePrompt(cdNode, chain, agent('character-designer', 'X: {missing}'), nodeOutputs, 'MY SEED', readContext),

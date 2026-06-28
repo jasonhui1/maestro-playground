@@ -60,4 +60,25 @@ const cyc = chain(
 assert.strictEqual(topoOrder(cyc).length < cyc.nodes.length, true)
 assert.ok(validateChain(cyc, agents).errors.some(e => /cycle/i.test(e)), 'cycle flagged')
 
+// duplicate node IDs
+const dup = chain(
+  [
+    { id: 'wb', kind: 'agent', agent: 'world-builder' },
+    { id: 'wb', kind: 'agent', agent: 'world-builder' },
+  ],
+  []
+)
+assert.strictEqual(validateChain(dup, agents).valid, false)
+assert.ok(validateChain(dup, agents).errors.some(e => /duplicate/i.test(e)), 'duplicate node ID flagged')
+
+// invalid node kind
+const invalidKind = chain(
+  [
+    { id: 'wb', kind: 'invalid-kind' as any, agent: 'world-builder' },
+  ],
+  []
+)
+assert.strictEqual(validateChain(invalidKind, agents).valid, false)
+assert.ok(validateChain(invalidKind, agents).errors.some(e => /invalid or missing kind/i.test(e)), 'invalid kind flagged')
+
 console.log('✅ chainGraph tests passed')
