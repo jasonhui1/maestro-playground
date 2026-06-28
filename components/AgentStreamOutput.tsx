@@ -22,7 +22,7 @@ interface Props {
   tokensOut?: number
   costUsd?: number
   latencyMs?: number
-  status?: 'success' | 'error'
+  status?: 'success' | 'error' | 'skipped'
   error?: string
   className?: string
 }

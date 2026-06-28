@@ -39,7 +39,7 @@ export interface TraceNode {
   label: string
   stepIndex?: number
   agentName?: string
-  status?: 'success' | 'error'
+  status?: 'success' | 'error' | 'skipped'
   defMissing?: boolean
   stale?: boolean
   inputs?: InputSocket[]
@@ -247,8 +247,9 @@ export function buildRunGraphFromSnapshot(run: RunMeta): TraceGraph {
     const inputs: InputSocket[] = g.edges
       .filter(e => e.toNode === n.id)
       .map(e => ({ id: e.toSocket, label: e.toSocket, ref: { kind: 'input' } }))
+    const label = n.kind === 'agent' || n.kind === 'decider' ? (n.agent || n.id) : n.kind
     return {
-      id: n.id, kind: 'agent', label: n.agent || n.id, agentName: o?.agentName || n.agent,
+      id: n.id, kind: 'agent', label, agentName: o?.agentName || n.agent,
       stepIndex: stepByNodeId.get(n.id), status: o?.status, inputs, outputs: [],
     }
   })
