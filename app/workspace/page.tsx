@@ -12,6 +12,7 @@ import { HistoryPane } from '@/components/workspace/HistoryPane';
 import { AgentOutput } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { Play, Columns2, X, Trash2, Activity, History } from 'lucide-react';
+import { streamRun, RunEvent } from '@/lib/runStream';
 
 interface AgentState {
   runIndex: number;
@@ -123,100 +124,81 @@ function WorkspaceContent() {
       const reader = response.body?.getReader();
       if (!reader) return;
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'agent_start') {
-                setRunsByFile(prev => {
-                  const fileRuns = prev[currentFileKey] || [];
-                  return {
-                    ...prev,
-                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
-                      ...r,
-                      instances: [...r.instances, {
-                        runIndex,
-                        agentName: data.agentName,
-                        step: data.step || 0,
-                        output: '',
-                        isStreaming: true,
-                      }]
-                    } : r)
-                  };
-                });
-              } else if (data.type === 'token') {
-                setRunsByFile(prev => {
-                  const fileRuns = prev[currentFileKey] || [];
-                  return {
-                    ...prev,
-                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
-                      ...r,
-                      instances: r.instances.map(a => {
-                        if (a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)) {
-                          if (data.tokenType === 'thought') {
-                            return { ...a, thought: (a.thought || '') + data.token };
-                          }
-                          return { ...a, output: a.output + data.token };
-                        }
-                        return a;
-                      })
-                    } : r)
-                  };
-                });
-              } else if (data.type === 'agent_done') {
-                const o: AgentOutput = data.output;
-                setRunsByFile(prev => {
-                  const fileRuns = prev[currentFileKey] || [];
-                  return {
-                    ...prev,
-                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
-                      ...r,
-                      instances: r.instances.map(a =>
-                        a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)
-                          ? { ...a, isStreaming: false, ...o }
-                          : a
-                      )
-                    } : r)
-                  };
-                });
-              } else if (data.type === 'error') {
-                setRunsByFile(prev => {
-                  const fileRuns = prev[currentFileKey] || [];
-                  return {
-                    ...prev,
-                    [currentFileKey]: fileRuns.map(r => r.id === runId ? {
-                      ...r,
-                      status: 'error',
-                      instances: [...r.instances, {
-                        runIndex,
-                        agentName: 'System',
-                        step: -1,
-                        output: '',
-                        isStreaming: false,
-                        status: 'error',
-                        error: data.error
-                      }]
-                    } : r)
-                  };
-                });
-              }
-            } catch {
-              console.error('Failed to parse SSE line:', line);
-            }
-          }
+      await streamRun(reader, (data: RunEvent) => {
+        if (data.type === 'agent_start') {
+          setRunsByFile(prev => {
+            const fileRuns = prev[currentFileKey] || [];
+            return {
+              ...prev,
+              [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                ...r,
+                instances: [...r.instances, {
+                  runIndex,
+                  agentName: data.agentName,
+                  step: data.step || 0,
+                  output: '',
+                  isStreaming: true,
+                }]
+              } : r)
+            };
+          });
+        } else if (data.type === 'token') {
+          setRunsByFile(prev => {
+            const fileRuns = prev[currentFileKey] || [];
+            return {
+              ...prev,
+              [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                ...r,
+                instances: r.instances.map(a => {
+                  if (a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)) {
+                    if (data.tokenType === 'thought') {
+                      return { ...a, thought: (a.thought || '') + data.token };
+                    }
+                    return { ...a, output: a.output + data.token };
+                  }
+                  return a;
+                })
+              } : r)
+            };
+          });
+        } else if (data.type === 'agent_done') {
+          const o: AgentOutput = data.output;
+          setRunsByFile(prev => {
+            const fileRuns = prev[currentFileKey] || [];
+            return {
+              ...prev,
+              [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                ...r,
+                instances: r.instances.map(a =>
+                  a.runIndex === runIndex && a.agentName === data.agentName && (a.step === data.step || data.step === undefined)
+                    ? { ...a, isStreaming: false, ...o }
+                    : a
+                )
+              } : r)
+            };
+          });
+        } else if (data.type === 'error') {
+          setRunsByFile(prev => {
+            const fileRuns = prev[currentFileKey] || [];
+            return {
+              ...prev,
+              [currentFileKey]: fileRuns.map(r => r.id === runId ? {
+                ...r,
+                status: 'error',
+                instances: [...r.instances, {
+                  runIndex,
+                  agentName: 'System',
+                  step: -1,
+                  output: '',
+                  isStreaming: false,
+                  status: 'error',
+                  error: data.error
+                }]
+              } : r)
+            };
+          });
         }
-      }
+      });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setRunsByFile(prev => {
