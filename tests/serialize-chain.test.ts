@@ -1,6 +1,6 @@
 import assert from 'node:assert'
 import { serializeChain } from '../lib/serializeChain'
-import { parseChainContent } from '../lib/fs/parseChain'
+import { parseChainContent } from '../lib/parseChain'
 
 // Round-trip invariant: parse(serialize(parse(raw))) deep-equals parse(raw)
 const raw = `---

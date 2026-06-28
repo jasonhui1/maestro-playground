@@ -48,7 +48,7 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
         const parsed = matter(currentContent);
         data = parsed.data;
         body = parsed.content;
-      } catch (err: any) {
+      } catch {
         // If YAML is invalid, don't trigger a server save, but don't show a hard error either
         // The FileEditor will show the validation error
         setStatus('idle');

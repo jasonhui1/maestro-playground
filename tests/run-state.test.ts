@@ -1,10 +1,10 @@
 import assert from 'node:assert'
 import { applyRunEvent, RunStateMap } from '../lib/runState'
-import { RunEvent } from '../lib/runStream'
+import { AgentOutput } from '../lib/types'
 
 function out(overrides: Partial<{ output: string; status: string; round: number; agentName: string }>) {
   return { agentName: 'w', systemPrompt: '', input: '', output: '', thought: '', tokensIn: 0, tokensOut: 0,
-    costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success', ...overrides } as any
+    costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success', ...overrides } as unknown as AgentOutput
 }
 
 let s: RunStateMap = {}

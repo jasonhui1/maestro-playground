@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Group, Panel, Separator } from 'react-resizable-panels';
@@ -13,6 +13,10 @@ import { AgentOutput } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { Play, Columns2, X, Trash2, Activity, History } from 'lucide-react';
 import { streamRun, RunEvent } from '@/lib/runStream';
+import ChainEditor from '@/components/editor/ChainEditor';
+import { parseChainContent } from '@/lib/parseChain';
+import { ChainDef, AgentDef } from '@/lib/types';
+import { Network, FileCode } from 'lucide-react';
 
 interface AgentState {
   runIndex: number;
@@ -53,6 +57,26 @@ function WorkspaceContent() {
   const [runsByFile, setRunsByFile] = useState<Record<string, RunInstance[]>>({});
   const [seedPrompt, setSeedPrompt] = useState<string>('');
   const [parallelCount, setParallelCount] = useState(1);
+  const [chainView, setChainView] = useState<'graph' | 'yaml'>('graph');
+  const [editorAgents, setEditorAgents] = useState<AgentDef[]>([]);
+  const [editorContext, setEditorContext] = useState<{ slug: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (type !== 'chain') return;
+    fetch('/api/workspace')
+      .then(r => r.json())
+      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); })
+      .catch(() => { setEditorAgents([]); setEditorContext([]); });
+  }, [type, slug]);
+
+  const parsedChain = useMemo<ChainDef | null>(() => {
+    if (type !== 'chain' || !slug || !initialContent) return null;
+    try {
+      return { ...parseChainContent(initialContent, slug), filePath: '' };
+    } catch {
+      return null;
+    }
+  }, [type, slug, initialContent]);
 
   const currentFileKey = `${type}:${slug}`;
   const currentRuns = runsByFile[currentFileKey] || [];
@@ -364,15 +388,48 @@ function WorkspaceContent() {
         ) : (
           <Group orientation="horizontal">
             <Panel defaultSize={isOutputVisible || isHistoryVisible ? 50 : 100} minSize={30}>
-              <div className="h-full p-6 pt-4">
-                  <FileEditor 
-                    content={content} 
-                    onChange={setContent} 
-                    status={status} 
-                    error={saveError} 
-                    type={type}
-                    language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
-                  />
+              <div className="h-full flex flex-col">
+                {type === 'chain' && (
+                  <div className="flex items-center gap-1 px-6 pt-3">
+                    <button
+                      onClick={() => setChainView('graph')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
+                    >
+                      <Network size={12} /> Graph
+                    </button>
+                    <button
+                      onClick={() => setChainView('yaml')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
+                    >
+                      <FileCode size={12} /> YAML
+                    </button>
+                    {chainView === 'graph' && !parsedChain && (
+                      <span className="ml-2 text-[11px] text-amber-600">Couldn’t parse as a graph — showing YAML</span>
+                    )}
+                  </div>
+                )}
+                <div className="flex-1 min-h-0">
+                  {type === 'chain' && chainView === 'graph' && parsedChain ? (
+                    <ChainEditor
+                      key={slug}
+                      slug={slug}
+                      initialChain={parsedChain}
+                      agents={editorAgents}
+                      contextFiles={editorContext}
+                    />
+                  ) : (
+                    <div className="h-full p-6 pt-4">
+                      <FileEditor
+                        content={content}
+                        onChange={setContent}
+                        status={status}
+                        error={saveError}
+                        type={type}
+                        language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </Panel>
             
