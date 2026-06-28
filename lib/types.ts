@@ -1,11 +1,19 @@
-export type ChainNodeKind = 'seed' | 'context' | 'agent'
+export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider'
+
+export interface BranchCase {
+  label: string
+  condition: string
+}
 
 export interface ChainNode {
   id: string
   kind: ChainNodeKind
-  agent?: string         // kind === 'agent' (slug)
+  agent?: string         // kind === 'agent' | 'decider' (slug)
   file?: string          // kind === 'context' (slug)
   pos?: [number, number]
+  condition?: string     // gate
+  cases?: BranchCase[]   // branch
+  default?: string       // branch default case label
 }
 
 export interface ChainEdge {
@@ -79,7 +87,7 @@ export interface AgentOutput {
   latencyMs: number
   model: string
   timestamp: string
-  status: 'success' | 'error'
+  status: 'success' | 'error' | 'skipped'
   error?: string
   versionNumber?: number
 }

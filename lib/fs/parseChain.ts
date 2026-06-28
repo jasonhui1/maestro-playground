@@ -19,6 +19,11 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
         agent: n.agent as string | undefined,
         file: n.file as string | undefined,
         pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
+        condition: n.condition as string | undefined,
+        cases: Array.isArray(n.cases)
+          ? (n.cases as Record<string, unknown>[]).map(c => ({ label: String(c.label), condition: String(c.condition) }))
+          : undefined,
+        default: n.default as string | undefined,
       }))
     : []
   const edges: ChainEdge[] = Array.isArray(data.edges)
