@@ -3,7 +3,6 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
-import ChainFlowBuilder from '@/components/workspace/ChainFlowBuilder';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { TabController } from '@/components/workspace/TabController';
@@ -46,7 +45,6 @@ function WorkspaceContent() {
   const [initialContent, setInitialContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'code' | 'visual'>('code');
   
   // Execution state
   const [isOutputVisible, setIsOutputVisible] = useState(false);
@@ -75,11 +73,7 @@ function WorkspaceContent() {
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
-  useEffect(() => {
-    if (type !== 'chain') {
-      setViewMode('code');
-    }
-  }, [type, slug]);
+
 
   useEffect(() => {
     if (!type || !slug) {
@@ -329,30 +323,7 @@ function WorkspaceContent() {
         </div>
         
         <div className="flex items-center gap-3">
-          {type === 'chain' && (
-            <div className="flex items-center bg-zinc-100 p-1 rounded-lg mr-2">
-              <button
-                onClick={() => setViewMode('code')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                  viewMode === 'code' 
-                    ? 'bg-white text-zinc-900 shadow-sm' 
-                    : 'text-zinc-500 hover:text-zinc-700'
-                }`}
-              >
-                Code
-              </button>
-              <button
-                onClick={() => setViewMode('visual')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                  viewMode === 'visual' 
-                    ? 'bg-white text-zinc-900 shadow-sm' 
-                    : 'text-zinc-500 hover:text-zinc-700'
-                }`}
-              >
-                Visual
-              </button>
-            </div>
-          )}
+
 
           <div className="flex items-center gap-2 mr-2">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
@@ -412,9 +383,6 @@ function WorkspaceContent() {
           <Group orientation="horizontal">
             <Panel defaultSize={isOutputVisible || isHistoryVisible ? 50 : 100} minSize={30}>
               <div className="h-full p-6 pt-4">
-                {viewMode === 'visual' && type === 'chain' ? (
-                  <ChainFlowBuilder content={content} onChange={setContent} />
-                ) : (
                   <FileEditor 
                     content={content} 
                     onChange={setContent} 
@@ -423,7 +391,6 @@ function WorkspaceContent() {
                     type={type}
                     language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
                   />
-                )}
               </div>
             </Panel>
             

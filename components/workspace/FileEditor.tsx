@@ -50,7 +50,8 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
           if (!data.name) errors.push("Missing required field: 'name'");
         } else if (type === 'chain') {
           if (!data.name) errors.push("Missing required field: 'name'");
-          if (!data.agents || !Array.isArray(data.agents)) errors.push("Missing or invalid field: 'agents' (must be an array)");
+          if (!Array.isArray(data.nodes)) errors.push("Missing or invalid field: 'nodes' (must be an array)");
+          if (!Array.isArray(data.edges)) errors.push("Missing or invalid field: 'edges' (must be an array)");
         } else if (type === 'template') {
           if (!data.name) errors.push("Missing required field: 'name'");
           if (!data.chain) errors.push("Missing required field: 'chain'");
