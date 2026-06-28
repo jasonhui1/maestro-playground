@@ -1,4 +1,4 @@
-import { RunMeta, AgentDef } from './types'
+import { RunMeta, AgentDef, ChainNode } from './types'
 import { parseRefs, ParsedRef } from './refs'
 
 export function slugify(s: string): string {
@@ -230,4 +230,42 @@ export function extractSection(markdown: string, name: string): string {
     }
   }
   return ''
+}
+
+export function buildRunGraphFromSnapshot(run: RunMeta): TraceGraph {
+  const g = run.graph || { nodes: [], edges: [] }
+  const stepByNodeId = new Map<string, number>()
+  const outByNodeId = new Map<string, NonNullable<RunMeta['agentOutputs']>[number]>()
+  ;(run.agentOutputs || []).forEach((o, i) => {
+    if (o.nodeId) { stepByNodeId.set(o.nodeId, i); outByNodeId.set(o.nodeId, o) }
+  })
+
+  const nodes: TraceNode[] = g.nodes.map((n: ChainNode) => {
+    if (n.kind === 'seed') return { id: n.id, kind: 'seed', label: 'Seed' }
+    if (n.kind === 'context') return { id: n.id, kind: 'context', label: n.file || n.id, fileName: n.file }
+    const o = outByNodeId.get(n.id)
+    const inputs: InputSocket[] = g.edges
+      .filter(e => e.toNode === n.id)
+      .map(e => ({ id: e.toSocket, label: e.toSocket, ref: { kind: 'input' } }))
+    return {
+      id: n.id, kind: 'agent', label: n.agent || n.id, agentName: o?.agentName || n.agent,
+      stepIndex: stepByNodeId.get(n.id), status: o?.status, inputs, outputs: [],
+    }
+  })
+
+  const nodeById = new Map(nodes.map(n => [n.id, n]))
+  const edges: TraceEdge[] = g.edges.map((e, i) => ({
+    id: `e${i}`, source: e.fromNode, sourceHandle: e.fromSocket,
+    target: e.toNode, targetHandle: e.toSocket, kind: 'input', label: e.fromSocket,
+  }))
+  for (const e of g.edges) {
+    const sn = nodeById.get(e.fromNode)
+    if (sn && sn.kind === 'agent') {
+      sn.outputs = sn.outputs || []
+      if (!sn.outputs.some(s => s.id === e.fromSocket)) {
+        sn.outputs.push({ id: e.fromSocket, name: e.fromSocket, present: true, consumed: true })
+      }
+    }
+  }
+  return { nodes, edges }
 }

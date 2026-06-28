@@ -8,7 +8,7 @@ import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
-import { buildRunGraph } from '@/lib/graph'
+import { buildRunGraph, buildRunGraphFromSnapshot } from '@/lib/graph'
 import RunGraph from '@/components/trace/RunGraph'
 import RunNodePreview from '@/components/trace/RunNodePreview'
 
@@ -125,7 +125,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     )
   }
 
-  const graph = buildRunGraph(run, agents)
+  const graph = run.graph ? buildRunGraphFromSnapshot(run) : buildRunGraph(run, agents)
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
