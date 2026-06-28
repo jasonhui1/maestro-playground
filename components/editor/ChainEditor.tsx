@@ -11,6 +11,10 @@ import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
 import NodePalette from './NodePalette'
 import ValidationPanel from './ValidationPanel'
+import { streamRun } from '@/lib/runStream'
+import { applyRunEvent, type RunStateMap } from '@/lib/runState'
+import NodePreview from './NodePreview'
+import { Play } from 'lucide-react'
 
 const NODE_W = 240, NODE_H = 120
 
@@ -37,7 +41,12 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
   const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
-  const { setContent, status } = useAutoSave('chain', slug, initialMarkdown)
+  const { setContent, status, flush } = useAutoSave('chain', slug, initialMarkdown)
+
+  const [runState, setRunState] = useState<RunStateMap>({})
+  const [seedPrompt, setSeedPrompt] = useState('')
+  const [running, setRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   const sync = useCallback((nextNodes: ChainNode[], nextEdges: ChainEdge[]) => {
@@ -56,6 +65,35 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
     }
     return m
   }, [validation])
+
+  const run = useCallback(async () => {
+    setRunError(null)
+    setRunState({})
+    setRunning(true)
+    try {
+      await flush(serializeChain(meta, nodes, edges)) // save-then-run: disk = canvas
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chainName: slug, seedPrompt, type: 'chain', slug }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setRunError((body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`)
+        return
+      }
+      const reader = res.body?.getReader()
+      if (!reader) return
+      await streamRun(reader, e => {
+        if (e.type === 'error') { setRunError(e.error); return }
+        setRunState(prev => applyRunEvent(prev, e))
+      })
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRunning(false)
+    }
+  }, [flush, meta, nodes, edges, slug, seedPrompt])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => {
     setNodes(prev => {
@@ -120,16 +158,36 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
     outputs: outputSocketsOf(node, chain, agents),
     agents: agents.map(a => ({ slug: a.slug, name: a.name })),
     contextFiles,
+    run: runState[node.id],
     issues: issuesByNode.get(node.id) ?? [],
     onChange: patch => updateNode(node.id, patch),
-  }), [chain, agents, contextFiles, issuesByNode, updateNode])
+  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode])
 
   return (
     <div className="h-full flex flex-col">
+      <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3">
+        <input
+          value={seedPrompt}
+          onChange={e => setSeedPrompt(e.target.value)}
+          placeholder="Seed prompt ({input})…"
+          className="flex-1 text-xs border border-zinc-200 rounded px-2 py-1"
+        />
+        <button
+          onClick={run}
+          disabled={running}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50"
+        >
+          <Play size={12} className="fill-current" />
+          {running ? 'Running…' : 'Run'}
+        </button>
+        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
+      </div>
+
+      {runError && <div className="px-4 py-1.5 text-[11px] text-red-600 bg-red-50 border-b border-red-100">{runError}</div>}
+
       <div className="flex-1 min-h-0 flex">
         <NodePalette onAdd={addNodeOfKind} onAddLoopZone={addLoopZone} />
         <div className="flex-1 min-w-0 relative">
-          <div className="absolute top-2 right-2 z-10 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</div>
           <ChainCanvas
             nodes={nodes}
             edges={edges}
@@ -143,7 +201,11 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
           />
         </div>
       </div>
+
       <ValidationPanel issues={validation.issues} onSelect={setSelectedId} />
+      <div className="h-40 border-t border-zinc-200 bg-white overflow-hidden">
+        <NodePreview run={selectedId ? runState[selectedId] : undefined} nodeId={selectedId} />
+      </div>
     </div>
   )
 }
