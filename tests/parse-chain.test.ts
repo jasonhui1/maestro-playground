@@ -14,7 +14,20 @@ edges:
 const c = parseChainContent(raw, 'story-chain')
 assert.strictEqual(c.name, 'story-chain')
 assert.strictEqual(c.nodes.length, 2)
-assert.deepStrictEqual(c.nodes[1], { id: 'wb', kind: 'agent', agent: 'world-builder', file: undefined, pos: [250, 0] })
+assert.deepStrictEqual(c.nodes[1], {
+  id: 'wb',
+  kind: 'agent',
+  agent: 'world-builder',
+  file: undefined,
+  pos: [250, 0],
+  condition: undefined,
+  cases: undefined,
+  default: undefined,
+  zone: undefined,
+  state: undefined,
+  until: undefined,
+  maxIterations: undefined,
+})
 assert.deepStrictEqual(c.edges[0], { fromNode: 'seed', fromSocket: 'output', toNode: 'wb', toSocket: 'input' })
 
 // missing nodes/edges => empty arrays
