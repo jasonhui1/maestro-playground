@@ -18,9 +18,11 @@ export function initRunDir(meta: RunMeta) {
 export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutput) {
   const dir = getRunDir(runId)
   const safeAgentName = path.basename(output.agentName)
-  const filename = `${String(stepIdx).padStart(2, '0')}-${safeAgentName}.md`
+  const baseLabel = output.nodeId ? path.basename(output.nodeId) : safeAgentName
+  const filename = `${String(stepIdx).padStart(2, '0')}-${baseLabel}.md`
   
   const frontmatter: any = {
+    node_id: output.nodeId,
     agent: output.agentName,
     run_id: runId,
     timestamp: output.timestamp,
