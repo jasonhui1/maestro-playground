@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { AgentDef, OutputSocketDef } from '../types'
+import { AgentDef, OutputSocketDef, InputSocketDef } from '../types'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -33,6 +33,31 @@ export function normalizeOutputs(raw: unknown): OutputSocketDef[] {
   return list
 }
 
+export function normalizeInputs(raw: unknown): InputSocketDef[] {
+  const list: InputSocketDef[] = []
+  const seen = new Set<string>()
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      let socket: InputSocketDef | null = null
+      if (typeof item === 'string') {
+        const name = item.trim()
+        if (name) socket = { name }
+      } else if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
+        const o = item as { name: string; type?: unknown; description?: unknown; required?: unknown }
+        const name = o.name.trim()
+        if (name) {
+          socket = { name }
+          if (typeof o.type === 'string') socket.type = o.type
+          if (typeof o.description === 'string') socket.description = o.description
+          if (typeof o.required === 'boolean') socket.required = o.required
+        }
+      }
+      if (socket && !seen.has(socket.name)) { seen.add(socket.name); list.push(socket) }
+    }
+  }
+  return list
+}
+
 export function parseAgent(filePath: string): AgentDef {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
@@ -48,6 +73,7 @@ export function parseAgent(filePath: string): AgentDef {
     input_from: data.input_from ?? 'user',
     output_format: data.output_format ?? 'markdown',
     outputs: normalizeOutputs(data.outputs),
+    inputs: normalizeInputs(data.inputs),
     max_tokens: data.max_tokens,
     systemPrompt: content.trim(),
     filePath,

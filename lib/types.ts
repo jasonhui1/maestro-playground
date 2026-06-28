@@ -1,3 +1,27 @@
+export type ChainNodeKind = 'seed' | 'context' | 'agent'
+
+export interface ChainNode {
+  id: string
+  kind: ChainNodeKind
+  agent?: string         // kind === 'agent' (slug)
+  file?: string          // kind === 'context' (slug)
+  pos?: [number, number]
+}
+
+export interface ChainEdge {
+  fromNode: string
+  fromSocket: string
+  toNode: string
+  toSocket: string
+}
+
+export interface InputSocketDef {
+  name: string
+  type?: string
+  description?: string
+  required?: boolean
+}
+
 export interface OutputSocketDef {
   name: string
   type?: string
@@ -14,6 +38,7 @@ export interface AgentDef {
   input_from: string   // 'user' | agent name
   output_format: 'markdown' | 'json'
   outputs: OutputSocketDef[]
+  inputs: InputSocketDef[]
   systemPrompt: string  // body of the .md file
   filePath: string
   max_tokens?: number
@@ -35,13 +60,14 @@ export interface ChainDef {
   slug: string
   name: string
   description: string
-  agents: string[]      // ordered agent names
-  shared_context: string[]
+  nodes: ChainNode[]
+  edges: ChainEdge[]
   filePath: string
   isFavorite?: boolean
 }
 
 export interface AgentOutput {
+  nodeId?: string
   agentName: string
   systemPrompt: string
   input: string
@@ -66,6 +92,7 @@ export interface RunMeta {
   completedAt?: string
   status: 'running' | 'complete' | 'error'
   agentOutputs: AgentOutput[]
+  graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
   branchedFromRunId?: string
   branchedFromStep?: number
   versionNumber?: number
