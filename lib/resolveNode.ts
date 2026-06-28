@@ -14,6 +14,10 @@ export function socketValue(
 ): string {
   if (src.kind === 'seed') return seedPrompt
   if (src.kind === 'context') return readContext(src.file || '')
+  if (src.kind === 'loop-start' || src.kind === 'loop-end') {
+    const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
+    return o ? o.output : ''
+  }
   if (src.kind === 'gate' || src.kind === 'branch') {
     const o = nodeOutputs.get(src.id)
     return o ? o.output : ''
