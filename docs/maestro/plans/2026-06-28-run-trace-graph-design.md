@@ -55,7 +55,8 @@ Two consequences:
 - **Multiple input sockets** — *Each agent node renders one labeled target handle per incoming wire
   (e.g. `input`, `.summary`, `lore.md`) — the Blender-style multi-socket look.*
 - **Declared output sockets** — *Output sockets come from a new `outputs:` declaration in agent
-  frontmatter (hybrid string-or-object form). `output` and `summary` are always implicitly present.*
+  frontmatter (hybrid string-or-object form). Only `output` is implicitly present; `summary` must be
+  declared explicitly to appear as a socket (it remains runtime-resolvable regardless).*
 - **Click-to-preview panel** — *Selecting a node opens a bottom docked, collapsible panel showing that
   node's data: agent → output + thought + token/cost + collapsible resolved prompt + Branch-from-here;
   seed → the run's seed prompt; context → file name (+ best-effort contents).*
@@ -130,7 +131,7 @@ written for Phase 1 is exactly what B will reuse — nothing is wasted.**
   a header toggle, and one client fetch of `/api/workspace`. List/Compare/Export untouched.*
 - **`lib/types.ts` (modified)** — *`AgentDef` gains `outputs: OutputSocketDef[]`; new graph types.*
 - **`lib/fs/parseAgent.ts` (modified)** — *Read `data.outputs`, normalize hybrid string/object form,
-  always include implicit `output` + `summary`.*
+  always include implicit `output` (only). `summary` is included only when declared.*
 
 ### Data Flow
 1. Page fetches the run (`/api/runs/[runId]`) — existing.
@@ -163,7 +164,7 @@ export interface OutputSocketDef {
   type?: string          // 'markdown' | 'json' | 'number' | ... (freeform for now)
   description?: string
 }
-// AgentDef gains:  outputs: OutputSocketDef[]   // implicit 'output' + 'summary' always included
+// AgentDef gains:  outputs: OutputSocketDef[]   // implicit 'output' only; 'summary' only if declared
 
 // lib/graph.ts — domain graph
 export interface InputSocket  { id: string; label: string; ref: ParsedRef; unresolvedField?: boolean }
@@ -217,9 +218,10 @@ The model is intentionally **asymmetric**, and that asymmetry is correct:
 - **Input sockets are *demand-driven*** — derived from the prompt's `{}` refs. A node's inputs are
   exactly what it consumes; always accurate, fully automatic.
 - **Output sockets are *contract-driven*** — declared in the agent's frontmatter `outputs:`. This is
-  the only way an output socket can be known *before a run* (an agent has no implicit output schema;
-  `.summary` only works today because base-protocol *forces* a `## Summary` section). The same
-  declaration carries forward to the Phase 4 editor unchanged.
+  the only way an output socket can be known *before a run* (an agent has no implicit output schema).
+  Only `output` is implicit; `summary` is **not** auto-added and must be declared to surface as a
+  socket — though `.summary` stays runtime-resolvable because base-protocol *forces* a `## Summary`
+  section. The same declaration carries forward to the Phase 4 editor unchanged.
 
 `outputs:` accepts the **hybrid string-or-object** form:
 ```yaml
@@ -270,7 +272,8 @@ Pure functions get real unit tests, following the existing `tests/*.test.js` nod
 - **Regression on the run page.** *List/Compare/Export must remain byte-for-byte behavior. Mitigated by
   gating the graph behind a toggle and leaving the List branch untouched.*
 - **`outputs:` frontmatter is a file-format addition.** *Backward-compatible: agents without `outputs:`
-  fall back to implicit `output` + `summary` only.*
+  fall back to implicit `output` only. A `.summary` ref to an agent that doesn't declare `summary` is
+  flagged as undeclared (even though it still resolves at runtime) — nudging explicit declaration.*
 
 ## 10. Success Criteria
 - [ ] `/history/[runId]` shows a `Graph | List` toggle; Graph is default; List is unchanged.
