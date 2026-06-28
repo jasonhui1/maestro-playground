@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, ValidationResult } from './types'
-import { parseSlots } from './slots'
 import { slugify } from './graph'
+import { inputSocketsOf, outputSocketsOf } from './nodeSockets'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -39,27 +39,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
 
-  const stateNamesByZone = new Map<string, string[]>()
-  for (const n of chain.nodes) if (n.kind === 'loop-start' && n.zone) stateNamesByZone.set(n.zone, n.state || [])
-  const zoneStateOf = (n: ChainNode): string[] => (n.zone ? stateNamesByZone.get(n.zone) || [] : [])
 
-  const inputSlotsOf = (n: ChainNode): string[] => {
-    if (n.kind === 'agent' || n.kind === 'decider') {
-      const a = n.agent ? agentBySlug.get(n.agent) : undefined
-      return a ? parseSlots(a.systemPrompt) : []
-    }
-    if (n.kind === 'gate' || n.kind === 'branch') return ['in']
-    if (n.kind === 'loop-start' || n.kind === 'loop-end') return zoneStateOf(n)
-    return []
-  }
-  const outputSocketsOf = (n: ChainNode): string[] => {
-    if (n.kind === 'seed' || n.kind === 'context') return ['output']
-    if (n.kind === 'gate') return ['output']
-    if (n.kind === 'branch') return [...(n.cases || []).map(c => c.label), ...(n.default ? [n.default] : [])]
-    if (n.kind === 'loop-start' || n.kind === 'loop-end') return zoneStateOf(n)
-    const a = n.agent ? agentBySlug.get(n.agent) : undefined
-    return ['output', ...(a?.outputs || []).map(s => slugify(s.name))]
-  }
   const acceptsInputs = (n: ChainNode): boolean =>
     n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' || n.kind === 'loop-start' || n.kind === 'loop-end'
 
@@ -100,14 +80,14 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
     if (!src) { errors.push(`Edge from unknown node "${e.fromNode}"`); continue }
     if (!dst) { errors.push(`Edge to unknown node "${e.toNode}"`); continue }
     if (!acceptsInputs(dst)) errors.push(`Edge targets node "${e.toNode}" which has no inputs`)
-    if (!outputSocketsOf(src).includes(slugify(e.fromSocket))) {
+    if (!outputSocketsOf(src, chain, agents).includes(slugify(e.fromSocket))) {
       if (src.kind === 'branch') {
         errors.push(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`)
       } else {
         errors.push(`Edge "${e.fromNode}.${e.fromSocket}": no such output socket`)
       }
     }
-    if (acceptsInputs(dst) && !inputSlotsOf(dst).includes(e.toSocket)) errors.push(`Edge "${e.toNode}.${e.toSocket}": no such input slot`)
+    if (acceptsInputs(dst) && !inputSocketsOf(dst, chain, agents).includes(e.toSocket)) errors.push(`Edge "${e.toNode}.${e.toSocket}": no such input slot`)
     const key = `${e.toNode}.${e.toSocket}`
     incoming.set(key, (incoming.get(key) || 0) + 1)
   }
