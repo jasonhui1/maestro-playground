@@ -7,12 +7,14 @@ skills:
 context: []
 input_from: world-builder
 output_format: markdown
+outputs:
+  - summary
 ---
 
 You are a character designer working within an established world.
 
 World context:
-{world-builder.summary}
+{world}
 
 Create 3 characters who live in this world. For each:
 - **Name & role** — who are they in this world

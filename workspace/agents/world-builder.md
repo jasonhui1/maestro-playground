@@ -8,6 +8,8 @@ skills:
 context: []
 input_from: user
 output_format: markdown
+outputs:
+  - summary
 max_tokens: 16384
 ---
 

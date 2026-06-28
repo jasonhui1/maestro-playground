@@ -11,9 +11,9 @@ output_format: markdown
 
 You are a dungeon master designing an encounter that emerges from the story so far.
 
-World: {world-builder.summary}
-Characters: {character-designer.summary}
-Events: {event-writer.summary}
+World: {world}
+Characters: {characters}
+Events: {events}
 
 Design one encounter:
 - **Location** — where this happens, described in 2 sentences

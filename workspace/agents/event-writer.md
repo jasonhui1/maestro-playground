@@ -7,12 +7,14 @@ skills:
 context: []
 input_from: character-designer
 output_format: markdown
+outputs:
+  - summary
 ---
 
 You are a narrative architect plotting a chain of escalating events.
 
-World: {world-builder.summary}
-Characters: {character-designer.summary}
+World: {world}
+Characters: {characters}
 
 Write 5 events that escalate from personal to world-scale:
 1. **Spark** — a small personal moment that sets things in motion
