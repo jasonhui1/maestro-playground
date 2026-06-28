@@ -46,32 +46,44 @@ export default function RunNodePreview({ node, run, onBranch, isBranching }: {
     )
   }
 
-  const output = node.stepIndex != null ? run.agentOutputs[node.stepIndex] : undefined
-  if (!output) return null
+  const rounds = run.agentOutputs.filter(o => o.nodeId === node.id)
+  const items = rounds.length > 0 ? rounds : (node.stepIndex != null && run.agentOutputs[node.stepIndex] ? [run.agentOutputs[node.stepIndex]] : [])
+  if (items.length === 0) return null
 
   return (
     <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white">
-      <div className="bg-zinc-50 px-6 py-4 border-b border-zinc-200 flex items-center justify-between gap-4">
-        <div className="flex flex-col">
-          <span className="text-sm font-bold text-zinc-900">{output.agentName}</span>
-          <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{output.model} • {output.latencyMs}ms</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => node.stepIndex != null && onBranch(node.stepIndex)}
-            disabled={isBranching}
-            className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
-          >
-            {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
-          </button>
-          <div className="w-48">
-            <TokenCostBar tokensIn={output.tokensIn} tokensOut={output.tokensOut} costUsd={output.costUsd} />
+      {items.map((output, i) => (
+        <div key={i} className="border-b border-zinc-100 last:border-b-0">
+          {items.length > 1 && (
+            <div className="px-6 pt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              Round {output.round ?? i}
+            </div>
+          )}
+          <div className="bg-zinc-50 px-6 py-4 border-b border-zinc-200 flex items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-zinc-900">{output.agentName}</span>
+              <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{output.model} • {output.latencyMs}ms</span>
+            </div>
+            <div className="flex items-center gap-4">
+              {node.stepIndex != null && i === items.length - 1 && (
+                <button
+                  onClick={() => node.stepIndex != null && onBranch(node.stepIndex)}
+                  disabled={isBranching}
+                  className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
+                </button>
+              )}
+              <div className="w-48">
+                <TokenCostBar tokensIn={output.tokensIn} tokensOut={output.tokensOut} costUsd={output.costUsd} />
+              </div>
+            </div>
+          </div>
+          <div className="p-4">
+            <AgentStreamOutput {...output} isStreaming={false} />
           </div>
         </div>
-      </div>
-      <div className="p-4">
-        <AgentStreamOutput {...output} isStreaming={false} />
-      </div>
+      ))}
     </div>
   )
 }
