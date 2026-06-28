@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
 import { buildRunGraph } from '@/lib/graph'
 import RunGraph from '@/components/trace/RunGraph'
+import RunNodePreview from '@/components/trace/RunNodePreview'
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params)
@@ -238,7 +239,15 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           />
         </div>
       ) : viewMode === 'graph' ? (
-        <RunGraph graph={graph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
+        <div className="flex flex-col gap-6">
+          <RunGraph graph={graph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
+          <RunNodePreview
+            node={graph.nodes.find(n => n.id === selectedNodeId) || null}
+            run={run}
+            onBranch={handleBranch}
+            isBranching={isBranching}
+          />
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Agent Execution Chain</h2>
