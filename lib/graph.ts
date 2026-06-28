@@ -7,10 +7,12 @@ export function slugify(s: string): string {
 
 // Returns the slugified text of every markdown heading (#..######), in order.
 export function extractSections(markdown: string): string[] {
+  // Strip code blocks to avoid extracting headers within block code / examples
+  const cleaned = markdown.replace(/```[\s\S]*?```/g, '')
   const re = /^#{1,6}\s+(.+?)\s*$/gm
   const out: string[] = []
   let m: RegExpExecArray | null
-  while ((m = re.exec(markdown)) !== null) {
+  while ((m = re.exec(cleaned)) !== null) {
     const slug = slugify(m[1])
     if (slug) out.push(slug)
   }
@@ -130,6 +132,9 @@ export function buildRunGraph(run: RunMeta, agents: AgentDef[]): TraceGraph {
         label = 'input'
         sourceNodeId = i === 0 ? ensureSeed() : `agent-${i - 1}`
         sourceHandle = 'output'
+        if (i > 0) {
+          consumed.add(`agent-${i - 1}::output`)
+        }
       } else if (ref.kind === 'file') {
         label = ref.target
         sourceNodeId = ensureContext(ref.target)

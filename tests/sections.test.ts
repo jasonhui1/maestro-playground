@@ -16,4 +16,15 @@ assert.deepStrictEqual(extractSections(md), ['summary', 'character-list', 'geogr
 // no headings
 assert.deepStrictEqual(extractSections('just prose'), [])
 
+// headings in code block ignored
+const mdWithCode = `## Summary
+intro
+\`\`\`markdown
+## Code Block Header
+### Another one
+\`\`\`
+## Details`
+assert.deepStrictEqual(extractSections(mdWithCode), ['summary', 'details'])
+
 console.log('✅ sections tests passed')
+
