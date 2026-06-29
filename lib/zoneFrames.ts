@@ -32,3 +32,11 @@ export function computeZoneFrames(nodes: ChainNode[]): ZoneFrameBox[] {
   }
   return frames
 }
+
+// Return the zone whose frame contains (x, y), if any.
+export function zoneAtPoint(frames: ZoneFrameBox[], x: number, y: number): string | undefined {
+  for (const f of frames) {
+    if (x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height) return f.zone
+  }
+  return undefined
+}

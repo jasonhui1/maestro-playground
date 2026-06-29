@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { computeZoneFrames, PAD, NODE_W, NODE_H } from '../lib/zoneFrames'
+import { computeZoneFrames, PAD, NODE_W, NODE_H, zoneAtPoint } from '../lib/zoneFrames'
 import { ChainNode } from '../lib/types'
 
 const nodes: ChainNode[] = [
@@ -22,4 +22,16 @@ assert.strictEqual(f.height, (180 + NODE_H - 100) + 2 * PAD)
 // nodes without pos are ignored
 assert.deepStrictEqual(computeZoneFrames([{ id: 'a', kind: 'loop-start', zone: 'z9', state: [] }]), [])
 
+// --- §2.6 zoneAtPoint ---
+const framesTest = computeZoneFrames([
+  { id: 'ls', kind: 'loop-start', zone: 'z1', state: [], pos: [100, 100] },
+  { id: 'le', kind: 'loop-end', zone: 'z1', until: '', maxIterations: 2, pos: [400, 100] },
+])
+const fTest = framesTest[0]
+// a point well inside the frame returns the zone
+assert.strictEqual(zoneAtPoint(framesTest, fTest.x + 10, fTest.y + 10), 'z1')
+// a point far outside returns undefined
+assert.strictEqual(zoneAtPoint(framesTest, fTest.x - 50, fTest.y - 50), undefined)
+
 console.log('✅ zone-frames tests passed')
+

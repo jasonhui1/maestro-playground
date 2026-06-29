@@ -9,6 +9,7 @@ import { uniqueNodeId } from '@/lib/editorOps'
 import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReducer'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
+import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -111,7 +112,15 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }, [streamInline, initialChain, nodes, edges])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
-  const moveNode = useCallback((id: string, pos: [number, number]) => dispatch({ type: 'moveNode', id, pos }), [])
+  const moveNode = useCallback((id: string, pos: [number, number]) => {
+    const node = nodes.find(n => n.id === id)
+    if (!node || node.kind === 'loop-start' || node.kind === 'loop-end') {
+      dispatch({ type: 'moveNode', id, pos }); return
+    }
+    const frames = computeZoneFrames(nodes.filter(n => n.id !== id))
+    const zone = zoneAtPoint(frames, pos[0] + NODE_W / 2, pos[1] + NODE_H / 2)
+    dispatch({ type: 'updateNode', id, patch: { pos, zone } })
+  }, [nodes])
   const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch({ type: 'moveMany', updates }), [])
   const addNodeOfKind = useCallback((kind: ChainNodeKind) => dispatch({ type: 'addNode', node: { id: uniqueNodeId(kind, nodes.map(n => n.id)), kind, pos: [80, 80] } }), [nodes])
   const addLoopZone = useCallback(() => dispatch({ type: 'addLoopZone', pos: [120, 120] }), [])
