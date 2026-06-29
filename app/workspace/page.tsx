@@ -265,7 +265,7 @@ function WorkspaceContent() {
             </Panel>
             <Separator className={`bg-zinc-100 hover:bg-zinc-200 transition-colors ${dockSide === 'right' ? 'w-1 border-x' : 'h-1 border-y'} border-zinc-200`} />
             <Panel defaultSize={`${panelSize}%`} minSize={10}
-              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(typeof size === 'number' ? size : parseFloat(size))}>
+              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(typeof size === 'number' ? size : parseFloat(String(size)))}>
               <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
             </Panel>
           </Group>

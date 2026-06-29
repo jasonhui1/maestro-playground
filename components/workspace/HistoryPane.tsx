@@ -17,6 +17,8 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import matter from 'gray-matter';
+import { diff_match_patch } from 'diff-match-patch';
+
 
 interface Props {
   entityType: string;
@@ -41,6 +43,46 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<number | null>(null);
   const [restoreStatus, setRestoreStatus] = useState<{version: number, success: boolean} | null>(null);
+
+  const [diffPair, setDiffPair] = useState<[number, number] | null>(null);
+  const [diffText, setDiffText] = useState<{ a: string; b: string } | null>(null);
+
+  useEffect(() => {
+    setDiffPair(null);
+    setDiffText(null);
+  }, [activeTab]);
+
+  const handleToggleDiff = (vNum: number) => {
+    if (!diffPair) {
+      setDiffPair([vNum, vNum]);
+    } else {
+      const [a, b] = diffPair;
+      if (a === vNum && b === vNum) {
+        setDiffPair(null);
+      } else if (a === vNum) {
+        setDiffPair([b, b]);
+      } else if (b === vNum) {
+        setDiffPair([a, a]);
+      } else {
+        setDiffPair([a, vNum]);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!diffPair || diffPair[0] === diffPair[1]) {
+      setDiffText(null);
+      return;
+    }
+    const [va, vb] = diffPair;
+    Promise.all([
+      fetch(`/api/workspace/${entityType}/${slug}/versions?version=${va}`).then(r => r.json()),
+      fetch(`/api/workspace/${entityType}/${slug}/versions?version=${vb}`).then(r => r.json()),
+    ])
+      .then(([a, b]) => setDiffText({ a: a.content, b: b.content }))
+      .catch(() => setDiffText(null));
+  }, [diffPair, entityType, slug]);
+
 
   useEffect(() => {
     async function fetchData() {
@@ -252,54 +294,88 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
                   <span className="italic text-xs">No snapshots yet. Run this file to create one.</span>
                 </div>
               ) : (
-                versions.map((v) => (
-                  <div key={v.version} className="bg-white border border-zinc-100 rounded-lg p-3 hover:border-zinc-200 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-zinc-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                          v{v.version}
-                        </span>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold text-zinc-800">
-                            {new Date(v.timestamp).toLocaleDateString()} at {new Date(v.timestamp).toLocaleTimeString()}
-                          </span>
-                          <span className="text-[9px] text-zinc-400 font-mono">
-                            HASH: {v.hash.slice(0, 8)}
-                          </span>
+                <>
+                  {diffText && (() => {
+                    const dmp = new diff_match_patch();
+                    const d = dmp.diff_main(diffText.a, diffText.b);
+                    dmp.diff_cleanupSemantic(d);
+                    return (
+                      <div className="m-2 p-2 bg-white border border-zinc-200 rounded text-[11px] whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
+                        <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                          Diffing v{diffPair?.[0]} vs v{diffPair?.[1]}
                         </div>
+                        {d.map(([op, text], i) => (
+                          <span
+                            key={i}
+                            className={
+                              op === 1
+                                ? 'bg-green-100 text-green-800'
+                                : op === -1
+                                ? 'bg-red-100 text-red-800 line-through'
+                                : 'text-zinc-600'
+                            }
+                          >
+                            {text}
+                          </span>
+                        ))}
                       </div>
-                      
-                      <button
-                        disabled={restoring !== null}
-                        onClick={() => handleRestore(v.version)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
-                          restoreStatus?.version === v.version
-                            ? restoreStatus.success 
-                              ? 'bg-green-50 text-green-600'
-                              : 'bg-red-50 text-red-600'
-                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-900 hover:text-white'
-                        }`}
-                      >
-                        {restoring === v.version ? (
-                          <>
-                            <div className="w-2 h-2 border border-zinc-400 border-t-zinc-900 rounded-full animate-spin" />
-                            Restoring...
-                          </>
-                        ) : restoreStatus?.version === v.version ? (
-                          <>
-                            {restoreStatus.success ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
-                            {restoreStatus.success ? 'Restored' : 'Failed'}
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw size={10} />
-                            Restore
-                          </>
-                        )}
-                      </button>
+                    );
+                  })()}
+                  {versions.map((v) => (
+                    <div key={v.version} className="bg-white border border-zinc-100 rounded-lg p-3 hover:border-zinc-200 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={diffPair !== null && (diffPair[0] === v.version || diffPair[1] === v.version)}
+                            onChange={() => handleToggleDiff(v.version)}
+                            className="mr-1 h-3.5 w-3.5 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 cursor-pointer"
+                          />
+                          <span className="bg-zinc-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            v{v.version}
+                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-zinc-800">
+                              {new Date(v.timestamp).toLocaleDateString()} at {new Date(v.timestamp).toLocaleTimeString()}
+                            </span>
+                            <span className="text-[9px] text-zinc-400 font-mono">
+                              HASH: {v.hash.slice(0, 8)}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <button
+                          disabled={restoring !== null}
+                          onClick={() => handleRestore(v.version)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                            restoreStatus?.version === v.version
+                              ? restoreStatus.success 
+                                ? 'bg-green-50 text-green-600'
+                                : 'bg-red-50 text-red-600'
+                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-900 hover:text-white'
+                          }`}
+                        >
+                          {restoring === v.version ? (
+                            <>
+                              <div className="w-2 h-2 border border-zinc-400 border-t-zinc-900 rounded-full animate-spin" />
+                              Restoring...
+                            </>
+                          ) : restoreStatus?.version === v.version ? (
+                            <>
+                              {restoreStatus.success ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                              {restoreStatus.success ? 'Restored' : 'Failed'}
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw size={10} />
+                              Restore
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </>
               )
             )}
           </div>
