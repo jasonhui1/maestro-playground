@@ -2,6 +2,8 @@
 import React, { useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import type { ChainNodeKind } from '@/lib/types'
+import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 interface PaletteItem { kind: ChainNodeKind | 'loop-zone'; label: string; group: string }
 
@@ -30,8 +32,24 @@ export default function NodePalette({ onAdd, onAddLoopZone }: {
     else onAdd(item.kind)
   }
 
+  const collapsed = useWorkspaceUiStore(s => s.paletteCollapsed)
+  if (collapsed) {
+    return (
+      <div className="w-9 shrink-0 border-r border-zinc-100 bg-white flex flex-col items-center py-2">
+        <button onClick={() => useWorkspaceUiStore.getState().togglePalette()} className="text-zinc-400 hover:text-zinc-700" aria-label="Open palette">
+          <PanelLeftOpen size={16} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="w-44 shrink-0 border-r border-zinc-100 bg-white p-3 overflow-auto">
+      <div className="flex justify-end mb-1">
+        <button onClick={() => useWorkspaceUiStore.getState().togglePalette()} className="text-zinc-300 hover:text-zinc-600" aria-label="Collapse palette">
+          <PanelLeftClose size={14} />
+        </button>
+      </div>
       <input
         value={query}
         onChange={e => setQuery(e.target.value)}
