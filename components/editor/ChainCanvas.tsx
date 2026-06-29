@@ -27,9 +27,11 @@ interface ChainCanvasProps {
   nodes: ChainNode[]
   edges: ChainEdge[]
   buildData: (node: ChainNode) => EditorNodeData
-  selectedId: string | null
+  selectedIds: string[]
+  onSelectionChange: (ids: string[]) => void
   onSelect: (id: string | null) => void
   onMove: (id: string, pos: [number, number]) => void
+  onMoveMany: (updates: { id: string; pos: [number, number] }[]) => void
   onConnect: (edge: ChainEdge) => void
   onDeleteNode: (id: string) => void
   onDeleteEdge: (edge: ChainEdge) => void
@@ -55,10 +57,10 @@ export default function ChainCanvas(props: ChainCanvasProps) {
       type: n.kind,
       position: { x: n.pos?.[0] ?? 0, y: n.pos?.[1] ?? 0 },
       data: props.buildData(n),
-      selected: n.id === props.selectedId,
+      selected: props.selectedIds.includes(n.id),
     }))
     return [...frames, ...nodes]
-  }, [props.nodes, props.selectedId, props.buildData])
+  }, [props.nodes, props.selectedIds, props.buildData])
 
   const rfEdges = useMemo<Edge[]>(() => props.edges.map(e => ({
     id: edgeId(e),
@@ -80,6 +82,14 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           onNodeClick={(_, node) => props.onSelect(node.id)}
           onPaneClick={() => props.onSelect(null)}
           onNodeDragStop={(_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
+          onSelectionChange={({ nodes }: { nodes: Node[] }) =>
+            props.onSelectionChange(nodes.map(n => n.id))
+          }
+          onSelectionDragStop={(_, nodes) =>
+            props.onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] })))
+          }
+          selectionKeyCode="Shift"
+          multiSelectionKeyCode={['Meta', 'Control']}
           onConnect={(c: Connection) => {
             if (!c.source || !c.target || !c.sourceHandle || !c.targetHandle) return
             if (c.source === c.target) return

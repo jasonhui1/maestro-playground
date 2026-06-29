@@ -5,7 +5,7 @@ import { useAutoSave } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
-import { connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge, uniqueNodeId, makeLoopZone } from '@/lib/editorOps'
+import { connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge, uniqueNodeId, makeLoopZone, copySubgraph, pasteSubgraph, type Subgraph } from '@/lib/editorOps'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -37,7 +37,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
 }) {
   const [nodes, setNodes] = useState<ChainNode[]>(() => seedPositions(initialChain.nodes, initialChain.edges))
   const [edges, setEdges] = useState<ChainEdge[]>(initialChain.edges)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const primaryId = selectedIds[0] ?? null
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
   const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
@@ -125,8 +126,43 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
   const deleteNode = useCallback((id: string) => {
     setNodes(prev => prev.filter(n => n.id !== id))
     setEdges(prev => prev.filter(e => e.fromNode !== id && e.toNode !== id))
-    if (selectedId === id) setSelectedId(null)
-  }, [selectedId])
+    if (selectedIds.includes(id)) setSelectedIds(prev => prev.filter(x => x !== id))
+  }, [selectedIds])
+
+  const [clipboard, setClipboard] = useState<Subgraph | null>(null)
+
+  const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => {
+    const m = new Map(updates.map(u => [u.id, u.pos]))
+    setNodes(prev => prev.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n)))
+  }, [])
+
+  const pasteClip = useCallback((clip: Subgraph) => {
+    setNodes(prev => {
+      const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, prev.map(n => n.id), [40, 40])
+      setEdges(prevE => [...prevE, ...addE])
+      setSelectedIds(newIds)
+      return [...prev, ...add]
+    })
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (!(e.metaKey || e.ctrlKey)) return
+      const key = e.key.toLowerCase()
+      if (key === 'c' && selectedIds.length) {
+        setClipboard(copySubgraph(nodes, edges, selectedIds))
+      } else if (key === 'v' && clipboard) {
+        pasteClip(clipboard)
+      } else if (key === 'd' && selectedIds.length) {
+        e.preventDefault()
+        pasteClip(copySubgraph(nodes, edges, selectedIds))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [nodes, edges, selectedIds, clipboard, pasteClip])
 
   const deleteEdge = useCallback((edge: ChainEdge) => {
     setEdges(prev => opDeleteEdge(prev, edge))
@@ -172,9 +208,11 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
             nodes={nodes}
             edges={edges}
             buildData={buildData}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            onSelect={(id) => setSelectedIds(id ? [id] : [])}
             onMove={moveNode}
+            onMoveMany={moveMany}
             onConnect={connect}
             onDeleteNode={deleteNode}
             onDeleteEdge={deleteEdge}
@@ -182,9 +220,9 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
         </div>
       </div>
 
-      <ValidationPanel issues={validation.issues} onSelect={setSelectedId} />
+      <ValidationPanel issues={validation.issues} onSelect={(id) => setSelectedIds(id ? [id] : [])} />
       <div className="h-40 border-t border-zinc-200 bg-white overflow-hidden">
-        <NodePreview run={selectedId ? runState[selectedId] : undefined} nodeId={selectedId} />
+        <NodePreview run={primaryId ? runState[primaryId] : undefined} nodeId={primaryId} />
       </div>
     </div>
   )
