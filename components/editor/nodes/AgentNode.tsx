@@ -28,6 +28,15 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
           {data.agents.map(a => <option key={a.slug} value={a.slug}>{a.name}</option>)}
         </select>
 
+        {node.agent && (
+          <button
+            onClick={() => data.onEditAgent?.(node.agent!)}
+            className="nodrag mb-2 text-[10px] font-bold text-zinc-500 hover:text-zinc-900 uppercase tracking-widest"
+          >
+            Edit agent →
+          </button>
+        )}
+
         <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
           <div className="flex flex-col gap-1.5">
             {inputs.map(s => (

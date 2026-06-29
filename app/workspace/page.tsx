@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { Group, Panel, Separator } from 'react-resizable-panels';
@@ -61,13 +61,17 @@ function WorkspaceContent() {
   const [editorAgents, setEditorAgents] = useState<AgentDef[]>([]);
   const [editorContext, setEditorContext] = useState<{ slug: string; name: string }[]>([]);
 
-  useEffect(() => {
-    if (type !== 'chain') return;
+  const refetchEditorData = useCallback(() => {
     fetch('/api/workspace')
       .then(r => r.json())
-      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); })
-      .catch(() => { setEditorAgents([]); setEditorContext([]); });
-  }, [type, slug]);
+      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []) })
+      .catch(() => { setEditorAgents([]); setEditorContext([]) })
+  }, [])
+
+  useEffect(() => {
+    if (type !== 'chain') return
+    refetchEditorData()
+  }, [type, slug, refetchEditorData])
 
   const parsedChain = useMemo<ChainDef | null>(() => {
     if (type !== 'chain' || !slug || !initialContent) return null;
@@ -416,6 +420,7 @@ function WorkspaceContent() {
                       initialChain={parsedChain}
                       agents={editorAgents}
                       contextFiles={editorContext}
+                      refetchAgents={refetchEditorData}
                     />
                   ) : (
                     <div className="h-full p-6 pt-4">

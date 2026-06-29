@@ -11,6 +11,7 @@ import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
 import NodePalette from './NodePalette'
 import ValidationPanel from './ValidationPanel'
+import AgentDrawer from './AgentDrawer'
 import { streamRun } from '@/lib/runStream'
 import { applyRunEvent, type RunStateMap } from '@/lib/runState'
 import NodePreview from './NodePreview'
@@ -29,16 +30,18 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
   contextFiles: { slug: string; name: string }[]
+  refetchAgents?: () => void
 }) {
   const [nodes, setNodes] = useState<ChainNode[]>(() => seedPositions(initialChain.nodes, initialChain.edges))
   const [edges, setEdges] = useState<ChainEdge[]>(initialChain.edges)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const primaryId = selectedIds[0] ?? null
+  const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
   const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
@@ -177,6 +180,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
     run: runState[node.id],
     issues: issuesByNode.get(node.id) ?? [],
     onChange: patch => updateNode(node.id, patch),
+    onEditAgent: (s: string) => setDrawerSlug(s),
   }), [chain, agents, contextFiles, runState, issuesByNode, updateNode])
 
   return (
@@ -217,6 +221,14 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles }
             onDeleteNode={deleteNode}
             onDeleteEdge={deleteEdge}
           />
+          {drawerSlug && (
+            <AgentDrawer
+              slug={drawerSlug}
+              agentName={agents.find(a => a.slug === drawerSlug)?.name ?? drawerSlug}
+              onClose={() => setDrawerSlug(null)}
+              onSaved={refetchAgents}
+            />
+          )}
         </div>
       </div>
 
