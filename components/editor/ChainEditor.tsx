@@ -6,7 +6,8 @@ import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
 import { uniqueNodeId } from '@/lib/editorOps'
-import { applyEditorAction, EditorAction } from '@/lib/editorReducer'
+import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReducer'
+import { withHistory, canUndo, canRedo } from '@/lib/history'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -39,13 +40,18 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   refetchAgents?: () => void
   initialSeedPrompt?: string
 }) {
-  const [state, dispatch] = useReducer(applyEditorAction, undefined, () => ({
-    nodes: seedPositions(initialChain.nodes, initialChain.edges),
-    edges: initialChain.edges,
-    selectedIds: [],
-    clipboard: null,
+  const historced = useMemo(() => withHistory(applyEditorAction, (a: EditorAction) => !NON_HISTORIC.has(a.type)), [])
+  const [hist, dispatch] = useReducer(historced, undefined, () => ({
+    past: [],
+    present: {
+      nodes: seedPositions(initialChain.nodes, initialChain.edges),
+      edges: initialChain.edges,
+      selectedIds: [] as string[],
+      clipboard: null,
+    },
+    future: [],
   }))
-  const { nodes, edges, selectedIds, clipboard } = state
+  const { nodes, edges, selectedIds, clipboard } = hist.present
   const primaryId = selectedIds[0] ?? null
 
   const setSelectedIds = useCallback((ids: string[]) => dispatch({ type: 'setSelection', ids }), [])
@@ -135,6 +141,12 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         e.preventDefault()
         dispatch({ type: 'copy', ids: selectedIds })
         dispatch({ type: 'paste' })
+      } else if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        dispatch({ type: 'undo' })
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        dispatch({ type: 'redo' })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -169,6 +181,20 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         >
           <Play size={12} className="fill-current" />
           {running ? 'Running…' : 'Run'}
+        </button>
+        <button
+          onClick={() => dispatch({ type: 'undo' })}
+          disabled={!canUndo(hist)}
+          className="px-2.5 py-1.5 border border-zinc-200 rounded-md text-xs font-medium hover:bg-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          Undo
+        </button>
+        <button
+          onClick={() => dispatch({ type: 'redo' })}
+          disabled={!canRedo(hist)}
+          className="px-2.5 py-1.5 border border-zinc-200 rounded-md text-xs font-medium hover:bg-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          Redo
         </button>
         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
       </div>
