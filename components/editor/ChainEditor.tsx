@@ -10,7 +10,7 @@ import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReduc
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
-import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
+import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
 import NodePalette from './NodePalette'
@@ -19,6 +19,10 @@ import AgentDrawer from './AgentDrawer'
 import { streamRun } from '@/lib/runStream'
 import { applyRunEvent, type RunStateMap } from '@/lib/runState'
 import NodePreview from './NodePreview'
+import InterfacePanel from './InterfacePanel'
+import { parseChainContent } from '@/lib/parseChain'
+import { reconcileExternalEdit } from '@/lib/syncReconcile'
+import { useFileWatch } from '@/hooks/useFileWatch'
 import { Play } from 'lucide-react'
 
 const NODE_W = 240, NODE_H = 120
@@ -34,13 +38,14 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
   contextFiles: { slug: string; name: string }[]
   refetchAgents?: () => void
   initialSeedPrompt?: string
+  chains: ChainDef[]
 }) {
   const historced = useMemo(() => withHistory(applyEditorAction, (a: EditorAction) => !NON_HISTORIC.has(a.type)), [])
   const [hist, dispatch] = useReducer(historced, undefined, () => ({
@@ -60,8 +65,29 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
-  const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
-  const { setContent, status } = useAutoSave('chain', slug, initialMarkdown)
+  const initialMarkdown = useMemo(() => serializeChain({ name: initialChain.name, description: initialChain.description, inputs: initialChain.inputs, outputs: initialChain.outputs }, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
+  const { setContent, status, content, getLastSaved } = useAutoSave('chain', slug, initialMarkdown)
+
+  const [iface, setIface] = useState<{ inputs: ChainPort[]; outputs: ChainPort[] }>(() => ({
+    inputs: initialChain.inputs ?? [],
+    outputs: initialChain.outputs ?? [],
+  }))
+
+  const incoming = useFileWatch('chain', slug)
+  const [conflict, setConflict] = useState<string | null>(null)
+
+  const adopt = useCallback((raw: string) => {
+    const parsed = parseChainContent(raw, slug)
+    dispatch({ type: 'setGraph', nodes: seedPositions(parsed.nodes, parsed.edges), edges: parsed.edges })
+    setIface({ inputs: parsed.inputs ?? [], outputs: parsed.outputs ?? [] })
+  }, [slug])
+
+  useEffect(() => {
+    if (incoming == null) return
+    const decision = reconcileExternalEdit({ local: content, lastSaved: getLastSaved(), incoming })
+    if (decision === 'adopt') adopt(incoming)
+    else if (decision === 'conflict') setConflict(incoming)
+  }, [incoming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [runState, setRunState] = useState<RunStateMap>({})
   const [seedPrompt, setSeedPrompt] = useState(initialSeedPrompt ?? '')
@@ -70,11 +96,11 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   useEffect(() => {
-    setContent(serializeChain(meta, nodes, edges))
-  }, [meta, nodes, edges, setContent])
+    setContent(serializeChain({ name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs }, nodes, edges))
+  }, [meta, nodes, edges, iface, setContent])
 
   const chain: ChainDef = useMemo(() => ({ ...initialChain, nodes, edges }), [initialChain, nodes, edges])
-  const validation = useMemo(() => validateChain(chain, agents), [chain, agents])
+  const validation = useMemo(() => validateChain(chain, agents, chains), [chain, agents, chains])
 
   const issuesByNode = useMemo(() => {
     const m = new Map<string, string[]>()
@@ -91,7 +117,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     try {
       const res = await fetch('/api/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chain: { name: meta.name, description: meta.description, nodes: gNodes, edges: gEdges }, seedPrompt, type: 'chain', slug }),
+        body: JSON.stringify({ chain: { name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs, nodes: gNodes, edges: gEdges }, seedPrompt, type: 'chain', slug }),
       })
       if (!res.ok) {
         const b = await res.json().catch(() => ({}))
@@ -159,8 +185,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
-    inputs: inputSocketsOf(node, chain, agents),
-    outputs: outputSocketsOf(node, chain, agents),
+    inputs: inputSocketsOf(node, chain, agents, chains),
+    outputs: outputSocketsOf(node, chain, agents, chains),
     agents: agents.map(a => ({ slug: a.slug, name: a.name })),
     contextFiles,
     run: runState[node.id],
@@ -168,7 +194,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     onChange: patch => updateNode(node.id, patch),
     onEditAgent: (s: string) => setDrawerSlug(s),
     onRunFromHere: (id: string) => { dispatch({ type: 'setSelection', ids: [id] }); runUpTo(id) },
-  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo])
+    chains: chains.map(c => ({ slug: c.slug, name: c.name })),
+  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo, chains])
 
   return (
     <div className="h-full flex flex-col">
@@ -206,6 +233,14 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
       {runError && <div className="px-4 py-1.5 text-[11px] text-red-600 bg-red-50 border-b border-red-100">{runError}</div>}
 
+      {conflict && (
+        <div className="px-4 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
+          <span>This chain changed on disk.</span>
+          <button className="font-bold underline" onClick={() => { adopt(conflict); setConflict(null) }}>Reload from disk</button>
+          <button className="font-bold underline" onClick={() => setConflict(null)}>Keep my version</button>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 flex">
         <NodePalette onAdd={addNodeOfKind} onAddLoopZone={addLoopZone} />
         <div className="flex-1 min-w-0 relative">
@@ -233,6 +268,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       </div>
 
       <ValidationPanel issues={validation.issues} onSelect={(id) => setSelectedIds(id ? [id] : [])} />
+      <InterfacePanel nodes={nodes} inputs={iface.inputs} outputs={iface.outputs} onChange={setIface} />
       <div className="h-40 border-t border-zinc-200 bg-white overflow-hidden">
         <NodePreview run={primaryId ? runState[primaryId] : undefined} nodeId={primaryId} />
       </div>

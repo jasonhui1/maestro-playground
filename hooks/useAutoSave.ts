@@ -125,5 +125,6 @@ export function useAutoSave(type: string | null, slug: string | null, initialCon
     error,
     isDirty,
     flush,
+    getLastSaved: () => lastSavedContentRef.current,
   };
 }
