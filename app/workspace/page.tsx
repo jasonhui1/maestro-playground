@@ -46,6 +46,7 @@ function WorkspaceContent() {
   const searchParams = useSearchParams();
   const type = searchParams.get('type');
   const slug = searchParams.get('slug');
+  const seedParam = searchParams.get('seed') ?? undefined;
 
   const [initialContent, setInitialContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -421,6 +422,7 @@ function WorkspaceContent() {
                       agents={editorAgents}
                       contextFiles={editorContext}
                       refetchAgents={refetchEditorData}
+                      initialSeedPrompt={seedParam}
                     />
                   ) : (
                     <div className="h-full p-6 pt-4">

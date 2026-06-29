@@ -30,12 +30,13 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
   contextFiles: { slug: string; name: string }[]
   refetchAgents?: () => void
+  initialSeedPrompt?: string
 }) {
   const [nodes, setNodes] = useState<ChainNode[]>(() => seedPositions(initialChain.nodes, initialChain.edges))
   const [edges, setEdges] = useState<ChainEdge[]>(initialChain.edges)
@@ -48,7 +49,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const { setContent, status, flush } = useAutoSave('chain', slug, initialMarkdown)
 
   const [runState, setRunState] = useState<RunStateMap>({})
-  const [seedPrompt, setSeedPrompt] = useState('')
+  const [seedPrompt, setSeedPrompt] = useState(initialSeedPrompt ?? '')
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
 

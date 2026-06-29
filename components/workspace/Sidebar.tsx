@@ -38,6 +38,7 @@ export default function Sidebar() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<EntityType>('agent');
   const [newName, setNewName] = useState('');
+  const [fromTemplate, setFromTemplate] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
   const [activeCategory, setActiveCategory] = useState<EntityType>('agent');
   const [itemToDelete, setItemToDelete] = useState<{ type: EntityType, slug: string, name: string } | null>(null);
@@ -102,7 +103,11 @@ export default function Sidebar() {
       const res = await fetch('/api/workspace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: modalType, name: newName }),
+        body: JSON.stringify({
+          type: modalType,
+          name: newName,
+          ...(modalType === 'chain' && fromTemplate ? { fromTemplate } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -122,7 +127,8 @@ export default function Sidebar() {
       // Close modal and redirect
       setIsModalOpen(false);
       setNewName('');
-      handleSelect(modalType, result.slug);
+      setFromTemplate('');
+      handleSelect(modalType, result.slug, result.seedPrompt);
     } catch (err: any) {
       addToast(err.message, 'error');
     } finally {
@@ -130,10 +136,11 @@ export default function Sidebar() {
     }
   };
 
-  const handleSelect = (type: string, slug: string) => {
+  const handleSelect = (type: string, slug: string, seed?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('type', type);
     params.set('slug', slug);
+    if (seed) params.set('seed', seed); else params.delete('seed');
 
     // Update tabs parameter
     const currentTabs = searchParams.get('tabs');
@@ -408,12 +415,31 @@ export default function Sidebar() {
                   disabled={isCreating}
                 />
               </div>
+              {modalType === 'chain' && data.templates.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    From template <span className="text-zinc-400 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    value={fromTemplate}
+                    onChange={(e) => setFromTemplate(e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                    disabled={isCreating}
+                  >
+                    <option value="">Empty chain</option>
+                    {data.templates.map(t => (
+                      <option key={t.slug} value={t.slug}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex justify-end space-x-3">
                 <button
                   type="button"
                   onClick={() => {
                     setIsModalOpen(false);
                     setNewName('');
+                    setFromTemplate('');
                   }}
                   className="px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors"
                   disabled={isCreating}
