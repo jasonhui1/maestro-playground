@@ -8,6 +8,7 @@ import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
+import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
 import ContextNode from './nodes/ContextNode'
 import AgentNode from './nodes/AgentNode'
@@ -36,6 +37,9 @@ interface ChainCanvasProps {
   onConnect: (edge: ChainEdge) => void
   onDeleteNode: (id: string) => void
   onDeleteEdge: (edge: ChainEdge) => void
+  instanceCount: number
+  currentInstance: number
+  onInstance: (i: number) => void
 }
 
 function edgeId(e: ChainEdge): string {
@@ -89,7 +93,12 @@ export default function ChainCanvas(props: ChainCanvasProps) {
   })), [props.edges])
 
   return (
-    <div className="w-full h-full bg-zinc-50">
+    <div className="w-full h-full bg-zinc-50 relative">
+      {props.instanceCount > 1 && (
+        <div className="absolute top-2 right-2 z-10 bg-white/90 border border-zinc-200 rounded-md px-2 py-1 shadow-sm">
+          <InstanceSwitcher count={props.instanceCount} index={props.currentInstance} onChange={props.onInstance} />
+        </div>
+      )}
       <ReactFlowProvider>
         <ReactFlow
           nodes={rfNodes}

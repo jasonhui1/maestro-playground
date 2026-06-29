@@ -98,6 +98,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const running = useRunStore(state => state.byFile[slug]?.running ?? false)
   const setSeed = useRunStore(state => state.setSeed)
   const triggerRun = useRunStore(state => state.run)
+  const currentInstance = useRunStore(state => state.byFile[slug]?.currentInstance ?? 0)
+  const instanceCount = useRunStore(state => state.byFile[slug]?.instanceCount ?? 0)
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   useEffect(() => {
@@ -251,6 +253,9 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             onConnect={connect}
             onDeleteNode={deleteNode}
             onDeleteEdge={deleteEdge}
+            instanceCount={instanceCount}
+            currentInstance={currentInstance}
+            onInstance={(i) => useRunStore.getState().setCurrentInstance(slug, i)}
           />
           {drawerSlug && (
             <AgentDrawer
