@@ -14,12 +14,9 @@ import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
 import NodePalette from './NodePalette'
-import ValidationPanel from './ValidationPanel'
 import AgentDrawer from './AgentDrawer'
-import { streamRun } from '@/lib/runStream'
-import { applyRunEvent, type RunStateMap } from '@/lib/runState'
-import NodePreview from './NodePreview'
-import InterfacePanel from './InterfacePanel'
+import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore'
+import { useSelectionStore } from '@/hooks/store/useSelectionStore'
 import { parseChainContent } from '@/lib/parseChain'
 import { reconcileExternalEdit } from '@/lib/syncReconcile'
 import { useFileWatch } from '@/hooks/useFileWatch'
@@ -61,7 +58,10 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const { nodes, edges, selectedIds, clipboard } = hist.present
   const primaryId = selectedIds[0] ?? null
 
-  const setSelectedIds = useCallback((ids: string[]) => dispatch({ type: 'setSelection', ids }), [])
+  const setSelectedIds = useCallback((ids: string[]) => {
+    dispatch({ type: 'setSelection', ids })
+    useSelectionStore.getState().setSelected(slug, ids[0] ?? null)
+  }, [slug])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
@@ -89,10 +89,15 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     else if (decision === 'conflict') setConflict(incoming)
   }, [incoming]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [runState, setRunState] = useState<RunStateMap>({})
-  const [seedPrompt, setSeedPrompt] = useState(initialSeedPrompt ?? '')
-  const [running, setRunning] = useState(false)
-  const [runError, setRunError] = useState<string | null>(null)
+  const runState = useRunStore(state => {
+    const f = state.byFile[slug]
+    if (!f) return {}
+    return f.runState[f.currentInstance] ?? {}
+  })
+  const seedPrompt = useRunStore(state => state.byFile[slug]?.seedPrompt ?? '')
+  const running = useRunStore(state => state.byFile[slug]?.running ?? false)
+  const setSeed = useRunStore(state => state.setSeed)
+  const triggerRun = useRunStore(state => state.run)
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   useEffect(() => {
@@ -112,30 +117,55 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     return m
   }, [validation])
 
-  const streamInline = useCallback(async (gNodes: ChainNode[], gEdges: ChainEdge[]) => {
-    setRunError(null); setRunState({}); setRunning(true)
-    try {
-      const res = await fetch('/api/run', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chain: { name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs, nodes: gNodes, edges: gEdges }, seedPrompt, type: 'chain', slug }),
-      })
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
-        setRunError((b.errors as string[] | undefined)?.join('; ') ?? b.error ?? `Run failed (${res.status})`); return
-      }
-      const reader = res.body?.getReader(); if (!reader) return
-      await streamRun(reader, e => { if (e.type === 'error') { setRunError(e.error); return } setRunState(prev => applyRunEvent(prev, e)) })
-    } catch (err) {
-      setRunError(err instanceof Error ? err.message : String(err))
-    } finally { setRunning(false) }
-  }, [meta, seedPrompt, slug])
+  useEffect(() => {
+    if (initialSeedPrompt !== undefined) {
+      useRunStore.getState().setSeed(slug, initialSeedPrompt)
+    }
+  }, [slug, initialSeedPrompt])
 
-  const run = useCallback(() => streamInline(nodes, edges), [streamInline, nodes, edges])
+  useEffect(() => {
+    setRunTarget(slug, {
+      type: 'chain',
+      slug,
+      buildBody: (seed) => ({
+        chain: {
+          name: meta.name,
+          description: meta.description,
+          inputs: iface.inputs,
+          outputs: iface.outputs,
+          nodes,
+          edges,
+        },
+        seedPrompt: seed,
+        type: 'chain',
+        slug,
+      }),
+    })
+    return () => {
+      clearRunTarget(slug)
+    }
+  }, [slug, meta, iface, nodes, edges])
+
+  const run = useCallback(() => triggerRun(slug), [triggerRun, slug])
 
   const runUpTo = useCallback((targetId: string) => {
     const sub = upstreamSubgraph({ ...initialChain, nodes, edges }, targetId)
-    return streamInline(sub.nodes, sub.edges)
-  }, [streamInline, initialChain, nodes, edges])
+    return triggerRun(slug, {
+      bodyOverride: (seed) => ({
+        chain: {
+          name: meta.name,
+          description: meta.description,
+          inputs: iface.inputs,
+          outputs: iface.outputs,
+          nodes: sub.nodes,
+          edges: sub.edges,
+        },
+        seedPrompt: seed,
+        type: 'chain',
+        slug,
+      }),
+    })
+  }, [triggerRun, slug, initialChain, nodes, edges, meta, iface])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
   const moveNode = useCallback((id: string, pos: [number, number]) => {
@@ -193,16 +223,16 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     issues: issuesByNode.get(node.id) ?? [],
     onChange: patch => updateNode(node.id, patch),
     onEditAgent: (s: string) => setDrawerSlug(s),
-    onRunFromHere: (id: string) => { dispatch({ type: 'setSelection', ids: [id] }); runUpTo(id) },
+    onRunFromHere: (id: string) => { setSelectedIds([id]); runUpTo(id) },
     chains: chains.map(c => ({ slug: c.slug, name: c.name })),
-  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo, chains])
+  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo, chains, setSelectedIds])
 
   return (
     <div className="h-full flex flex-col">
       <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3">
         <input
           value={seedPrompt}
-          onChange={e => setSeedPrompt(e.target.value)}
+          onChange={e => setSeed(slug, e.target.value)}
           placeholder="Seed prompt ({input})…"
           className="flex-1 text-xs border border-zinc-200 rounded px-2 py-1"
         />
@@ -230,8 +260,6 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         </button>
         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
       </div>
-
-      {runError && <div className="px-4 py-1.5 text-[11px] text-red-600 bg-red-50 border-b border-red-100">{runError}</div>}
 
       {conflict && (
         <div className="px-4 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
@@ -265,12 +293,6 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             />
           )}
         </div>
-      </div>
-
-      <ValidationPanel issues={validation.issues} onSelect={(id) => setSelectedIds(id ? [id] : [])} />
-      <InterfacePanel nodes={nodes} inputs={iface.inputs} outputs={iface.outputs} onChange={setIface} />
-      <div className="h-40 border-t border-zinc-200 bg-white overflow-hidden">
-        <NodePreview run={primaryId ? runState[primaryId] : undefined} nodeId={primaryId} />
       </div>
     </div>
   )
