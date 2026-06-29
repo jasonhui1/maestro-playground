@@ -187,26 +187,32 @@ Group A (any order) → Group B (`§1.1`, `§1.2` first, then `§2.1 → §2.2`,
 
 ## Group C — Hard
 
-### §2.4 — Subgraph / nested-chain nodes
+### §2.4 — Subgraph / nested-chain nodes (Blender node-group model)
 
-**Goal.** A node that references another chain, for reuse and taming large graphs. Needs recursion in validate + executor and cross-chain cycle detection.
+**Goal.** A node that references another chain and exposes it as a **reusable node group**: the referenced chain declares a public interface (named inputs and outputs), and every subchain node referencing it shows those as **wireable sockets** — so you wire upstream into named inputs and pick which named outputs feed downstream, exactly like a Blender node group and like our loop node's paired state sockets. Needs recursion in validate + executor and cross-chain cycle detection.
 
-**v1 scope split (explicit).** Single seed → one `input` socket; terminal output-producing nodes exposed as outputs; **collapsed execution** (run the referenced chain, surface its terminal output on the node); cross-chain **cycle detection required**. **Inline visual expansion of the inner graph is deferred to v2** — v1 ships a collapsed card with an "Open chain →" link. This split is what keeps §2.4 finishable.
+**Model decision (chosen over a collapsed single-output v1).** Both sides are multi-socket and wireable. Exposure is **declared once on the referenced chain** (DRY, reused by every instance), mirroring how an `AgentDef` already declares multiple named `outputs`. The mechanism mirrors the **loop node**: declared names → per-socket storage (`${nodeId}::${slug(name)}`) → a per-socket `socketValue` lookup. *Inline visual expansion of the inner graph stays deferred to a later pass — the node renders its interface sockets, not the inner graph; an "Open chain →" link jumps to it.*
 
-**Data model** (`lib/types.ts`). Add `'subchain'` to `ChainNodeKind`; add `subchain?: string` (referenced chain slug) to `ChainNode`.
+**Data model** (`lib/types.ts`).
+- Add `'subchain'` to `ChainNodeKind`; add `subchain?: string` (referenced chain slug) to `ChainNode`.
+- New `interface ChainPort { name: string; node: string; socket?: string }` — `name` is the public socket; `node` is the inner node it binds to; `socket` defaults to `'output'` (outputs only).
+- `ChainDef` gains `inputs?: ChainPort[]` and `outputs?: ChainPort[]`. An **input port** binds to an inner **seed node** (the value is injected there); an **output port** binds to any inner node's output.
 
-**Sockets** (`lib/nodeSockets.ts`). A subchain node's inputs = referenced chain's seed (one `input` in v1); outputs = referenced chain's terminal output-producers (named by inner node id; usually one). The socket fns gain a **`chains: ChainDef[]`** argument (threads through `buildData` and `validateChain`) to resolve the ref.
+**Sockets** (`lib/nodeSockets.ts`). A subchain node's input sockets = the referenced chain's `inputs.map(p => p.name)`; output sockets = `outputs.map(p => p.name)`. The socket fns gain a **`chains: ChainDef[] = []`** argument to resolve the ref (threads through `buildData` and `validateChain`). Fallback when a chain declares nothing: no input sockets, a single `output`.
 
-**Validation** (`lib/chainGraph.ts`). `validateChain` gains a `chains` arg; new `validateSubchains` errors on (a) unknown ref and (b) **cross-chain cycles** — build the transitive subchain-reference graph and detect cycles, including self-reference. Deep recursive validation of the referenced chain is deferred (it validates on its own tab).
+**Value plumbing** (`lib/resolveNode.ts`). Add a `subchain` case to `socketValue` doing a **per-socket lookup** (`nodeOutputs.get(`${src.id}::${slug(socket)}`)`), identical to loop-start/loop-end. Extend the `seed` case to **prefer a stored output if present** (`nodeOutputs.get(src.id) ?? seedPrompt`) so injected inner-input values flow — backward-compatible (normal runs have no seed entry → fall back to `seedPrompt`).
 
-**Executor** (`lib/executor.ts`). Gains a `chains` registry; on a `subchain` node, map the live `input` value → the referenced chain's seed, call `runChainGraph` **recursively**, map terminal output → the node's output socket into `nodeOutputs`. Inner node ids are **namespaced** (`<subchainId>/<innerId>`) to avoid collisions; a **max-depth guard** backs up cycle detection.
+**Executor** (`lib/executor.ts`). Gains a `chains` registry + `depth`. On a `subchain` node: read each declared input's wired value (`slotValue(nodeId, port.name)`), build `startOutputs` that pre-seed the inner **seed** nodes (`controlOutput(port.node, …, value)`), call `runChainGraph` **recursively** with those `startOutputs` + `chains` + `depth+1`; then for each declared output map the inner node's result into **per-socket storage** `${nodeId}::${slug(port.name)}` (via `setStateSockets`-style records), plus a status record under `nodeId`. `usedSlots(subchain)` = declared input names (gates availability). A **max-depth guard** backs up cycle detection.
 
-**Round-trip / wiring.** `lib/serializeChain.ts` + `lib/parseChain.ts` handle the `subchain` kind; new `components/editor/nodes/SubchainNode.tsx` + `nodeTypes` registration + palette entry (the ref picker excludes self and cycle-forming chains); `components/editor/ChainEditor.tsx` and `app/api/run/route.ts` pass `chains` (the route already has them from `loadWorkspace`; the editor fetches them like it does agents/context).
+**Validation** (`lib/chainGraph.ts`). `validateChain` gains a `chains` arg (passed to the socket fns so edge sockets resolve against the live interface); new `validateSubchains` errors on (a) unknown ref, (b) **cross-chain cycles** (transitive subchain-reference graph incl. self-reference), and warns when a referenced chain declares **no outputs** (nothing to wire). Deep recursive validation of the referenced chain is deferred (it validates on its own tab).
+
+**Authoring the interface.** A "Public interface" panel in the chain editor lets you declare inputs (pick a seed node, name it) and outputs (pick any node + socket, name it); stored in chain frontmatter via `chainToData` and round-tripped by `parseChain`. New `SubchainNode.tsx` renders the resolved interface sockets + a chain picker (excludes self / cycle-forming) + "Open chain →". `ChainEditor` and `app/api/run/route.ts` pass `chains`.
 
 **Tests.**
-- `tests/validate-subchain.test.ts` — unknown ref errors; self-reference cycle; A↔B cycle; valid ref passes.
-- `tests/executor-subchain.test.ts` — recursive run maps input→seed and terminal→output; depth guard fires; uses a mock `runFn`.
-- Socket-derivation test (subchain inputs/outputs from a referenced chain).
+- `tests/subchain-roundtrip.test.ts` — `subchain` field + chain `inputs`/`outputs` survive serialize→parse.
+- `tests/validate-subchain.test.ts` — unknown ref; self-reference cycle; A↔B cycle; no-outputs warning; valid ref passes.
+- `tests/nodesockets-subchain.test.ts` — subchain input/output socket names come from the referenced chain's declared ports.
+- `tests/executor-subchain.test.ts` — multi-input injection reaches inner seeds; multiple declared outputs land in per-socket storage and read back via `socketValue`; depth guard fires; mock `runFn`.
 
 ---
 
@@ -236,7 +242,7 @@ Group A (any order) → Group B (`§1.1`, `§1.2` first, then `§2.1 → §2.2`,
 - Inline visual expansion of subchain inner graphs (§2.4 v2).
 - Diff view in the external-edit conflict UI (§2.8 v2).
 - `startOutputs`-based replay composition for partial runs (§2.1 — v1 re-runs fresh).
-- Multi-seed subchain inputs; deep recursive validation of referenced chains (§2.4).
+- Inline visual expansion of a subchain's inner graph; deep recursive validation of referenced chains; output ports bound to a named agent sub-section rather than a node's full output (§2.4 — the interface is multi-input/multi-output but each output port surfaces one inner node's `output`).
 - System/cross-tab clipboard; whole-zone auto-expansion on copy (§2.5).
 - Mid-drag undo coalescing (§2.3).
 
