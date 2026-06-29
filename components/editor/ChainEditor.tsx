@@ -138,7 +138,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         if (window.getSelection()?.toString()) return
         e.preventDefault()
         dispatch({ type: 'copy', ids: selectedIds })
-      } else if (key === 'v') {
+      } else if (key === 'v' && clipboard) {
         e.preventDefault()
         dispatch({ type: 'paste' })
       } else if (key === 'd' && selectedIds.length) {
@@ -155,7 +155,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedIds])
+  }, [selectedIds, clipboard])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,

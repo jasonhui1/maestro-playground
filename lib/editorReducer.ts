@@ -1,7 +1,7 @@
 import { ChainNode, ChainEdge } from './types'
 import {
   connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge,
-  makeLoopZone, copySubgraph, pasteSubgraph, Subgraph,
+  makeLoopZone, copySubgraph, pasteSubgraph, reservedIds, Subgraph,
 } from './editorOps'
 
 export interface EditorState {
@@ -34,7 +34,7 @@ export function applyEditorAction(state: EditorState, action: EditorAction): Edi
     case 'addNode':
       return { ...state, nodes: [...state.nodes, action.node] }
     case 'addLoopZone':
-      return { ...state, nodes: [...state.nodes, ...makeLoopZone(state.nodes.map(n => n.id), action.pos)] }
+      return { ...state, nodes: [...state.nodes, ...makeLoopZone(reservedIds(state.nodes), action.pos)] }
     case 'connect':
       return { ...state, edges: connectEdge(state.edges, action.edge) }
     case 'deleteNode': {
@@ -51,13 +51,19 @@ export function applyEditorAction(state: EditorState, action: EditorAction): Edi
     }
     case 'updateNode':
       return { ...state, nodes: state.nodes.map(n => n.id === action.id ? { ...n, ...action.patch } : n) }
-    case 'setSelection':
-      return { ...state, selectedIds: action.ids }
+    case 'setSelection': {
+      // No-op guard: React Flow re-emits selection on every node sync. Returning the
+      // same state when the id set is unchanged lets the history reducer bail out, so a
+      // benign re-emit can't churn renders into a "Maximum update depth exceeded" loop.
+      const a = state.selectedIds, b = action.ids
+      if (a.length === b.length && a.every((id, i) => id === b[i])) return state
+      return { ...state, selectedIds: b }
+    }
     case 'copy':
       return { ...state, clipboard: copySubgraph(state.nodes, state.edges, action.ids) }
     case 'paste': {
       if (!state.clipboard) return state
-      const { nodes, edges, newIds } = pasteSubgraph(state.clipboard, state.nodes.map(n => n.id), [40, 40])
+      const { nodes, edges, newIds } = pasteSubgraph(state.clipboard, reservedIds(state.nodes), [40, 40])
       return { ...state, nodes: [...state.nodes, ...nodes], edges: [...state.edges, ...edges], selectedIds: newIds }
     }
     default:
