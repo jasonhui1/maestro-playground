@@ -141,13 +141,11 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }, [])
 
   const pasteClip = useCallback((clip: Subgraph) => {
-    setNodes(prev => {
-      const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, prev.map(n => n.id), [40, 40])
-      setEdges(prevE => [...prevE, ...addE])
-      setSelectedIds(newIds)
-      return [...prev, ...add]
-    })
-  }, [])
+    const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, nodes.map(n => n.id), [40, 40])
+    setNodes(prev => [...prev, ...add])
+    setEdges(prevE => [...prevE, ...addE])
+    setSelectedIds(newIds)
+  }, [nodes])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -156,8 +154,10 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
       if (key === 'c' && selectedIds.length) {
+        e.preventDefault()
         setClipboard(copySubgraph(nodes, edges, selectedIds))
       } else if (key === 'v' && clipboard) {
+        e.preventDefault()
         pasteClip(clipboard)
       } else if (key === 'd' && selectedIds.length) {
         e.preventDefault()
@@ -215,7 +215,6 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             buildData={buildData}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
-            onSelect={(id) => setSelectedIds(id ? [id] : [])}
             onMove={moveNode}
             onMoveMany={moveMany}
             onConnect={connect}

@@ -29,7 +29,6 @@ interface ChainCanvasProps {
   buildData: (node: ChainNode) => EditorNodeData
   selectedIds: string[]
   onSelectionChange: (ids: string[]) => void
-  onSelect: (id: string | null) => void
   onMove: (id: string, pos: [number, number]) => void
   onMoveMany: (updates: { id: string; pos: [number, number] }[]) => void
   onConnect: (edge: ChainEdge) => void
@@ -79,8 +78,6 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           nodes={rfNodes}
           edges={rfEdges}
           nodeTypes={nodeTypes}
-          onNodeClick={(_, node) => props.onSelect(node.id)}
-          onPaneClick={() => props.onSelect(null)}
           onNodeDragStop={(_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
           onSelectionChange={({ nodes }: { nodes: Node[] }) =>
             props.onSelectionChange(nodes.map(n => n.id))
