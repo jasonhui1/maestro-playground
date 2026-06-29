@@ -37,16 +37,23 @@ function serializeEdge(e: ChainEdge): { from: string; to: string } {
   return { from, to }
 }
 
-export function serializeChain(
+export function chainToData(
   meta: { name: string; description?: string },
   nodes: ChainNode[],
   edges: ChainEdge[],
-): string {
-  const data = {
+): Record<string, unknown> {
+  return {
     name: meta.name,
     description: meta.description ?? '',
     nodes: nodes.map(serializeNode),
     edges: edges.map(serializeEdge),
   }
-  return matter.stringify('', data)
+}
+
+export function serializeChain(
+  meta: { name: string; description?: string },
+  nodes: ChainNode[],
+  edges: ChainEdge[],
+): string {
+  return matter.stringify('', chainToData(meta, nodes, edges))
 }
