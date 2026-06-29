@@ -9,9 +9,9 @@ Unlike heavy, opinionated frameworks that hide prompt logic and execution state 
 ## 💡 Core Philosophy
 
 1. **Filesystem as the Source of Truth**: All configuration and prompts are stored as plain `.md` files with YAML frontmatter in your workspace. You can edit them in Maestro, in VS Code, or via git. Changes are loaded instantly without server restarts.
-2. **Explicit Variable Passing**: No hidden state, memory buffers, or black-box routing. Variable passing is entirely configured via the `{}` reference syntax in system prompts.
+2. **Explicit Graph-Based Variable Passing**: No hidden state, memory buffers, or black-box routing. Variable passing is configured using local `{slot}` slots in agent prompts, wired explicitly in the chain definition via edges connecting output sockets to input slots.
 3. **Log Transparency**: Every chain execution is saved as a structured directory of markdown logs on disk. You don't need the application running to inspect, audit, or share the outputs.
-4. **Branching & Fast Iteration**: Tweaked a prompt? You can branch from any point in a prior execution chain, replaying from step $N$ without wasting tokens re-running steps $1$ to $N-1$.
+4. **Branching & Fast Iteration**: Tweaked a prompt? You can branch from any node in a prior run graph, replaying the downstream topological order without wasting tokens re-running upstream nodes.
 
 ---
 
@@ -24,7 +24,7 @@ workspace/
 ├── agents/       # Agent prompts (.md with YAML metadata)
 ├── skills/       # Behavioral/craft prompts injected into agents
 ├── context/      # Static data/lore (.md files referenced in prompts)
-├── chains/       # Pipelines defining the execution sequence of agents
+├── chains/       # Node DAG pipelines with wiring edges and control flow
 ├── templates/    # Seed prompt presets paired with chains
 └── logs/         # Run logs structured by Run ID
 ```
@@ -34,14 +34,12 @@ workspace/
 ## 🎛️ Architecture & Key Concepts
 
 ### 1. Agents (`workspace/agents/`)
-Agents are defined as markdown files. The YAML frontmatter specifies:
+Agents are defined as markdown templates. The YAML frontmatter specifies:
 * `name`: The unique identifier for the agent.
 * `model`: The model used (e.g., `anthropic/claude-3.5-sonnet`).
 * `skills`: Reusable prompt snippets to inject (e.g., `base-protocol`).
-* `context`: Static context files to associate.
-* `input_from`: Input source (`user` or a prior agent name).
-* `output_format`: Expected output type (`markdown` or `json`).
-* `max_tokens`: Completion token limit.
+* `inputs`: (Optional) Metadata listing input socket names and descriptions.
+* `outputs`: Declared output sockets (e.g., `summary` to extract a specific markdown section). The main text output socket (`output`) is always implicitly present.
 
 ### 2. Skills (`workspace/skills/`)
 Skills are reusable prompt fragments injected dynamically into agent system prompts. They belong to two categories:
@@ -49,26 +47,43 @@ Skills are reusable prompt fragments injected dynamically into agent system prom
 * **Craft**: Domain knowledge (e.g., `storybuilding-variance` enforces character detail guidelines).
 
 ### 3. Context (`workspace/context/`)
-Markdown files containing lore, reference documentation, or system instructions that can be dynamically referenced by name inside agents' prompts.
+Markdown files containing reference documentation, instructions, or static data. These are loaded into chains via `context` nodes and connected explicitly to agent inputs.
 
 ### 4. Chains (`workspace/chains/`)
-Pipelines containing an ordered array of agents to execute in sequence. The output of one agent flows to the next based on the variable resolver.
+Chains define a Directed Acyclic Graph (DAG) using a list of `nodes` and `edges`.
+* **Nodes** can represent:
+  * `seed`: The initial run prompt.
+  * `context`: A static reference file from `workspace/context/`.
+  * `agent`: An agent template execution step.
+  * Control Flow & Loop structures (see below).
+* **Edges** explicitly route outputs to inputs: `from: nodeId.socket`, `to: nodeId.slot`.
 
-### 5. Logs (`workspace/logs/`)
+### 5. Control Flow & Loops
+Maestro supports dynamic execution routing and iteration:
+* **`gate`**: Stops or permits execution on a condition. Downstream nodes are skipped if the condition evaluates to false.
+* **`branch`**: Routes execution to one of multiple paths based on case conditions, falling back to a `default` case. All other branches are skipped.
+* **`decider`**: Run an LLM agent whose verdict can be evaluated in conditional expressions.
+* **Loop Zones (`loop-start` and `loop-end`)**: Paired nodes defining a feedback zone (e.g., generator-critic refinement). State variables are carried across iterations via paired state sockets. The loop iterates internally until the exit condition is met or `maxIterations` is reached.
+* **Condition Expression Language**: Supports boolean logic (`&&`, `||`, `!`), comparisons (`==`, `!=`, `contains`, `exists`), and case-insensitive string matching on upstream output values (e.g., `{review-agent.output} contains "APPROVED"`).
+* **Edge Liveness & Skip Propagation**: Nodes only execute when their required input slots have live incoming edges. Skipped nodes propagate the skip state down their downstream paths.
+
+### 6. Logs (`workspace/logs/`)
 Each execution generates a directory named after a unique `runId`. It contains:
-* `meta.json`: Holds metadata about the run (start/end times, model parameters, cost, latency, branching source).
-* `00-agent-name.md`, `01-agent-name.md`, etc.: Full markdown files containing the resolved system prompt, user input, model `<thought>` block, final output, and token metrics.
+* `meta.json`: Holds metadata about the run (timestamps, parameters, cost, execution graph layout/snapshot, branching source).
+* `00-node-id.md`, `01-node-id.md`, etc.: Markdown logs for each executed node containing the resolved system prompt, user input, model `<thought>` block, final output, token/cost metrics, and loop iteration round index.
 
 ---
 
-## 🧠 The `{}` Reference System
+## 🔌 Slot-Based Variable Resolver
 
-Dynamic context resolution occurs right before the LLM is invoked. System prompts can resolve variables using these keywords:
+Variable passing in Maestro is local, explicit, and edge-driven:
 
-* `{input}`: Resolves to the previous agent's full output, or the user's initial seed prompt if this is the first agent in the chain.
-* `{agent-name.output}`: Resolves to the complete raw output of a specific upstream agent.
-* `{agent-name.summary}`: Extracts and resolves only the `## Summary` section of a specific upstream agent's output. (Highly token-efficient!)
-* `{file-name}`: Injects the text contents of `workspace/context/file-name.md`.
+* **Bare Slots**: `{slot}` tokens in an agent's prompt represent input slots. They are resolved by following the incoming edge wired to that slot.
+* **Socket Slicing**: Sockets can expose full outputs or sub-sections:
+  * `output`: Resolves to the full raw output of the connected node.
+  * `summary`: Extracts and resolves only the `## Summary` section of the upstream agent's output (highly token-efficient!).
+  * Custom headers: Slicing by a socket name matching any markdown header section (e.g. `### Characters`) automatically extracts that section.
+* **Inputs & Context**: Sockets connected to a `seed` node resolve to the initial run prompt. Sockets connected to a `context` node inject the associated file's content.
 
 ---
 
@@ -77,9 +92,13 @@ Dynamic context resolution occurs right before the LLM is invoked. System prompt
 Maestro Playground is built as a responsive, premium Next.js application containing four primary workspaces:
 
 ### 🚀 Workspace IDE (`/workspace`)
-* **Monaco Editor Integration**: Full-featured code editor with syntax highlighting, auto-saving (2-second debounce), and dirty-state tab warnings.
-* **Real-time Validation**: Validates YAML frontmatter on the fly, flagging syntax errors or missing required fields.
-* **Visual Chain Builder**: A drag-and-drop React Flow (`@xyflow/react`) interface for editing chains, visually rearranging execution sequences, and syncing changes back to the YAML file.
+* **Visual Chain Editor**: A Blender-style interactive React Flow canvas to build and edit chains.
+  * **Interactive Node Palette**: Drag and drop sources, agents, control nodes, and paired loop zones into the canvas.
+  * **Inline Editing**: Configure files, agent templates, condition expressions, branch cases, and loop states directly on the nodes.
+  * **Zone Bounding Boxes**: Paired loop zones are automatically visualised inside dynamic bounding-box frames (`ZoneFrame`).
+  * **Live Canvas Execution**: Run chains directly in the canvas and watch outputs stream and node status colors update in real-time.
+  * **Live Graph Validation**: Continuous structure and cycle checks highlighting invalid nodes/edges (e.g. cycles, dangling edges, misaligned loop states) with clickable routing.
+* **YAML Mode**: Switch to a raw Monaco YAML editor with auto-saving, dirty-state tab warnings, and instant bi-directional synchronization between the graph representation and the underlying markdown file.
 
 ### 🏃‍♂️ Execution Panel (`/run`)
 * **Live Streaming**: Watch model outputs stream in real-time.
@@ -87,8 +106,10 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 * **Parallel Runs**: Fire multiple runs of a chain concurrently to evaluate variance.
 
 ### 📜 Run History (`/history`)
-* **Detailed Logs**: Review performance metrics, token consumption, latency, and API costs.
-* **Run Branching**: Select any step of a completed run, click "Branch from here", modify your prompts, and rerun the rest of the chain instantly.
+* **Run Trace Graph**: Visualizes the exact executed DAG snapshot. Review skipped paths, active branch routes, and gate decisions.
+* **Node Output Preview**: Collapsible inspection panel showing thought blocks, final outputs, exact cost/latency, and resolved prompts.
+* **Loop Iteration History**: Review history of every loop round with per-round output previews for zone body nodes.
+* **Run Branching**: Select any node in the trace, click "Branch from here", modify prompts, and rerun the remaining topological steps of the chain instantly.
 
 ### 💬 Agent Chat (`/chat`)
 * Play with individual agents in a chat interface with persistent session history to test prompts and behaviors before adding them to chains.
@@ -124,17 +145,37 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 
 ## 🧪 Testing Suite
 
-Run the automated integration and synchronization tests:
+Maestro includes a comprehensive suite of unit, integration, and synchronization tests.
 
-* **Workspace & Saving Integration**:
-  ```bash
-  node tests/workspace-integration.test.js
-  ```
-* **Flow to YAML Syncing**:
-  ```bash
-  node tests/flow-sync.test.js
-  ```
-* **Verify CORS endpoints**:
-  ```bash
-  node tests/verify-cors.js
-  ```
+### Running TypeScript Unit & Graph Tests
+
+Run unit tests directly using `tsx`:
+
+```bash
+# Run condition expression parser/evaluator tests
+npx tsx tests/condition.test.ts
+
+# Run control flow & loop zone validation tests
+npx tsx tests/validate-control.test.ts
+npx tsx tests/validate-loop.test.ts
+
+# Run executor tests (gate, branch, decider, loop iteration)
+npx tsx tests/executor-control.test.ts
+npx tsx tests/executor-loop.test.ts
+
+# Run chain serialization/deserialization round-trip tests
+npx tsx tests/serialize-chain.test.ts
+```
+
+### Running Workspace & Sync Integration Tests
+
+```bash
+# Workspace saving & Monaco integration
+node tests/workspace-integration.test.js
+
+# Flow-to-YAML graph synchronization
+node tests/flow-sync.test.js
+
+# Verify server CORS headers
+node tests/verify-cors.js
+```
