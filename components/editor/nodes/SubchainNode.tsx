@@ -1,5 +1,6 @@
 'use client'
 import React, { memo } from 'react'
+import Link from 'next/link'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeData } from '../nodeData'
 import { statusDotClass } from '../nodeData'
@@ -12,7 +13,7 @@ function SubchainNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <div className={`w-2 h-2 rounded-full ${statusDotClass(run)}`} />
         <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Subchain</span>
         {node.subchain && (
-          <a href={`/workspace?type=chain&slug=${node.subchain}`} className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900">Open chain →</a>
+          <Link href={`/workspace?type=chain&slug=${encodeURIComponent(node.subchain)}`} className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900">Open chain →</Link>
         )}
       </div>
       <div className="px-4 py-2">

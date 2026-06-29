@@ -27,6 +27,7 @@ assert.deepStrictEqual(c.nodes[1], {
   state: undefined,
   until: undefined,
   maxIterations: undefined,
+  subchain: undefined,
 })
 assert.deepStrictEqual(c.edges[0], { fromNode: 'seed', fromSocket: 'output', toNode: 'wb', toSocket: 'input' })
 

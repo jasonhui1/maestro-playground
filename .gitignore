@@ -45,4 +45,5 @@ next-env.d.ts
 workspace/agents
 workspace/chains
 workspace/context
-workspace/skills
+workspace/skills.superpowers/
+.superpowers/

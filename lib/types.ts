@@ -138,7 +138,7 @@ export interface CreationParams {
 
 export interface ValidationIssue {
   message: string
-  severity: 'error'
+  severity: 'error' | 'warning'
   nodeId?: string
   edge?: ChainEdge
   zone?: string

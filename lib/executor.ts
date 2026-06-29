@@ -70,8 +70,12 @@ export async function runChainGraph(
     }
     if (node.kind === 'gate' || node.kind === 'branch') return ['in']
     if (node.kind === 'subchain') {
+      // Only declared inputs the host actually wired gate the node; unwired
+      // inputs are intentionally left unset (the inner seed falls back to the
+      // seed prompt) rather than skipping the whole subchain.
       const ref = chains.find(c => c.slug === node.subchain)
-      return (ref?.inputs ?? []).map(p => p.name)
+      const wired = new Set((incomingByNode.get(node.id) ?? []).map(i => chain.edges[i].toSocket))
+      return (ref?.inputs ?? []).map(p => p.name).filter(name => wired.has(name))
     }
     return []
   }
@@ -245,9 +249,11 @@ export async function runChainGraph(
         nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       } else {
         callbacks.onStart(nodeId, ref.name)
-        // inject each declared input value into the matching inner seed node
-        const innerStart: AgentOutput[] = (ref.inputs ?? []).map(p =>
-          controlOutput(p.node, p.name, slotValue(nodeId, p.name), 'success'))
+        // inject each *wired* declared input value into the matching inner seed
+        // node; unwired inputs are skipped so the inner seed keeps its default.
+        const innerStart: AgentOutput[] = (ref.inputs ?? [])
+          .filter(p => liveEdgeForSlot(nodeId, p.name) !== undefined)
+          .map(p => controlOutput(p.node, p.name, slotValue(nodeId, p.name), 'success'))
         const innerResults = await runChainGraph(
           ref, agents, skills, seedPrompt, workspacePath,
           { onStart: () => {}, onToken: () => {}, onDone: () => {} },

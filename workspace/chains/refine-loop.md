@@ -19,8 +19,8 @@ nodes:
   - id: patch
     kind: agent
     pos:
-      - 287.167699805068
-      - -196.52835908848215
+      - 470.5694043528262
+      - -175.30832715733658
     zone: refine
     agent: patch-agent
   - id: review
@@ -41,8 +41,8 @@ nodes:
   - id: report
     kind: agent
     pos:
-      - 1379.4155569107827
-      - -54.97442712364463
+      - 1441.4452680806226
+      - -133.08591526344298
     agent: normal-handler
 edges:
   - from: seed
@@ -59,5 +59,11 @@ edges:
     to: le.feedback
   - from: le.draft
     to: report.in
+inputs:
+  - name: ''
+    node: seed
+outputs:
+  - name: ''
+    node: ''
 ---
 

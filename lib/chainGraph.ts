@@ -33,6 +33,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     errors.push(message)
     issues.push({ message, severity: 'error', ...ref })
   }
+  // Non-blocking: surfaced in the issues panel but does not invalidate the chain.
+  const warn = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => {
+    issues.push({ message, severity: 'warning', ...ref })
+  }
 
   const seenIds = new Set<string>()
   for (const n of chain.nodes) {
@@ -88,7 +92,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     if (!src) { add(`Edge from unknown node "${e.fromNode}"`, { edge: e }); continue }
     if (!dst) { add(`Edge to unknown node "${e.toNode}"`, { edge: e }); continue }
     if (!acceptsInputs(dst)) add(`Edge targets node "${e.toNode}" which has no inputs`, { edge: e })
-    if (!outputSocketsOf(src, chain, agents, chains).includes(slugify(e.fromSocket))) {
+    if (!outputSocketsOf(src, chain, agents, chains).map(slugify).includes(slugify(e.fromSocket))) {
       if (src.kind === 'branch') {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`, { edge: e })
       } else {
@@ -108,7 +112,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
   if (topoOrder(chain).length !== chain.nodes.length) add('Chain has a cycle')
 
   validateZones(chain, add)
-  validateSubchains(chain, chains, add)
+  validateSubchains(chain, chains, add, warn)
   return { valid: errors.length === 0, errors, issues }
 }
 
@@ -146,29 +150,40 @@ function validateSubchains(
   chain: ChainDef,
   chains: ChainDef[],
   add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
+  warn: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
 ) {
   const bySlug = new Map(chains.map(c => [c.slug, c]))
+  // The edited chain takes precedence over any on-disk copy carrying the same slug.
+  const chainBySlug = (slug: string): ChainDef | undefined =>
+    slug === chain.slug ? chain : bySlug.get(slug)
   const refsOf = (c: ChainDef): string[] =>
     c.nodes.filter(n => n.kind === 'subchain' && n.subchain).map(n => n.subchain as string)
 
   for (const n of chain.nodes) {
     if (n.kind !== 'subchain') continue
     if (!n.subchain) { add(`Node "${n.id}": subchain has no chain reference`, { nodeId: n.id }); continue }
-    const ref = bySlug.get(n.subchain)
-    if (!ref && n.subchain !== chain.slug) { add(`Node "${n.id}": references unknown chain "${n.subchain}"`, { nodeId: n.id }); continue }
-    const target = n.subchain === chain.slug ? chain : ref
-    if (target && (!target.outputs || target.outputs.length === 0)) {
-      add(`Node "${n.id}": referenced chain "${n.subchain}" declares no outputs (nothing to wire)`, { nodeId: n.id })
+    const target = chainBySlug(n.subchain)
+    if (!target) { add(`Node "${n.id}": references unknown chain "${n.subchain}"`, { nodeId: n.id }); continue }
+    if (!target.outputs || target.outputs.length === 0) {
+      // Non-blocking: a side-effect-only subchain can still run, it just exposes nothing to wire.
+      warn(`Node "${n.id}": referenced chain "${n.subchain}" declares no outputs (nothing to wire)`, { nodeId: n.id })
     }
   }
 
-  const reaches = (start: ChainDef, target: string, seen: Set<string>): boolean => {
-    for (const r of refsOf(start)) {
-      if (r === target) return true
-      const next = bySlug.get(r)
-      if (next && !seen.has(r)) { seen.add(r); if (reaches(next, target, seen)) return true }
-    }
+  // Detect any cycle in the chain-reference graph reachable from `chain`, not just
+  // cycles that pass back through the edited chain (DFS with a recursion stack).
+  const visiting = new Set<string>()
+  const settled = new Set<string>()
+  const hasCycle = (slug: string): boolean => {
+    if (visiting.has(slug)) return true
+    if (settled.has(slug)) return false
+    const c = chainBySlug(slug)
+    if (!c) return false // unknown ref — reported separately above
+    visiting.add(slug)
+    for (const r of refsOf(c)) if (hasCycle(r)) return true
+    visiting.delete(slug)
+    settled.add(slug)
     return false
   }
-  if (reaches(chain, chain.slug, new Set())) add(`Chain "${chain.slug}" has a subchain reference cycle`, {})
+  if (hasCycle(chain.slug)) add(`Chain "${chain.slug}" has a subchain reference cycle`, {})
 }
