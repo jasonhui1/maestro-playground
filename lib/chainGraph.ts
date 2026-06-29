@@ -26,7 +26,7 @@ export function topoOrder(chain: ChainDef): string[] {
 
 import { ValidationIssue } from './types'
 
-export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationResult {
+export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = []): ValidationResult {
   const errors: string[] = []
   const issues: ValidationIssue[] = []
   const add = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => {
@@ -48,9 +48,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
 
   const acceptsInputs = (n: ChainNode): boolean =>
-    n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' || n.kind === 'loop-start' || n.kind === 'loop-end'
+    n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' ||
+    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain'
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end'])
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain'])
   const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined, nodeId: string) => {
     if (!expr) return
@@ -87,14 +88,14 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
     if (!src) { add(`Edge from unknown node "${e.fromNode}"`, { edge: e }); continue }
     if (!dst) { add(`Edge to unknown node "${e.toNode}"`, { edge: e }); continue }
     if (!acceptsInputs(dst)) add(`Edge targets node "${e.toNode}" which has no inputs`, { edge: e })
-    if (!outputSocketsOf(src, chain, agents).includes(slugify(e.fromSocket))) {
+    if (!outputSocketsOf(src, chain, agents, chains).includes(slugify(e.fromSocket))) {
       if (src.kind === 'branch') {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`, { edge: e })
       } else {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such output socket`, { edge: e })
       }
     }
-    if (acceptsInputs(dst) && !inputSocketsOf(dst, chain, agents).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
+    if (acceptsInputs(dst) && !inputSocketsOf(dst, chain, agents, chains).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
     const key = `${e.toNode}.${e.toSocket}`
     incoming.set(key, (incoming.get(key) || 0) + 1)
   }
@@ -107,6 +108,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[]): ValidationRe
   if (topoOrder(chain).length !== chain.nodes.length) add('Chain has a cycle')
 
   validateZones(chain, add)
+  validateSubchains(chain, chains, add)
   return { valid: errors.length === 0, errors, issues }
 }
 
@@ -138,4 +140,35 @@ function validateZones(chain: ChainDef, add: (message: string, ref?: Omit<Valida
     const outOfEnd = kindOf.get(e.fromNode) === 'loop-end'
     if (!intoStart && !outOfEnd) add(`Edge "${e.fromNode}.${e.fromSocket}" -> "${e.toNode}.${e.toSocket}" crosses a zone boundary (only loop-start/loop-end may cross)`, { edge: e })
   }
+}
+
+function validateSubchains(
+  chain: ChainDef,
+  chains: ChainDef[],
+  add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
+) {
+  const bySlug = new Map(chains.map(c => [c.slug, c]))
+  const refsOf = (c: ChainDef): string[] =>
+    c.nodes.filter(n => n.kind === 'subchain' && n.subchain).map(n => n.subchain as string)
+
+  for (const n of chain.nodes) {
+    if (n.kind !== 'subchain') continue
+    if (!n.subchain) { add(`Node "${n.id}": subchain has no chain reference`, { nodeId: n.id }); continue }
+    const ref = bySlug.get(n.subchain)
+    if (!ref && n.subchain !== chain.slug) { add(`Node "${n.id}": references unknown chain "${n.subchain}"`, { nodeId: n.id }); continue }
+    const target = n.subchain === chain.slug ? chain : ref
+    if (target && (!target.outputs || target.outputs.length === 0)) {
+      add(`Node "${n.id}": referenced chain "${n.subchain}" declares no outputs (nothing to wire)`, { nodeId: n.id })
+    }
+  }
+
+  const reaches = (start: ChainDef, target: string, seen: Set<string>): boolean => {
+    for (const r of refsOf(start)) {
+      if (r === target) return true
+      const next = bySlug.get(r)
+      if (next && !seen.has(r)) { seen.add(r); if (reaches(next, target, seen)) return true }
+    }
+    return false
+  }
+  if (reaches(chain, chain.slug, new Set())) add(`Chain "${chain.slug}" has a subchain reference cycle`, {})
 }

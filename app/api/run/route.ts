@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (agent) currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt)
   }
 
-  const validation = validateChain(chain, agents)
+  const validation = validateChain(chain, agents, chains)
   if (!validation.valid) {
     return new Response(JSON.stringify({ error: 'Invalid chain', errors: validation.errors }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
           },
           undefined,
           (branchOutputs as AgentOutput[]) ?? [],
+          chains,
         )
 
         updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs: results })

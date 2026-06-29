@@ -12,8 +12,15 @@ export function socketValue(
   seedPrompt: string,
   readContext: (file: string) => string,
 ): string {
-  if (src.kind === 'seed') return seedPrompt
+  if (src.kind === 'seed') {
+    const o = nodeOutputs.get(src.id)
+    return o ? o.output : seedPrompt
+  }
   if (src.kind === 'context') return readContext(src.file || '')
+  if (src.kind === 'subchain') {
+    const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
+    return o ? o.output : ''
+  }
   if (src.kind === 'loop-start' || src.kind === 'loop-end') {
     const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
     return o ? o.output : ''

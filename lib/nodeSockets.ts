@@ -8,7 +8,11 @@ function zoneStateOf(node: ChainNode, chain: ChainDef): string[] {
   return start?.state ?? []
 }
 
-export function inputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDef[]): string[] {
+export function inputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = []): string[] {
+  if (node.kind === 'subchain') {
+    const ref = chains.find(c => c.slug === node.subchain)
+    return (ref?.inputs ?? []).map(p => p.name)
+  }
   if (node.kind === 'agent' || node.kind === 'decider') {
     const a = node.agent ? agents.find(x => x.slug === node.agent) : undefined
     return a ? parseSlots(a.systemPrompt) : []
@@ -18,7 +22,12 @@ export function inputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDe
   return []
 }
 
-export function outputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDef[]): string[] {
+export function outputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = []): string[] {
+  if (node.kind === 'subchain') {
+    const ref = chains.find(c => c.slug === node.subchain)
+    const outs = (ref?.outputs ?? []).map(p => p.name)
+    return outs.length ? outs : ['output']
+  }
   if (node.kind === 'seed' || node.kind === 'context') return ['output']
   if (node.kind === 'gate') return ['output']
   if (node.kind === 'branch') return [...(node.cases ?? []).map(c => c.label), ...(node.default ? [node.default] : [])]
