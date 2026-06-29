@@ -1,5 +1,5 @@
 'use client'
-import React, { useMemo } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider,
   type Node, type Edge, type NodeTypes, type Connection,
@@ -41,6 +41,21 @@ function edgeId(e: ChainEdge): string {
 }
 
 export default function ChainCanvas(props: ChainCanvasProps) {
+  const { onSelectionChange, onMoveMany } = props
+
+  // React Flow keys its selection effect off the handler's identity — these MUST
+  // be stable, or the effect re-fires every render and (via onSelectionChange's
+  // setState) loops "Maximum update depth exceeded".
+  const handleSelectionChange = useCallback(
+    ({ nodes }: { nodes: Node[] }) => onSelectionChange(nodes.map(n => n.id)),
+    [onSelectionChange],
+  )
+  const handleSelectionDragStop = useCallback(
+    (_: React.MouseEvent, nodes: Node[]) =>
+      onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] }))),
+    [onMoveMany],
+  )
+
   const rfNodes = useMemo<Node[]>(() => {
     const frames: Node[] = computeZoneFrames(props.nodes).map(f => ({
       id: `zone-frame-${f.zone}`,
@@ -79,12 +94,8 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           edges={rfEdges}
           nodeTypes={nodeTypes}
           onNodeDragStop={(_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
-          onSelectionChange={({ nodes }: { nodes: Node[] }) =>
-            props.onSelectionChange(nodes.map(n => n.id))
-          }
-          onSelectionDragStop={(_, nodes) =>
-            props.onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] })))
-          }
+          onSelectionChange={handleSelectionChange}
+          onSelectionDragStop={handleSelectionDragStop}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={['Meta', 'Control']}
           onConnect={(c: Connection) => {

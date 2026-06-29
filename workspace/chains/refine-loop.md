@@ -19,8 +19,8 @@ nodes:
   - id: patch
     kind: agent
     pos:
-      - 491.69142597486655
-      - -108.1213290666983
+      - 485.09388642100214
+      - -109.44083697747119
     zone: refine
     agent: patch-agent
   - id: review
@@ -49,6 +49,12 @@ nodes:
     pos:
       - 125.94793419988133
       - 183.3828519497331
+    agent: patch-agent
+  - id: agent-2
+    kind: agent
+    pos:
+      - 431.16902426523296
+      - 205.6519492981527
     agent: patch-agent
 edges:
   - from: seed

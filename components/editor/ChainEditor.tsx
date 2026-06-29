@@ -42,6 +42,14 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const [edges, setEdges] = useState<ChainEdge[]>(initialChain.edges)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const primaryId = selectedIds[0] ?? null
+
+  // Stable + no-op-guarded: React Flow re-emits selection on every sync, so only
+  // commit a new array when the id set actually changed (else React bails out).
+  const selectIds = useCallback((ids: string[]) => {
+    setSelectedIds(prev =>
+      prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids,
+    )
+  }, [])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
@@ -214,7 +222,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             edges={edges}
             buildData={buildData}
             selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
+            onSelectionChange={selectIds}
             onMove={moveNode}
             onMoveMany={moveMany}
             onConnect={connect}
