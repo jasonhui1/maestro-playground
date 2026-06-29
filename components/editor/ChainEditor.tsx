@@ -1,11 +1,12 @@
 'use client'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useReducer } from 'react'
 import dagre from 'dagre'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
-import { connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge, uniqueNodeId, makeLoopZone, copySubgraph, pasteSubgraph, reservedIds, type Subgraph } from '@/lib/editorOps'
+import { uniqueNodeId } from '@/lib/editorOps'
+import { applyEditorAction, EditorAction } from '@/lib/editorReducer'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -38,18 +39,16 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   refetchAgents?: () => void
   initialSeedPrompt?: string
 }) {
-  const [nodes, setNodes] = useState<ChainNode[]>(() => seedPositions(initialChain.nodes, initialChain.edges))
-  const [edges, setEdges] = useState<ChainEdge[]>(initialChain.edges)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [state, dispatch] = useReducer(applyEditorAction, undefined, () => ({
+    nodes: seedPositions(initialChain.nodes, initialChain.edges),
+    edges: initialChain.edges,
+    selectedIds: [],
+    clipboard: null,
+  }))
+  const { nodes, edges, selectedIds, clipboard } = state
   const primaryId = selectedIds[0] ?? null
 
-  // Stable + no-op-guarded: React Flow re-emits selection on every sync, so only
-  // commit a new array when the id set actually changed (else React bails out).
-  const selectIds = useCallback((ids: string[]) => {
-    setSelectedIds(prev =>
-      prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids,
-    )
-  }, [])
+  const setSelectedIds = useCallback((ids: string[]) => dispatch({ type: 'setSelection', ids }), [])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
@@ -110,52 +109,14 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     }
   }, [meta, nodes, edges, slug, seedPrompt])
 
-  const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => {
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n))
-  }, [])
-
-  const moveNode = useCallback((id: string, pos: [number, number]) => {
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, pos } : n))
-  }, [])
-
-  const addNodeOfKind = useCallback((kind: ChainNodeKind) => {
-    setNodes(prev => {
-      const id = uniqueNodeId(kind, prev.map(n => n.id))
-      const node: ChainNode = { id, kind, pos: [80, 80] }
-      return [...prev, node]
-    })
-  }, [])
-
-  const addLoopZone = useCallback(() => {
-    setNodes(prev => {
-      const pair = makeLoopZone(reservedIds(prev), [120, 120])
-      return [...prev, ...pair]
-    })
-  }, [])
-
-  const connect = useCallback((edge: ChainEdge) => {
-    setEdges(prev => connectEdge(prev, edge))
-  }, [])
-
-  const deleteNode = useCallback((id: string) => {
-    setNodes(prev => prev.filter(n => n.id !== id))
-    setEdges(prev => prev.filter(e => e.fromNode !== id && e.toNode !== id))
-    if (selectedIds.includes(id)) setSelectedIds(prev => prev.filter(x => x !== id))
-  }, [selectedIds])
-
-  const [clipboard, setClipboard] = useState<Subgraph | null>(null)
-
-  const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => {
-    const m = new Map(updates.map(u => [u.id, u.pos]))
-    setNodes(prev => prev.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n)))
-  }, [])
-
-  const pasteClip = useCallback((clip: Subgraph) => {
-    const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, reservedIds(nodes), [40, 40])
-    setNodes(prev => [...prev, ...add])
-    setEdges(prevE => [...prevE, ...addE])
-    setSelectedIds(newIds)
-  }, [nodes])
+  const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
+  const moveNode = useCallback((id: string, pos: [number, number]) => dispatch({ type: 'moveNode', id, pos }), [])
+  const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch({ type: 'moveMany', updates }), [])
+  const addNodeOfKind = useCallback((kind: ChainNodeKind) => dispatch({ type: 'addNode', node: { id: uniqueNodeId(kind, nodes.map(n => n.id)), kind, pos: [80, 80] } }), [nodes])
+  const addLoopZone = useCallback(() => dispatch({ type: 'addLoopZone', pos: [120, 120] }), [])
+  const connect = useCallback((edge: ChainEdge) => dispatch({ type: 'connect', edge }), [])
+  const deleteNode = useCallback((id: string) => dispatch({ type: 'deleteNode', id }), [])
+  const deleteEdge = useCallback((edge: ChainEdge) => dispatch({ type: 'deleteEdge', edge }), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -164,26 +125,21 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
       if (key === 'c' && selectedIds.length) {
-        // Don't steal Ctrl/Cmd+C when the user is copying highlighted text (e.g. a node's
-        // run-output preview) — only hijack it for node copy when there's no text selection.
         if (window.getSelection()?.toString()) return
         e.preventDefault()
-        setClipboard(copySubgraph(nodes, edges, selectedIds))
-      } else if (key === 'v' && clipboard) {
+        dispatch({ type: 'copy', ids: selectedIds })
+      } else if (key === 'v') {
         e.preventDefault()
-        pasteClip(clipboard)
+        dispatch({ type: 'paste' })
       } else if (key === 'd' && selectedIds.length) {
         e.preventDefault()
-        pasteClip(copySubgraph(nodes, edges, selectedIds))
+        dispatch({ type: 'copy', ids: selectedIds })
+        dispatch({ type: 'paste' })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [nodes, edges, selectedIds, clipboard, pasteClip])
-
-  const deleteEdge = useCallback((edge: ChainEdge) => {
-    setEdges(prev => opDeleteEdge(prev, edge))
-  }, [])
+  }, [selectedIds])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
@@ -227,7 +183,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             edges={edges}
             buildData={buildData}
             selectedIds={selectedIds}
-            onSelectionChange={selectIds}
+            onSelectionChange={setSelectedIds}
             onMove={moveNode}
             onMoveMany={moveMany}
             onConnect={connect}
