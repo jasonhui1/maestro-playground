@@ -11,6 +11,11 @@ import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
 import { ChainDef, AgentDef } from '@/lib/types';
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore';
+import { Group, Panel, Separator } from 'react-resizable-panels';
+import { validateChain } from '@/lib/chainGraph';
+import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
+import DockPanel from '@/components/workspace/DockPanel';
+
 
 
 
@@ -51,6 +56,19 @@ function WorkspaceContent() {
   }, [type, slug, initialContent]);
 
   const currentFileKey = `${type}:${slug}`;
+
+  const view: 'graph' | 'yaml' | 'agent' | 'none' =
+    type === 'chain' ? (chainView === 'graph' && parsedChain ? 'graph' : 'yaml')
+    : type === 'agent' ? 'agent' : 'none';
+
+  const dockIssues = useMemo(() => {
+    if (type !== 'chain' || !parsedChain) return []
+    return validateChain(parsedChain, editorAgents, editorChains).issues
+  }, [type, parsedChain, editorAgents, editorChains])
+
+  const dockSide = useWorkspaceUiStore(s => s.dockSide)
+  const panelSize = useWorkspaceUiStore(s => s.panelSize)
+
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
@@ -195,52 +213,61 @@ function WorkspaceContent() {
             </div>
           </div>
         ) : (
-          <div className="h-full flex flex-col">
-            {type === 'chain' && (
-              <div className="flex items-center gap-1 px-6 pt-3">
-                <button
-                  onClick={() => setChainView('graph')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
-                >
-                  <Network size={12} /> Graph
-                </button>
-                <button
-                  onClick={() => setChainView('yaml')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
-                >
-                  <FileCode size={12} /> YAML
-                </button>
-                {chainView === 'graph' && !parsedChain && (
-                  <span className="ml-2 text-[11px] text-amber-600">Couldn’t parse as a graph — showing YAML</span>
+          <Group orientation={dockSide === 'right' ? 'horizontal' : 'vertical'}>
+            <Panel minSize={30}>
+              <div className="h-full flex flex-col">
+                {type === 'chain' && (
+                  <div className="flex items-center gap-1 px-6 pt-3">
+                    <button
+                      onClick={() => setChainView('graph')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
+                    >
+                      <Network size={12} /> Graph
+                    </button>
+                    <button
+                      onClick={() => setChainView('yaml')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
+                    >
+                      <FileCode size={12} /> YAML
+                    </button>
+                    {chainView === 'graph' && !parsedChain && (
+                      <span className="ml-2 text-[11px] text-amber-600">Couldn’t parse as a graph — showing YAML</span>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-            <div className="flex-1 min-h-0">
-              {type === 'chain' && chainView === 'graph' && parsedChain ? (
-                <ChainEditor
-                  key={slug}
-                  slug={slug}
-                  initialChain={parsedChain}
-                  agents={editorAgents}
-                  contextFiles={editorContext}
-                  refetchAgents={refetchEditorData}
-                  initialSeedPrompt={seedParam}
-                  chains={editorChains}
-                />
-              ) : (
-                <div className="h-full p-6 pt-4">
-                  <FileEditor
-                    content={content}
-                    onChange={setContent}
-                    status={status}
-                    error={saveError}
-                    type={type}
-                    language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
-                  />
+                <div className="flex-1 min-h-0">
+                  {type === 'chain' && chainView === 'graph' && parsedChain ? (
+                    <ChainEditor
+                      key={slug}
+                      slug={slug}
+                      initialChain={parsedChain}
+                      agents={editorAgents}
+                      contextFiles={editorContext}
+                      refetchAgents={refetchEditorData}
+                      initialSeedPrompt={seedParam}
+                      chains={editorChains}
+                    />
+                  ) : (
+                    <div className="h-full p-6 pt-4">
+                      <FileEditor
+                        content={content}
+                        onChange={setContent}
+                        status={status}
+                        error={saveError}
+                        type={type}
+                        language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </Panel>
+            <Separator className={`bg-zinc-100 hover:bg-zinc-200 transition-colors ${dockSide === 'right' ? 'w-1 border-x' : 'h-1 border-y'} border-zinc-200`} />
+            <Panel defaultSize={`${panelSize}%`} minSize={10}
+              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(typeof size === 'number' ? size : parseFloat(size))}>
+              <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
+            </Panel>
+          </Group>
         )}
       </div>
     </div>
