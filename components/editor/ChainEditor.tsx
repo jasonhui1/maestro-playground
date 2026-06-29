@@ -158,7 +158,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     issues: issuesByNode.get(node.id) ?? [],
     onChange: patch => updateNode(node.id, patch),
     onEditAgent: (s: string) => setDrawerSlug(s),
-  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode])
+    onRunFromHere: (id: string) => { dispatch({ type: 'setSelection', ids: [id] }); runUpTo(id) },
+  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo])
 
   return (
     <div className="h-full flex flex-col">

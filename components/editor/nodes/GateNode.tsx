@@ -12,6 +12,13 @@ function GateNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <div className={`w-2.5 h-2.5 rounded-full ${statusDotClass(run)}`} />
         <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Gate</span>
         <span className="text-xs font-bold text-zinc-900 ml-1">{node.id}</span>
+        <button
+          onClick={() => data.onRunFromHere?.(node.id)}
+          title="Run up to here"
+          className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
+        >
+          ▶ here
+        </button>
       </div>
       <div className="px-4 py-2">
         <input

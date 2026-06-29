@@ -20,6 +20,13 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <div className={`w-2.5 h-2.5 rounded-full ${statusDotClass(run)}`} />
         <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Branch</span>
         <span className="text-xs font-bold text-zinc-900 ml-1">{node.id}</span>
+        <button
+          onClick={() => data.onRunFromHere?.(node.id)}
+          title="Run up to here"
+          className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
+        >
+          ▶ here
+        </button>
       </div>
       <div className="px-4 py-2">
         <div className="relative pl-3 flex items-center h-5 text-[9px] font-mono text-zinc-400 mb-2">

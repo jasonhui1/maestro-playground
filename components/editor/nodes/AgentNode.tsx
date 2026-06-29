@@ -13,7 +13,16 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <div className="flex items-center gap-2 mb-0.5">
           <div className={`w-2 h-2 rounded-full ${statusDotClass(run)}`} />
           <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{kindLabel}</span>
-          {issues.length > 0 && <span className="ml-auto text-[9px] font-bold text-red-500">{issues.length}!</span>}
+          <div className="ml-auto flex items-center gap-1.5">
+            {issues.length > 0 && <span className="text-[9px] font-bold text-red-500">{issues.length}!</span>}
+            <button
+              onClick={() => data.onRunFromHere?.(node.id)}
+              title="Run up to here"
+              className="nodrag text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
+            >
+              ▶ here
+            </button>
+          </div>
         </div>
         <div className="text-xs font-bold text-zinc-900">{node.id}</div>
       </div>
