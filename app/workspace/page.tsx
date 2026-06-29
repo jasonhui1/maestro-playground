@@ -61,12 +61,13 @@ function WorkspaceContent() {
   const [chainView, setChainView] = useState<'graph' | 'yaml'>('graph');
   const [editorAgents, setEditorAgents] = useState<AgentDef[]>([]);
   const [editorContext, setEditorContext] = useState<{ slug: string; name: string }[]>([]);
+  const [editorChains, setEditorChains] = useState<ChainDef[]>([]);
 
   const refetchEditorData = useCallback(() => {
     fetch('/api/workspace')
       .then(r => r.json())
-      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []) })
-      .catch(() => { setEditorAgents([]); setEditorContext([]) })
+      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); setEditorChains(w.chains ?? []) })
+      .catch(() => { setEditorAgents([]); setEditorContext([]); setEditorChains([]) })
   }, [])
 
   useEffect(() => {
@@ -423,6 +424,7 @@ function WorkspaceContent() {
                       contextFiles={editorContext}
                       refetchAgents={refetchEditorData}
                       initialSeedPrompt={seedParam}
+                      chains={editorChains}
                     />
                   ) : (
                     <div className="h-full p-6 pt-4">

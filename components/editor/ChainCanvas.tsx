@@ -16,10 +16,12 @@ import BranchNode from './nodes/BranchNode'
 import LoopStartNode from './nodes/LoopStartNode'
 import LoopEndNode from './nodes/LoopEndNode'
 import ZoneFrame from './nodes/ZoneFrame'
+import SubchainNode from './nodes/SubchainNode'
 
 const nodeTypes: NodeTypes = {
   seed: SeedNode, context: ContextNode, agent: AgentNode, decider: AgentNode,
   gate: GateNode, branch: BranchNode, 'loop-start': LoopStartNode, 'loop-end': LoopEndNode,
+  subchain: SubchainNode,
   zoneFrame: ZoneFrame,
 }
 

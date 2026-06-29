@@ -12,6 +12,7 @@ export interface EditorNodeData {
   onChange: (patch: Partial<ChainNode>) => void
   onEditAgent?: (slug: string) => void
   onRunFromHere?: (id: string) => void
+  chains: { slug: string; name: string }[]
   [key: string]: unknown
 }
 
