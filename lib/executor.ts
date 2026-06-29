@@ -8,7 +8,7 @@ import { resolveNodePrompt, socketValue } from './resolveNode'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { parseSlots } from './slots'
-import { slugify } from './graph'
+import { slugify, extractSection } from './graph'
 
 export interface RunCallbacks {
   onStart: (nodeId: string, agentName: string) => void
@@ -39,7 +39,11 @@ export async function runChainGraph(
   callbacks: RunCallbacks,
   runFn: typeof runAgent = runAgent,
   startOutputs: AgentOutput[] = [],
+  chains: ChainDef[] = [],
+  depth = 0,
 ): Promise<AgentOutput[]> {
+  const MAX_SUBCHAIN_DEPTH = 10
+  if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const readContext = makeContextReader(workspacePath)
@@ -65,15 +69,20 @@ export async function runChainGraph(
       return a ? parseSlots(a.systemPrompt) : []
     }
     if (node.kind === 'gate' || node.kind === 'branch') return ['in']
+    if (node.kind === 'subchain') {
+      const ref = chains.find(c => c.slug === node.subchain)
+      return (ref?.inputs ?? []).map(p => p.name)
+    }
     return []
   }
-  const inValue = (nodeId: string): string => {
-    const idx = liveEdgeForSlot(nodeId, 'in')
+  const slotValue = (nodeId: string, slot: string): string => {
+    const idx = liveEdgeForSlot(nodeId, slot)
     if (idx === undefined) return ''
     const e = chain.edges[idx]
     const src = nodeById.get(e.fromNode)
     return src ? socketValue(src, e.fromSocket, nodeOutputs, seedPrompt, readContext) : ''
   }
+  const inValue = (nodeId: string): string => slotValue(nodeId, 'in')
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
@@ -229,6 +238,35 @@ export async function runChainGraph(
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
+    } else if (node.kind === 'subchain') {
+      const ref = chains.find(c => c.slug === node.subchain)
+      if (!ref) {
+        const rec = controlOutput(nodeId, `subchain: ${node.subchain ?? '?'} (missing)`, '', 'error')
+        nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      } else {
+        callbacks.onStart(nodeId, ref.name)
+        // inject each declared input value into the matching inner seed node
+        const innerStart: AgentOutput[] = (ref.inputs ?? []).map(p =>
+          controlOutput(p.node, p.name, slotValue(nodeId, p.name), 'success'))
+        const innerResults = await runChainGraph(
+          ref, agents, skills, seedPrompt, workspacePath,
+          { onStart: () => {}, onToken: () => {}, onDone: () => {} },
+          runFn, innerStart, chains, depth + 1,
+        )
+        // map each declared output to per-socket storage on this node
+        const byNode = new Map<string, AgentOutput>()
+        for (const r of innerResults) if (r.nodeId) byNode.set(r.nodeId, r)
+        const outMap = new Map<string, string>()
+        for (const p of ref.outputs ?? []) {
+          const r = byNode.get(p.node)
+          const val = r ? (slugify(p.socket ?? 'output') === 'output' ? r.output : extractSection(r.output, p.socket!)) : ''
+          outMap.set(p.name, val)
+        }
+        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records + pushes to results
+        const statusRec = controlOutput(nodeId, ref.name, '', 'success')
+        nodeOutputs.set(nodeId, statusRec); results.push(statusRec); callbacks.onDone(nodeId, statusRec)
+        markOut(nodeId, () => true)
+      }
     }
   }
   return results
