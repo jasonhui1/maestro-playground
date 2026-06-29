@@ -21,6 +21,7 @@ import { parseChainContent } from '@/lib/parseChain'
 import { reconcileExternalEdit } from '@/lib/syncReconcile'
 import { useFileWatch } from '@/hooks/useFileWatch'
 import { Play } from 'lucide-react'
+import InterfacePopover from './InterfacePopover'
 
 const NODE_W = 240, NODE_H = 120
 
@@ -238,6 +239,10 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
           <button className="font-bold underline" onClick={() => setConflict(null)}>Keep my version</button>
         </div>
       )}
+
+      <div className="px-4 py-1 border-b border-zinc-100 flex items-center justify-end bg-white">
+        <InterfacePopover nodes={nodes} inputs={iface.inputs} outputs={iface.outputs} onChange={setIface} />
+      </div>
 
       <div className="flex-1 min-h-0 flex">
         <NodePalette onAdd={addNodeOfKind} onAddLoopZone={addLoopZone} />
