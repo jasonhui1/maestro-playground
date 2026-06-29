@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- **This is NOT stock Next.js.** Per `AGENTS.md`: before writing any Next.js code, read the relevant guide under `node_modules/next/dist/docs/` and heed deprecation notices. APIs may differ from training data.
+- **Next.js 16 — consult the project skill.** Before writing route-handler code (Task 5), read `.agents/skills/nextjs16.md` (authoritative), then `node_modules/next/dist/docs/` for anything it doesn't cover. Gotchas that bite here: `params`/`searchParams`/`cookies()`/`headers()` are **async — `await` them**; `GET` route handlers are **not cached** by default. The existing `POST /api/workspace` already follows these — mirror it.
+- **React Flow v12 (@xyflow/react) — consult the project skill.** Before touching the canvas (Tasks 1–2), read `.agents/skills/xyflow12.md`. Gotchas that bite here: **named imports only** (`import { ReactFlow }`), **never mutate nodes/edges** (always spread — the ops already do), measured sizes live at `node.measured.*`, and keep `onSelectionChange` handlers stable (memoized) to avoid re-render churn.
 - **Tests are framework-free scripts.** Each test file uses `import assert from 'node:assert'`, runs with `npx tsx tests/<file>.test.ts`, and ends with `console.log('✅ <name> tests passed')`. No Jest/Vitest.
 - **React components are not unit-tested** in this repo — UI tasks end with explicit manual-verification steps against `npm run dev`, then a commit.
 - **One commit per task.** Commit messages are conventional (`feat:`, `refactor:`, `test:`).
@@ -668,7 +669,7 @@ Wire the builder into the creation endpoint and the Sidebar's chain-creation mod
 
 - [ ] **Step 1: Read the Next.js route-handler guide** (per Global Constraints).
 
-Run: open the relevant doc under `node_modules/next/dist/docs/` covering route handlers / `NextResponse`. Confirm the `POST` signature and JSON-response helpers used below match this repo's Next version.
+Read `.agents/skills/nextjs16.md` (route handlers / caching / async request APIs), then `node_modules/next/dist/docs/` for anything uncovered. Confirm the `POST` signature and `NextResponse` helpers used below match this repo's Next version — note the existing `POST /api/workspace` reads its body with `await request.json()` (request methods are fine; only `params`/`searchParams`/`cookies()`/`headers()` are async).
 
 - [ ] **Step 2: Extend the creation endpoint.** In `app/api/workspace/route.ts`:
 
