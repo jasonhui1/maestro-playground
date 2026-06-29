@@ -2,519 +2,656 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the workspace page's stacked toolbars, duplicate Run buttons, and scattered output panes with a one-line header, a single store-owned run engine, collapsible sidebar/palette, and one dockable tabbed panel (Output · Validation · History) that is the single output surface across all views.
+**Goal:** Collapse the workspace editor's stacked toolbars into one header line, unify the two Run buttons into a single store-owned run engine, and merge the bottom preview + validation + output console + history into one dockable, collapsible, tabbed panel.
 
-**Architecture:** Two Zustand stores hold the cross-cutting state — `useRunStore` owns the run lifecycle (per-instance, per-node, keyed by `type:slug`) so a run survives any in-app navigation, and `useWorkspaceUiStore` (persisted) holds panel dock/collapse/size/tab + sidebar/palette collapse. The run posts the **inline graph** to `/api/run` (Group B §1.1), so there is no flush-before-run; the store reads the live graph from a getter that `ChainEditor` registers. The graph topology + reducer/history (Group B) and autosave pipeline stay in `ChainEditor`. UI components read run results and node selection from the stores instead of local state and prop-drilling.
+**Architecture:** Three Zustand stores own cross-component state — `useRunStore` (run lifecycle + 2D per-instance/per-node results, not persisted), `useSelectionStore` (primary selected node, not persisted), `useWorkspaceUiStore` (panel/sidebar/palette layout, persisted to localStorage). The editor reducer in `ChainEditor` remains the source of truth for graph topology + selection + clipboard and mirrors its primary selection into `useSelectionStore`. A single page-level `DockPanel` reads all three stores and is the only output surface.
 
-**Tech Stack:** Next.js 16.2, React 19, `@xyflow/react` v12, Zustand v5 (already a dep), `diff-match-patch` (already a dep), Tailwind v4, vitest/tsx tests.
+**Tech Stack:** Next.js 16.2.2 (App Router, React 19.2.4), Zustand 5.0.12, `@xyflow/react` 12.10.2, `react-resizable-panels` 4.9.0, Tailwind 4, Vitest 4 (pure-logic assert-scripts).
 
-**Design source:** `docs/maestro/plans/2026-06-29-workspace-qol-redesign-design.md`.
-
-**Depends on:** Phase 5 **Group B** and **Group C** merged first. This plan assumes the post-B/C codebase (inline run, editor reducer + undo/redo, subchain node, InterfacePanel, file-watch). See **Rebase onto Groups B + C** below. Re-check exact line numbers against the actual code before implementing — B/C edits will have shifted them.
+**Spec:** `docs/maestro/plans/2026-06-29-workspace-qol-redesign-design.md` — read it before starting. This plan implements that design verbatim; section refs below (§2, §5, §7, a1–a5) point into it.
 
 ## Global Constraints
 
-- **Zustand v5** — follow the existing `hooks/store/useToastStore.ts` pattern (`import { create } from 'zustand'`). For persistence use `import { persist } from 'zustand/middleware'`.
-- **@xyflow/react v12** — read `.agents/skills/xyflow12.md` before Tasks touching `ChainCanvas`/nodes. Named imports only; never mutate node/data objects (always spread); custom node data typed via `NodeProps<Node<EditorNodeData>>`.
-- **Next.js 16** — read `.agents/skills/nextjs16.md` before any route/page change. `params`/`searchParams` are async (`await`). No route-handler changes are required by this plan (the versions API already returns content by `?version=N`).
-- **Tests** — framework-free `node:assert` scripts in `tests/`. Run a single file with `npx tsx tests/<file>.test.ts`; run the suite with `npm run test:run`. Each logic test file ends with `console.log('✅ <name> passed')`. UI tasks end with **manual verification** (`npm run dev`), then commit.
-- **Commits** — one commit per task. Do not commit on `master`; create branch `feat/workspace-qol-redesign` first (Task 0).
-- **Run-state keying** — every run event carries `nodeId` (`lib/runStream.ts`); a single-agent run is a synthesized one-node chain with `nodeId = agent.slug` (`app/api/run/route.ts:35-43`). The per-node model needs no per-view special-casing.
-- **Baseline = post-B/C** — assume Group B (inline run via `resolveRunChain`; `applyEditorAction` reducer + `withHistory`; `runUpTo`/`upstreamSubgraph`) and Group C (`SubchainNode`, `InterfacePanel`, file-watch) are merged. Do **not** re-add flush-before-run. Line numbers cited below are pre-B/C — re-locate before editing.
+- **Next.js 16 / React 19:** read `.agents/skills/nextjs16.md` before any store/client-component work. Every component that uses a hook or store needs `'use client'` at the top.
+- **React Flow v12 (`@xyflow/react`):** read `.agents/skills/xyflow12.md` before touching `ChainCanvas`/nodes. Named imports only; no direct node mutation; `NodeProps<Node<EditorNodeData>>` typing.
+- **Tests are pure-logic assert-scripts** living in `tests/` (flat dir), matching the existing style in `tests/run-state.test.ts`: top-level `import assert from 'node:assert'`, top-level assertions, final `console.log('✅ … passed')`. **No `describe`/`it`/`expect`.** Run one file with `npx vitest run tests/<name>.test.ts`. There is **no component/DOM test infra** — UI wiring is verified by running `npm run dev` and observing, per each UI task's manual-verify step.
+- **Store pattern:** follow `hooks/store/useToastStore.ts` (`create<T>((set) => …)`). For the persisted store use `persist` middleware from `zustand/middleware`.
+- **Keying:** all per-file state is keyed by `` `${type}:${slug}` `` (the existing `currentFileKey` convention in `app/workspace/page.tsx:87`).
+- **Commit after every task** (each task ends in a commit step). Frequent commits; DRY; YAGNI; TDD where logic is pure.
+- **B/C already landed** on `master`: inline-graph `/api/run`, editor reducer + undo/redo, `runUpTo` partial run, subchain, file-watch. Build directly on current `master` (verify each cited line still matches before editing).
 
 ---
 
-## Rebase onto Groups B + C
+## File map
 
-Read this before starting — it overrides anything in the tasks that assumes the current (pre-B/C) code.
+**New files**
 
-1. **Run posts the inline graph, not a flush.** B §1.1 made `/api/run` accept `{ chain: { name, description, nodes, edges }, seedPrompt, type, slug }`. The store-owned `run()` (Task 3) posts that. The store gets the live graph from a **graph provider** that `ChainEditor` registers — `setGraphProvider(key, () => ({ name, description, nodes, edges }))`. This **replaces `registerFlush`** everywhere it appears (Tasks 3, 14, 16). For `type === 'agent'` there is no provider → post `{ agentName: slug }` (B's `resolveRunChain` synthesizes the one-node chain). For chain **YAML** view (no live graph object) → post `{ chainName: slug }`.
-2. **The store supersedes B's local run state.** Delete the `runState`/`seedPrompt`/`running`/`runError` useState that B keeps in `ChainEditor`; everything reads `useRunStore`. **Rewire B's `runUpTo`/"▶ from here"** to call `useRunStore.run()` with the upstream-truncated graph (use B's `upstreamSubgraph`), and point its per-node output at the **Output tab** (Task 9), not the deleted `NodePreview`.
-3. **Selection bridge.** B's reducer owns `selectedIds`. In the existing `setSelection` dispatch path, also call `useSelectionStore.getState().setSelectedNodeId(ids[0] ?? null)` so the Output tab (Task 9) tracks the clicked node. Task 4's store stays; Task 14's "report selection" step folds into this bridge.
-4. **InterfacePanel rehome (C §2.4).** C placed it "between ValidationPanel and NodePreview" — both deleted here. Move it into a header **"Interface ▾" popover** (chains only), same pattern as the seed popover (Task 16). Keep its props/state as C defined them.
-5. **File-watch banner (C §2.8).** Keep the adopt/conflict banner in `ChainEditor`; render it directly under the one-line header so the header refactor (Task 16) doesn't drop it.
-6. **SubchainNode** renders no run output, so Task 5 (AgentNode output removal) does not touch it.
+| File | Responsibility |
+|---|---|
+| `lib/runModel.ts` | Pure 2D run-state model: `InstanceRunMap` + `applyInstanceEvent` (wraps existing `applyRunEvent`). |
+| `lib/tabClamp.ts` | Pure `clampTab(persisted, available)` for the hydrate guard (§7). |
+| `hooks/store/useRunStore.ts` | Run lifecycle + results keyed by `type:slug`; owns the `run()` fan-out action + run-target registry. |
+| `hooks/store/useSelectionStore.ts` | Primary selected `nodeId` keyed by `type:slug` (write-through mirror). |
+| `hooks/store/useWorkspaceUiStore.ts` | Panel dock/collapse/size/active-tab + sidebar/palette collapsed; `persist` → localStorage. |
+| `components/workspace/DockPanel.tsx` | The merged dockable panel shell: tabs, dock side, collapse, resize, instance switcher, run-error banner. |
+| `components/workspace/OutputTab.tsx` | Output tab body (clicked node / all-nodes / synthesized node, per the matrix), honors current instance. |
+| `components/workspace/InstanceSwitcher.tsx` | `‹ i/N ›` control (used in canvas overlay + panel header). |
+| `components/editor/InterfacePopover.tsx` | "Interface ▾" header popover wrapping the existing `InterfacePanel` body (chains only). |
 
----
+**Modified files**
 
-## File Structure
+| File | Change |
+|---|---|
+| `app/workspace/page.tsx` | One-line header; delete `runsByFile`/`handleRun`/`runSingleInstance` + side console + output/history toggles; mount `DockPanel`; agent/YAML register run target + call `useRunStore.run`. |
+| `app/workspace/layout.tsx` | Collapsible sidebar panel driven by `useWorkspaceUiStore`. |
+| `components/editor/ChainEditor.tsx` | Remove local run useState + `streamInline`; register run target; call `useRunStore.run`; mirror selection to `useSelectionStore`; remove bottom `ValidationPanel`/`InterfacePanel`/`NodePreview`; keep file-watch banner under header. |
+| `components/editor/ChainCanvas.tsx` | Instance-switcher overlay; node `run` comes from current-instance slice. |
+| `components/editor/nodes/AgentNode.tsx` | Remove inline output block (`:72-76`). |
+| `components/editor/NodePalette.tsx` | Collapsible to a rail via `useWorkspaceUiStore`. |
+| `components/workspace/Sidebar.tsx` | Collapse affordance (rail) via `useWorkspaceUiStore`. |
 
-**Phase A — state foundation + run engine**
-- Modify `lib/runState.ts` — add `RunInstanceState`, `RunRecord`, `emptyInstance()`, `applyEventToInstance()`, `nodeRunOf()`.
-- Modify `tests/run-state.test.ts` — cover the new helpers.
-- Create `hooks/store/useRunStore.ts` — run lifecycle keyed by `type:slug` + `run()` action.
-- Create `tests/run-store.test.ts` — pure reducers (setSeed/setParallel/setInstanceIndex + a fake-event reduction).
-- Create `hooks/store/useWorkspaceUiStore.ts` — persisted UI prefs.
-- Create `tests/workspace-ui-store.test.ts` — toggles/setters.
-- Create `hooks/store/useSelectionStore.ts` — current selected nodeId (not persisted).
-- Modify `components/editor/nodes/AgentNode.tsx` — remove inline output block.
+**Deleted files**
 
-**Phase B — dockable panel**
-- Create `components/workspace/panel/DockablePanel.tsx` — shell: tabs, dock, collapse, resize (from `useWorkspaceUiStore`).
-- Create `components/workspace/panel/InstanceSwitcher.tsx` — `‹ i/N ›`.
-- Create `components/workspace/panel/OutputTab.tsx` — selected-node output from `useRunStore` (relocated `NodePreview`).
-- Create `components/workspace/panel/ValidationTab.tsx` — relocated `ValidationPanel`.
-- Create `components/workspace/panel/HistoryTab.tsx` — relocated `HistoryPane` body + version diff.
-- Create `lib/versionDiff.ts` + `tests/version-diff.test.ts` — line diff via `diff-match-patch`.
-
-**Phase C — header, collapse, per-view wiring**
-- Modify `app/workspace/layout.tsx` + `components/workspace/Sidebar.tsx` — collapsible sidebar.
-- Modify `components/editor/NodePalette.tsx` — collapsible palette.
-- Modify `components/editor/ChainCanvas.tsx` — instance switcher overlay; highlighting from store.
-- Modify `components/editor/ChainEditor.tsx` — drop its run bar; read run store; render canvas + palette only.
-- Modify `app/workspace/page.tsx` — one-line header, single Run, mount `DockablePanel`, per-view wiring, delete old console.
+| File | Reason |
+|---|---|
+| `components/editor/NodePreview.tsx` | Replaced by the Output tab. |
 
 ---
 
-## Task 0: Branch
+## Phase A — Stores foundation
 
-- [ ] **Step 1: Create the working branch**
-
-Run:
-```bash
-git checkout -b feat/workspace-qol-redesign
-```
-Expected: `Switched to a new branch 'feat/workspace-qol-redesign'`.
-
-- [ ] **Step 2: Commit the design + this plan (already on disk)**
-
-```bash
-git add docs/maestro/plans/2026-06-29-workspace-qol-redesign-design.md docs/maestro/plans/2026-06-29-workspace-qol-redesign-impl-plan.md .gitignore
-git commit -m "docs: workspace QoL redesign spec + plan"
-```
-
----
-
-## Task 1: Per-instance run-state helpers
+### Task A1: Pure 2D run-state model
 
 **Files:**
-- Modify: `lib/runState.ts`
-- Test: `tests/run-state.test.ts`
+- Create: `lib/runModel.ts`
+- Test: `tests/run-model.test.ts`
 
 **Interfaces:**
-- Consumes: existing `NodeRunState`, `RunStateMap`, `applyRunEvent` (`lib/runState.ts`); `RunEvent` (`lib/runStream.ts`).
+- Consumes: `applyRunEvent`, `RunStateMap`, `NodeRunState` from `lib/runState.ts`; `RunEvent` from `lib/runStream.ts`.
 - Produces:
-  - `interface RunInstanceState { nodes: RunStateMap; status: 'running' | 'complete' | 'error'; error?: string }`
-  - `interface RunRecord { instances: RunInstanceState[]; instanceIndex: number; running: boolean; error?: string; startedAt?: string }`
-  - `emptyInstance(): RunInstanceState`
-  - `applyEventToInstance(inst: RunInstanceState, e: RunEvent): RunInstanceState`
-  - `nodeRunOf(rec: RunRecord | undefined, nodeId: string): NodeRunState | undefined` (reads the selected instance)
+  - `type InstanceRunMap = Record<number, RunStateMap>`
+  - `applyInstanceEvent(map: InstanceRunMap, instance: number, e: RunEvent): InstanceRunMap`
+  - `nodeStateFor(map: InstanceRunMap, instance: number, nodeId: string): NodeRunState | undefined`
 
-- [ ] **Step 1: Write the failing test** — append to `tests/run-state.test.ts`:
+- [ ] **Step 1: Write the failing test**
 
 ```ts
-import { emptyInstance, applyEventToInstance, nodeRunOf, type RunRecord } from '../lib/runState'
-
-// applyEventToInstance routes node events into nodes map, run events to status
-let inst = emptyInstance()
-assert.strictEqual(inst.status, 'running')
-inst = applyEventToInstance(inst, { type: 'agent_start', nodeId: 'a', agentName: 'A', step: 0 })
-assert.strictEqual(inst.nodes['a'].status, 'running')
-inst = applyEventToInstance(inst, { type: 'agent_done', nodeId: 'a', agentName: 'A', step: 0, output: { agentName: 'A', output: 'hi' } as any })
-assert.strictEqual(inst.nodes['a'].output, 'hi')
-inst = applyEventToInstance(inst, { type: 'run_complete', runId: 'r1' })
-assert.strictEqual(inst.status, 'complete')
-
-const errInst = applyEventToInstance(emptyInstance(), { type: 'error', error: 'boom' })
-assert.strictEqual(errInst.status, 'error')
-assert.strictEqual(errInst.error, 'boom')
-
-// nodeRunOf reads the selected instance
-const rec: RunRecord = { instances: [inst, emptyInstance()], instanceIndex: 0, running: false }
-assert.strictEqual(nodeRunOf(rec, 'a')?.output, 'hi')
-assert.strictEqual(nodeRunOf({ ...rec, instanceIndex: 1 }, 'a'), undefined)
-assert.strictEqual(nodeRunOf(undefined, 'a'), undefined)
-
-console.log('✅ run-state instance helpers passed')
-```
-
-- [ ] **Step 2: Run it to confirm it fails**
-
-Run: `npx tsx tests/run-state.test.ts`
-Expected: FAIL — `emptyInstance` / `applyEventToInstance` / `nodeRunOf` are not exported.
-
-- [ ] **Step 3: Implement the helpers** — append to `lib/runState.ts`:
-
-```ts
-export interface RunInstanceState {
-  nodes: RunStateMap
-  status: 'running' | 'complete' | 'error'
-  error?: string
-}
-
-export interface RunRecord {
-  instances: RunInstanceState[]
-  instanceIndex: number
-  running: boolean
-  error?: string
-  startedAt?: string
-}
-
-export const emptyInstance = (): RunInstanceState => ({ nodes: {}, status: 'running' })
-
-export function applyEventToInstance(inst: RunInstanceState, e: RunEvent): RunInstanceState {
-  if (e.type === 'error') return { ...inst, status: 'error', error: e.error }
-  if (e.type === 'run_complete') return { ...inst, status: 'complete' }
-  return { ...inst, nodes: applyRunEvent(inst.nodes, e) }
-}
-
-export function nodeRunOf(rec: RunRecord | undefined, nodeId: string): NodeRunState | undefined {
-  const inst = rec?.instances[rec.instanceIndex]
-  return inst?.nodes[nodeId]
-}
-```
-
-- [ ] **Step 4: Run the test to confirm it passes**
-
-Run: `npx tsx tests/run-state.test.ts`
-Expected: PASS — prints `✅ run-state instance helpers passed`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/runState.ts tests/run-state.test.ts
-git commit -m "feat: per-instance run-state helpers"
-```
-
----
-
-## Task 2: `useWorkspaceUiStore` (persisted UI prefs)
-
-**Files:**
-- Create: `hooks/store/useWorkspaceUiStore.ts`
-- Test: `tests/workspace-ui-store.test.ts`
-
-**Interfaces:**
-- Produces:
-  - `type DockSide = 'bottom' | 'right'`
-  - `type PanelTab = 'output' | 'validation' | 'history'`
-  - store fields: `sidebarCollapsed`, `paletteCollapsed`, `panelCollapsed`, `panelDock: DockSide`, `panelSize: number`, `panelTab: PanelTab`
-  - actions: `toggleSidebar()`, `togglePalette()`, `togglePanel()`, `setPanelDock(d)`, `setPanelSize(n)`, `setPanelTab(t)`, `openPanelTab(t)` (sets tab **and** clears `panelCollapsed` — used by the a3 auto-switch).
-
-- [ ] **Step 1: Write the failing test** — `tests/workspace-ui-store.test.ts`:
-
-```ts
+// tests/run-model.test.ts
 import assert from 'node:assert'
-import { useWorkspaceUiStore } from '../hooks/store/useWorkspaceUiStore'
+import { applyInstanceEvent, nodeStateFor, InstanceRunMap } from '../lib/runModel'
+import { AgentOutput } from '../lib/types'
 
-const s = useWorkspaceUiStore.getState()
-assert.strictEqual(s.panelDock, 'bottom')
-assert.strictEqual(s.panelCollapsed, false)
-
-s.togglePanel()
-assert.strictEqual(useWorkspaceUiStore.getState().panelCollapsed, true)
-
-s.openPanelTab('validation')
-assert.strictEqual(useWorkspaceUiStore.getState().panelTab, 'validation')
-assert.strictEqual(useWorkspaceUiStore.getState().panelCollapsed, false) // openPanelTab un-collapses
-
-s.setPanelDock('right')
-assert.strictEqual(useWorkspaceUiStore.getState().panelDock, 'right')
-
-s.toggleSidebar()
-assert.strictEqual(useWorkspaceUiStore.getState().sidebarCollapsed, true)
-
-console.log('✅ workspace-ui store passed')
-```
-
-- [ ] **Step 2: Run to confirm it fails**
-
-Run: `npx tsx tests/workspace-ui-store.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement** — `hooks/store/useWorkspaceUiStore.ts`:
-
-```ts
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-
-export type DockSide = 'bottom' | 'right'
-export type PanelTab = 'output' | 'validation' | 'history'
-
-interface WorkspaceUiState {
-  sidebarCollapsed: boolean
-  paletteCollapsed: boolean
-  panelCollapsed: boolean
-  panelDock: DockSide
-  panelSize: number
-  panelTab: PanelTab
-  toggleSidebar: () => void
-  togglePalette: () => void
-  togglePanel: () => void
-  setPanelDock: (d: DockSide) => void
-  setPanelSize: (n: number) => void
-  setPanelTab: (t: PanelTab) => void
-  openPanelTab: (t: PanelTab) => void
+function out(o: Partial<{ output: string; status: string; round: number; agentName: string }>) {
+  return { agentName: 'w', systemPrompt: '', input: '', output: '', thought: '', tokensIn: 0,
+    tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success', ...o } as unknown as AgentOutput
 }
 
-export const useWorkspaceUiStore = create<WorkspaceUiState>()(
-  persist(
-    (set) => ({
-      sidebarCollapsed: false,
-      paletteCollapsed: false,
-      panelCollapsed: false,
-      panelDock: 'bottom',
-      panelSize: 240,
-      panelTab: 'output',
-      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-      togglePalette: () => set((s) => ({ paletteCollapsed: !s.paletteCollapsed })),
-      togglePanel: () => set((s) => ({ panelCollapsed: !s.panelCollapsed })),
-      setPanelDock: (panelDock) => set({ panelDock }),
-      setPanelSize: (panelSize) => set({ panelSize }),
-      setPanelTab: (panelTab) => set({ panelTab }),
-      openPanelTab: (panelTab) => set({ panelTab, panelCollapsed: false }),
-    }),
-    { name: 'maestro-workspace-ui' },
-  ),
-)
+let m: InstanceRunMap = {}
+
+// two instances accumulate independently under the same nodeId
+m = applyInstanceEvent(m, 0, { type: 'agent_start', nodeId: 'a', agentName: 'w', step: 0 })
+m = applyInstanceEvent(m, 1, { type: 'agent_start', nodeId: 'a', agentName: 'w', step: 0 })
+m = applyInstanceEvent(m, 0, { type: 'token', nodeId: 'a', token: 'zero', step: 0 })
+m = applyInstanceEvent(m, 1, { type: 'token', nodeId: 'a', token: 'one', step: 0 })
+assert.strictEqual(m[0].a.output, 'zero')
+assert.strictEqual(m[1].a.output, 'one')
+assert.strictEqual(nodeStateFor(m, 0, 'a')?.output, 'zero')
+assert.strictEqual(nodeStateFor(m, 1, 'a')?.output, 'one')
+
+// agent_done routes to the correct instance only
+m = applyInstanceEvent(m, 1, { type: 'agent_done', nodeId: 'a', agentName: 'w', step: 0, output: out({ output: 'one', status: 'success' }) })
+assert.strictEqual(m[1].a.status, 'success')
+assert.strictEqual(m[0].a.status, 'running')
+
+// missing instance / node returns undefined, never throws
+assert.strictEqual(nodeStateFor(m, 9, 'a'), undefined)
+assert.strictEqual(nodeStateFor(m, 0, 'missing'), undefined)
+
+console.log('✅ run-model tests passed')
 ```
 
-- [ ] **Step 4: Run to confirm it passes**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx tsx tests/workspace-ui-store.test.ts`
-Expected: PASS — prints `✅ workspace-ui store passed`. (Persist falls back to in-memory when `localStorage` is absent under tsx; that's fine.)
+Run: `npx vitest run tests/run-model.test.ts`
+Expected: FAIL — cannot resolve `../lib/runModel`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+// lib/runModel.ts
+import { applyRunEvent, RunStateMap, NodeRunState } from './runState'
+import { RunEvent } from './runStream'
+
+// 2D: instanceIndex -> nodeId -> NodeRunState (see design §7)
+export type InstanceRunMap = Record<number, RunStateMap>
+
+export function applyInstanceEvent(map: InstanceRunMap, instance: number, e: RunEvent): InstanceRunMap {
+  const prev = map[instance] ?? {}
+  return { ...map, [instance]: applyRunEvent(prev, e) }
+}
+
+export function nodeStateFor(map: InstanceRunMap, instance: number, nodeId: string): NodeRunState | undefined {
+  return map[instance]?.[nodeId]
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/run-model.test.ts`
+Expected: PASS — prints `✅ run-model tests passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add hooks/store/useWorkspaceUiStore.ts tests/workspace-ui-store.test.ts
-git commit -m "feat: persisted workspace UI store"
+git add lib/runModel.ts tests/run-model.test.ts
+git commit -m "feat: pure 2D per-instance run-state model"
 ```
 
 ---
 
-## Task 3: `useRunStore` (store-owned run engine)
+### Task A2: `useRunStore` — run lifecycle + fan-out
 
 **Files:**
 - Create: `hooks/store/useRunStore.ts`
 - Test: `tests/run-store.test.ts`
 
 **Interfaces:**
-- Consumes: `RunRecord`, `RunInstanceState`, `emptyInstance`, `applyEventToInstance` (`lib/runState.ts`); `streamRun` (`lib/runStream.ts`).
+- Consumes: `InstanceRunMap`, `applyInstanceEvent` (A1); `streamRun`, `RunEvent` (`lib/runStream.ts`); `create` from `zustand`.
 - Produces:
-  - `runKey(type: string, slug: string): string` → `` `${type}:${slug}` ``
-  - store fields: `runsByKey: Record<string, RunRecord>`, `inputsByKey: Record<string, { seedPrompt: string; parallelCount: number }>`, `graphProviders: Record<string, GraphProvider>`
-  - `type GraphProvider = () => { name: string; description?: string; nodes: ChainNode[]; edges: ChainEdge[] }`
-  - actions: `setSeed(key, seed)`, `setParallel(key, n)`, `setInstanceIndex(key, i)`, `setGraphProvider(key, fn)`, `run(args: { key: string; type: string; slug: string; graph?: { name: string; description?: string; nodes: ChainNode[]; edges: ChainEdge[] } }): Promise<void>`
-  - selector helper (plain export): `inputsOf(state, key)` returns `{ seedPrompt: '', parallelCount: 1 }` default.
-  - **Inline-run body (post-B):** `run()` builds the POST body by precedence — `args.graph` (explicit, e.g. partial run) → the registered `graphProviders[key]()` → `{ agentName: slug }` (agent view) → `{ chainName: slug }` (YAML view). When a graph is used, post `{ chain, seedPrompt, type, slug }`; this is B §1.1. No flush.
+  - `interface RunTarget { type: string; slug: string; buildBody: (seedPrompt: string) => Record<string, unknown> }`
+  - `setRunTarget(key: string, target: RunTarget): void` / `clearRunTarget(key: string): void` (module-level registry, not store state)
+  - `interface FileRunState { runState: InstanceRunMap; instanceCount: number; currentInstance: number; running: boolean; error: string | null; seedPrompt: string; parallel: number }`
+  - `useRunStore` with: `byFile: Record<string, FileRunState>`, and actions `setSeed(key, seed)`, `setParallel(key, n)`, `setCurrentInstance(key, i)`, `reset(key)`, `run(key, opts?: { bodyOverride?: (seed: string) => Record<string, unknown>; parallel?: number }): Promise<void>`
+  - `fileRun(key: string): FileRunState` selector helper exported for consumers (returns defaults when absent).
 
-- [ ] **Step 1: Write the failing test** — `tests/run-store.test.ts` (covers pure reducers, not network):
+- [ ] **Step 1: Write the failing test** (covers the fan-out — the riskiest logic — with a mocked SSE `fetch`)
 
 ```ts
+// tests/run-store.test.ts
 import assert from 'node:assert'
-import { useRunStore, runKey } from '../hooks/store/useRunStore'
+import { useRunStore, setRunTarget, fileRun } from '../hooks/store/useRunStore'
 
-assert.strictEqual(runKey('chain', 'triage-demo'), 'chain:triage-demo')
+function sse(frames: object[]): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      const enc = new TextEncoder()
+      for (const f of frames) c.enqueue(enc.encode(`data: ${JSON.stringify(f)}\n\n`))
+      c.close()
+    },
+  })
+  return new Response(body, { status: 200 })
+}
 
-const k = runKey('chain', 't')
-useRunStore.getState().setSeed(k, 'hello')
-useRunStore.getState().setParallel(k, 3)
-assert.strictEqual(useRunStore.getState().inputsByKey[k].seedPrompt, 'hello')
-assert.strictEqual(useRunStore.getState().inputsByKey[k].parallelCount, 3)
+const KEY = 'chain:demo'
+const done = (output: string) => ({
+  agentName: 'w', systemPrompt: '', input: '', output, thought: '', tokensIn: 0, tokensOut: 0,
+  costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
+})
 
-// instanceIndex setter is clamp-free but no-throw on missing record
-useRunStore.getState().setInstanceIndex(k, 2)
-// no record yet -> creates/updates index defensively without throwing
-assert.doesNotThrow(() => useRunStore.getState().setInstanceIndex(k, 1))
+await (async () => {
+  // each instance gets its own stream; tag output with the instance index so we can assert routing
+  let call = -1
+  // @ts-expect-error - override global fetch for the test
+  global.fetch = async () => {
+    call += 1
+    const tag = `i${call}`
+    return sse([
+      { type: 'agent_start', nodeId: 'a', agentName: 'w', step: 0 },
+      { type: 'token', nodeId: 'a', token: tag, step: 0 },
+      { type: 'agent_done', nodeId: 'a', agentName: 'w', step: 0, output: done(tag) },
+    ])
+  }
 
-console.log('✅ run-store reducers passed')
+  setRunTarget(KEY, { type: 'chain', slug: 'demo', buildBody: (seed) => ({ seedPrompt: seed }) })
+  useRunStore.getState().setSeed(KEY, 'hi')
+  useRunStore.getState().setParallel(KEY, 2)
+
+  await useRunStore.getState().run(KEY)
+
+  const f = fileRun(KEY)
+  assert.strictEqual(f.running, false)
+  assert.strictEqual(f.instanceCount, 2)
+  assert.strictEqual(f.error, null)
+  // both instances completed, outputs are independent per instance
+  assert.strictEqual(f.runState[0].a.status, 'success')
+  assert.strictEqual(f.runState[1].a.status, 'success')
+  assert.notStrictEqual(f.runState[0].a.output, f.runState[1].a.output)
+
+  // reset clears results
+  useRunStore.getState().reset(KEY)
+  assert.deepStrictEqual(fileRun(KEY).runState, {})
+})()
+
+await (async () => {
+  // run-level failure: non-ok response sets error and leaves running=false
+  // @ts-expect-error - override global fetch
+  global.fetch = async () => new Response(JSON.stringify({ error: 'bad chain' }), { status: 400 })
+  setRunTarget('chain:bad', { type: 'chain', slug: 'bad', buildBody: () => ({}) })
+  useRunStore.getState().setParallel('chain:bad', 1)
+  await useRunStore.getState().run('chain:bad')
+  const f = fileRun('chain:bad')
+  assert.strictEqual(f.running, false)
+  assert.strictEqual(f.error, 'bad chain')
+})()
+
+console.log('✅ run-store tests passed')
 ```
 
-- [ ] **Step 2: Run to confirm it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx tsx tests/run-store.test.ts`
-Expected: FAIL — module not found.
+Run: `npx vitest run tests/run-store.test.ts`
+Expected: FAIL — cannot resolve `../hooks/store/useRunStore`.
 
-- [ ] **Step 3: Implement** — `hooks/store/useRunStore.ts`:
+- [ ] **Step 3: Write minimal implementation**
 
 ```ts
+// hooks/store/useRunStore.ts
 import { create } from 'zustand'
+import { InstanceRunMap, applyInstanceEvent } from '@/lib/runModel'
 import { streamRun } from '@/lib/runStream'
-import { emptyInstance, applyEventToInstance, type RunRecord } from '@/lib/runState'
-import type { ChainNode, ChainEdge } from '@/lib/types'
 
-export const runKey = (type: string, slug: string) => `${type}:${slug}`
+export interface RunTarget {
+  type: string
+  slug: string
+  buildBody: (seedPrompt: string) => Record<string, unknown>
+}
 
-export type GraphProvider = () => { name: string; description?: string; nodes: ChainNode[]; edges: ChainEdge[] }
-type Graph = ReturnType<GraphProvider>
+// Module-level registry (not store state) so the live graph getter isn't serialized.
+// Replaces the old registerFlush seam (design §2).
+const targets = new Map<string, RunTarget>()
+export function setRunTarget(key: string, target: RunTarget) { targets.set(key, target) }
+export function clearRunTarget(key: string) { targets.delete(key) }
 
-interface RunInputs { seedPrompt: string; parallelCount: number }
-const DEFAULT_INPUTS: RunInputs = { seedPrompt: '', parallelCount: 1 }
+export interface FileRunState {
+  runState: InstanceRunMap
+  instanceCount: number
+  currentInstance: number
+  running: boolean
+  error: string | null
+  seedPrompt: string
+  parallel: number
+}
+
+const defaults = (): FileRunState => ({
+  runState: {}, instanceCount: 0, currentInstance: 0, running: false, error: null, seedPrompt: '', parallel: 1,
+})
 
 interface RunStore {
-  runsByKey: Record<string, RunRecord>
-  inputsByKey: Record<string, RunInputs>
-  graphProviders: Record<string, GraphProvider>
-  setSeed: (key: string, seedPrompt: string) => void
-  setParallel: (key: string, parallelCount: number) => void
-  setInstanceIndex: (key: string, instanceIndex: number) => void
-  setGraphProvider: (key: string, fn: GraphProvider) => void
-  run: (args: { key: string; type: string; slug: string; graph?: Graph }) => Promise<void>
+  byFile: Record<string, FileRunState>
+  setSeed: (key: string, seed: string) => void
+  setParallel: (key: string, n: number) => void
+  setCurrentInstance: (key: string, i: number) => void
+  reset: (key: string) => void
+  run: (key: string, opts?: { bodyOverride?: (seed: string) => Record<string, unknown>; parallel?: number }) => Promise<void>
 }
 
-export function inputsOf(state: RunStore, key: string): RunInputs {
-  return state.inputsByKey[key] ?? DEFAULT_INPUTS
-}
+export const useRunStore = create<RunStore>((set, get) => {
+  const patch = (key: string, p: Partial<FileRunState>) =>
+    set((s) => ({ byFile: { ...s.byFile, [key]: { ...(s.byFile[key] ?? defaults()), ...p } } }))
 
-export const useRunStore = create<RunStore>((set, get) => ({
-  runsByKey: {},
-  inputsByKey: {},
-  graphProviders: {},
+  return {
+    byFile: {},
+    setSeed: (key, seed) => patch(key, { seedPrompt: seed }),
+    setParallel: (key, n) => patch(key, { parallel: Math.max(1, Math.min(10, n || 1)) }),
+    setCurrentInstance: (key, i) => patch(key, { currentInstance: i }),
+    reset: (key) => patch(key, { runState: {}, instanceCount: 0, currentInstance: 0, error: null }),
 
-  setSeed: (key, seedPrompt) =>
-    set((s) => ({ inputsByKey: { ...s.inputsByKey, [key]: { ...inputsOf(s, key), seedPrompt } } })),
+    run: async (key, opts) => {
+      const target = targets.get(key)
+      if (!target) return
+      const cur = get().byFile[key] ?? defaults()
+      const n = opts?.parallel ?? cur.parallel
+      const buildBody = opts?.bodyOverride ?? target.buildBody
+      const seed = cur.seedPrompt
 
-  setParallel: (key, parallelCount) =>
-    set((s) => ({ inputsByKey: { ...s.inputsByKey, [key]: { ...inputsOf(s, key), parallelCount: Math.max(1, parallelCount) } } })),
+      patch(key, { runState: {}, instanceCount: n, currentInstance: 0, running: true, error: null })
 
-  setInstanceIndex: (key, instanceIndex) =>
-    set((s) => {
-      const rec = s.runsByKey[key]
-      if (!rec) return s
-      return { runsByKey: { ...s.runsByKey, [key]: { ...rec, instanceIndex } } }
-    }),
-
-  setGraphProvider: (key, fn) =>
-    set((s) => ({ graphProviders: { ...s.graphProviders, [key]: fn } })),
-
-  run: async ({ key, type, slug, graph }) => {
-    const { parallelCount, seedPrompt } = inputsOf(get(), key)
-    const n = Math.max(1, parallelCount)
-
-    // Inline-run body (Group B §1.1): explicit graph → registered provider → agent → chain-by-name.
-    const live = graph ?? get().graphProviders[key]?.()
-    const body = live
-      ? { chain: live, seedPrompt, type, slug }
-      : type === 'agent'
-        ? { agentName: slug, seedPrompt, type, slug }
-        : { chainName: slug, seedPrompt, type, slug }
-
-    set((s) => ({
-      runsByKey: {
-        ...s.runsByKey,
-        [key]: {
-          instances: Array.from({ length: n }, () => emptyInstance()),
-          instanceIndex: 0,
-          running: true,
-          error: undefined,
-          startedAt: new Date().toISOString(),
-        },
-      },
-    }))
-
-    // mutate one instance immutably inside the record
-    const apply = (i: number, ev: Parameters<typeof applyEventToInstance>[1]) =>
-      set((s) => {
-        const rec = s.runsByKey[key]
-        if (!rec) return s
-        const instances = rec.instances.map((inst, idx) => (idx === i ? applyEventToInstance(inst, ev) : inst))
-        return { runsByKey: { ...s.runsByKey, [key]: { ...rec, instances } } }
-      })
-
-    const setRunError = (msg: string) =>
-      set((s) => {
-        const rec = s.runsByKey[key]
-        if (!rec) return s
-        return { runsByKey: { ...s.runsByKey, [key]: { ...rec, error: msg } } }
-      })
-
-    const runOne = async (i: number) => {
-      try {
-        const res = await fetch('/api/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          const msg = (body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`
-          setRunError(msg)
-          apply(i, { type: 'error', error: msg })
-          return
+      const runOne = async (i: number) => {
+        try {
+          const res = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildBody(seed)),
+          })
+          if (!res.ok) {
+            const b = await res.json().catch(() => ({}))
+            patch(key, { error: (b.errors as string[] | undefined)?.join('; ') ?? b.error ?? `Run failed (${res.status})` })
+            return
+          }
+          const reader = res.body?.getReader()
+          if (!reader) return
+          await streamRun(reader, (e) => {
+            if (e.type === 'error') { patch(key, { error: e.error }); return }
+            set((s) => {
+              const f = s.byFile[key] ?? defaults()
+              return { byFile: { ...s.byFile, [key]: { ...f, runState: applyInstanceEvent(f.runState, i, e) } } }
+            })
+          })
+        } catch (err) {
+          patch(key, { error: err instanceof Error ? err.message : String(err) })
         }
-        const reader = res.body?.getReader()
-        if (!reader) return
-        await streamRun(reader, (ev) => apply(i, ev))
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setRunError(msg)
-        apply(i, { type: 'error', error: msg })
       }
-    }
 
-    try {
       await Promise.all(Array.from({ length: n }, (_, i) => runOne(i)))
-    } finally {
-      set((s) => {
-        const rec = s.runsByKey[key]
-        if (!rec) return s
-        return { runsByKey: { ...s.runsByKey, [key]: { ...rec, running: false } } }
-      })
-    }
-  },
-}))
+      patch(key, { running: false })
+    },
+  }
+})
+
+export function fileRun(key: string): FileRunState {
+  return useRunStore.getState().byFile[key] ?? defaults()
+}
 ```
 
-- [ ] **Step 4: Run to confirm it passes**
+- [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx tsx tests/run-store.test.ts`
-Expected: PASS — prints `✅ run-store reducers passed`.
+Run: `npx vitest run tests/run-store.test.ts`
+Expected: PASS — prints `✅ run-store tests passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add hooks/store/useRunStore.ts tests/run-store.test.ts
-git commit -m "feat: store-owned run engine (per-instance, keyed by file)"
+git commit -m "feat: useRunStore — store-owned run with N-stream fan-out"
 ```
 
 ---
 
-## Task 4: `useSelectionStore` (current selected node)
+### Task A3: `useSelectionStore` — primary selected node
 
 **Files:**
 - Create: `hooks/store/useSelectionStore.ts`
+- Test: `tests/selection-store.test.ts`
 
 **Interfaces:**
-- Produces: `selectedNodeId: string | null`, `setSelectedNodeId(id: string | null)`.
+- Produces: `useSelectionStore` with `byFile: Record<string, string | null>`, `setSelected(key, nodeId)`, and selector helper `selectedNodeId(key): string | null`.
 
-- [ ] **Step 1: Implement** — `hooks/store/useSelectionStore.ts`:
+- [ ] **Step 1: Write the failing test**
 
 ```ts
+// tests/selection-store.test.ts
+import assert from 'node:assert'
+import { useSelectionStore, selectedNodeId } from '../hooks/store/useSelectionStore'
+
+assert.strictEqual(selectedNodeId('chain:a'), null)
+useSelectionStore.getState().setSelected('chain:a', 'node-1')
+useSelectionStore.getState().setSelected('chain:b', 'node-2')
+assert.strictEqual(selectedNodeId('chain:a'), 'node-1')
+assert.strictEqual(selectedNodeId('chain:b'), 'node-2')
+useSelectionStore.getState().setSelected('chain:a', null)
+assert.strictEqual(selectedNodeId('chain:a'), null)
+
+console.log('✅ selection-store tests passed')
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/selection-store.test.ts`
+Expected: FAIL — cannot resolve module.
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+// hooks/store/useSelectionStore.ts
 import { create } from 'zustand'
 
 interface SelectionStore {
-  selectedNodeId: string | null
-  setSelectedNodeId: (id: string | null) => void
+  byFile: Record<string, string | null>
+  setSelected: (key: string, nodeId: string | null) => void
 }
 
 export const useSelectionStore = create<SelectionStore>((set) => ({
-  selectedNodeId: null,
-  setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
+  byFile: {},
+  setSelected: (key, nodeId) => set((s) => ({ byFile: { ...s.byFile, [key]: nodeId } })),
 }))
+
+export function selectedNodeId(key: string): string | null {
+  return useSelectionStore.getState().byFile[key] ?? null
+}
 ```
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx tsc --noEmit`
-Expected: no new errors.
+Run: `npx vitest run tests/selection-store.test.ts`
+Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add hooks/store/useSelectionStore.ts
-git commit -m "feat: selection store for current node"
+git add hooks/store/useSelectionStore.ts tests/selection-store.test.ts
+git commit -m "feat: useSelectionStore — write-through mirror of primary selection"
 ```
 
 ---
 
-## Task 5: Remove inline output from AgentNode
+### Task A4: `clampTab` + `useWorkspaceUiStore` (persisted)
 
 **Files:**
-- Modify: `components/editor/nodes/AgentNode.tsx:63-67`
+- Create: `lib/tabClamp.ts`, `hooks/store/useWorkspaceUiStore.ts`
+- Test: `tests/tab-clamp.test.ts`
 
-- [ ] **Step 1: Delete the output block** — remove exactly:
+**Interfaces:**
+- Produces:
+  - `type PanelTab = 'output' | 'validation' | 'history'`
+  - `clampTab(persisted: PanelTab, available: PanelTab[]): PanelTab` — returns `persisted` if available, else first available, else `'history'`.
+  - `type DockSide = 'bottom' | 'right'`
+  - `useWorkspaceUiStore` with: `dockSide`, `panelCollapsed`, `panelSize` (number, px), `activeTab: PanelTab`, `sidebarCollapsed`, `paletteCollapsed`, and setters `setDockSide`, `togglePanel`, `setPanelSize`, `setActiveTab`, `toggleSidebar`, `togglePalette`. Persisted under key `maestro_workspace_ui`.
 
+- [ ] **Step 1: Write the failing test** (TDD the pure clamp; the store itself is verified manually)
+
+```ts
+// tests/tab-clamp.test.ts
+import assert from 'node:assert'
+import { clampTab } from '../lib/tabClamp'
+
+assert.strictEqual(clampTab('validation', ['output', 'validation', 'history']), 'validation')
+// agent view: no validation tab -> fall back to first available
+assert.strictEqual(clampTab('validation', ['output', 'history']), 'output')
+// non-runnable view: history only
+assert.strictEqual(clampTab('output', ['history']), 'history')
+// empty (defensive) -> history
+assert.strictEqual(clampTab('output', []), 'history')
+
+console.log('✅ tab-clamp tests passed')
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/tab-clamp.test.ts`
+Expected: FAIL — cannot resolve `../lib/tabClamp`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+// lib/tabClamp.ts
+export type PanelTab = 'output' | 'validation' | 'history'
+
+export function clampTab(persisted: PanelTab, available: PanelTab[]): PanelTab {
+  if (available.includes(persisted)) return persisted
+  return available[0] ?? 'history'
+}
+```
+
+```ts
+// hooks/store/useWorkspaceUiStore.ts
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import type { PanelTab } from '@/lib/tabClamp'
+
+export type DockSide = 'bottom' | 'right'
+
+interface WorkspaceUiStore {
+  dockSide: DockSide
+  panelCollapsed: boolean
+  panelSize: number
+  activeTab: PanelTab
+  sidebarCollapsed: boolean
+  paletteCollapsed: boolean
+  setDockSide: (s: DockSide) => void
+  togglePanel: () => void
+  setPanelSize: (px: number) => void
+  setActiveTab: (t: PanelTab) => void
+  toggleSidebar: () => void
+  togglePalette: () => void
+}
+
+export const useWorkspaceUiStore = create<WorkspaceUiStore>()(
+  persist(
+    (set) => ({
+      dockSide: 'bottom',
+      panelCollapsed: false,
+      panelSize: 30, // percent of the editor area (the parent react-resizable Panel owns sizing)
+      activeTab: 'output',
+      sidebarCollapsed: false,
+      paletteCollapsed: false,
+      setDockSide: (s) => set({ dockSide: s }),
+      togglePanel: () => set((st) => ({ panelCollapsed: !st.panelCollapsed })),
+      setPanelSize: (n) => set({ panelSize: Math.max(10, Math.min(80, n)) }),
+      setActiveTab: (t) => set({ activeTab: t }),
+      toggleSidebar: () => set((st) => ({ sidebarCollapsed: !st.sidebarCollapsed })),
+      togglePalette: () => set((st) => ({ paletteCollapsed: !st.paletteCollapsed })),
+    }),
+    { name: 'maestro_workspace_ui' },
+  ),
+)
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/tab-clamp.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/tabClamp.ts hooks/store/useWorkspaceUiStore.ts tests/tab-clamp.test.ts
+git commit -m "feat: useWorkspaceUiStore (persisted) + clampTab hydrate guard"
+```
+
+---
+
+## Phase B — Unified run engine
+
+### Task B1: Wire `ChainEditor` to the run store + mirror selection
+
+**Files:**
+- Modify: `components/editor/ChainEditor.tsx`
+
+**Interfaces:**
+- Consumes: `useRunStore`, `setRunTarget`, `clearRunTarget`, `fileRun` (A2); `useSelectionStore` (A3); `nodeStateFor` (A1).
+- Produces: nothing new; this removes `streamInline`/local run useState and routes run through the store.
+
+This task replaces the editor's local run state with the store. The bottom panels (`ValidationPanel`, `InterfacePanel`, `NodePreview`) are removed here too — their replacements arrive in Phase C/D, so between B1 and C the validation/output surface is temporarily absent in graph view (acceptable mid-plan; the run button + graph dots still work).
+
+- [ ] **Step 1: Add store imports** — replace the run-stream import block.
+
+Replace:
+```ts
+import { streamRun } from '@/lib/runStream'
+import { applyRunEvent, type RunStateMap } from '@/lib/runState'
+import NodePreview from './NodePreview'
+import InterfacePanel from './InterfacePanel'
+```
+with:
+```ts
+import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore'
+import { useSelectionStore } from '@/hooks/store/useSelectionStore'
+```
+(The current-instance slice is read directly off the store in Step 2, so no `runModel` import is needed here.)
+Also remove the now-unused `ValidationPanel` import if no longer referenced after Step 5 (keep until then).
+
+- [ ] **Step 2: Replace local run state with store reads.**
+
+Delete these lines:
+```ts
+  const [runState, setRunState] = useState<RunStateMap>({})
+  const [seedPrompt, setSeedPrompt] = useState(initialSeedPrompt ?? '')
+  const [running, setRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
+```
+Add (after `const primaryId = …`):
+```ts
+  const fileKey = `chain:${slug}`
+  const file = useRunStore(s => s.byFile[fileKey])
+  const running = file?.running ?? false
+  const currentInstance = file?.currentInstance ?? 0
+  const runState = file ? (file.runState[currentInstance] ?? {}) : {}
+```
+Seed the store's seed prompt once on mount:
+```ts
+  useEffect(() => {
+    if (initialSeedPrompt) useRunStore.getState().setSeed(fileKey, initialSeedPrompt)
+  }, [fileKey, initialSeedPrompt])
+```
+
+- [ ] **Step 3: Register the run target; delete `streamInline`/`run`/`runUpTo` local fetch.**
+
+Delete the whole `streamInline` `useCallback`, the `run` `useCallback`, and `runUpTo` `useCallback` (`ChainEditor.tsx:115-138`). Replace with target registration + thin run callbacks:
+```ts
+  useEffect(() => {
+    setRunTarget(fileKey, {
+      type: 'chain', slug,
+      buildBody: (seedPrompt) => ({
+        chain: { name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs, nodes, edges },
+        seedPrompt, type: 'chain', slug,
+      }),
+    })
+    return () => clearRunTarget(fileKey)
+  }, [fileKey, slug, meta, iface, nodes, edges])
+
+  const run = useCallback(() => useRunStore.getState().run(fileKey), [fileKey])
+  const runUpTo = useCallback((targetId: string) => {
+    const sub = upstreamSubgraph({ ...initialChain, nodes, edges }, targetId)
+    // partial run is single-instance (design §2)
+    return useRunStore.getState().run(fileKey, {
+      parallel: 1,
+      bodyOverride: (seedPrompt) => ({
+        chain: { name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs, nodes: sub.nodes, edges: sub.edges },
+        seedPrompt, type: 'chain', slug,
+      }),
+    })
+  }, [fileKey, initialChain, nodes, edges, meta, iface, slug])
+```
+
+- [ ] **Step 4: Mirror primary selection into the selection store.** In `setSelectedIds`, add a write-through:
+```ts
+  const setSelectedIds = useCallback((ids: string[]) => {
+    dispatch({ type: 'setSelection', ids })
+    useSelectionStore.getState().setSelected(`chain:${slug}`, ids[0] ?? null)
+  }, [slug])
+```
+
+- [ ] **Step 5: Remove the bottom panels + run-error/run-button JSX that the header/panel will own.**
+
+Delete the bottom three elements (`ValidationPanel`, `InterfacePanel`, `NodePreview` block at `ChainEditor.tsx:270-274`) and the `runError` banner (`:234`) — run-error now surfaces in `DockPanel` (Task C6). Keep the file-watch `conflict` banner. The header seed/run/undo bar (`:202-232`) stays for now and is removed in Task D1. Update `buildData`'s `run:` field to read from the current instance:
+```ts
+    run: runState[node.id],   // unchanged — runState is now the current-instance slice from Step 2
+```
+(No code change needed in `buildData` since `runState` was redefined in Step 2; confirm it compiles.)
+
+- [ ] **Step 6: Manual verify**
+
+Run: `npm run dev`, open a chain in Graph view, click Run.
+Expected: graph status dots animate and settle (green/red) exactly as before; no `NodePreview`/Validation/Interface strips at the bottom; no console errors. Switch Graph→YAML→Graph mid-run (toggle in `page.tsx`): the run keeps progressing (store-owned, a4).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add components/editor/ChainEditor.tsx
+git commit -m "feat: route ChainEditor run through useRunStore; mirror selection"
+```
+
+---
+
+### Task B2: `AgentNode` reads current-instance run; remove inline output
+
+**Files:**
+- Modify: `components/editor/nodes/AgentNode.tsx`
+
+**Interfaces:**
+- Consumes: `EditorNodeData.run` (already the current-instance slice after B1).
+
+- [ ] **Step 1: Remove the inline output block.** Delete `AgentNode.tsx:72-76`:
 ```tsx
         {run && run.output && (
           <div className="mt-2 text-[10px] text-zinc-600 bg-zinc-50 border border-zinc-100 rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
@@ -522,260 +659,155 @@ git commit -m "feat: selection store for current node"
           </div>
         )}
 ```
-
-The status dot (`statusDotClass(run)`), skipped opacity, and issue border stay — only the text block goes. (`run` is still read for the dot, so no unused-var lint.)
+Leave the status dot (`statusDotClass(run)`) and `run?.status === 'skipped'` opacity untouched.
 
 - [ ] **Step 2: Manual verify**
 
-Run: `npm run dev`, open a chain, click Run (old button still works at this point). Expected: nodes show the status dot turning green/blue/red but **do not grow** with output text.
+Run: `npm run dev`, run a chain. Nodes show the status dot only — no text output box stretching the node. Output appears in the panel (after Phase C); for now confirm the node no longer renders output text.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add components/editor/nodes/AgentNode.tsx
-git commit -m "feat: stop rendering run output inside agent nodes"
+git commit -m "feat: remove inline output block from AgentNode (moves to Output tab)"
 ```
 
 ---
 
-## Task 6: Version-diff utility
+### Task B3: Route agent + YAML run through the store in `page.tsx`
 
 **Files:**
-- Create: `lib/versionDiff.ts`
-- Test: `tests/version-diff.test.ts`
+- Modify: `app/workspace/page.tsx`
+
+This deletes the entire `runsByFile`/`handleRun`/`runSingleInstance` machinery and the in-memory accumulating run list (design §7). The one-line header (Task D1) reuses the run button added here. Agent and chain-YAML views register a by-name run target.
 
 **Interfaces:**
-- Consumes: `diff-match-patch` (dep).
-- Produces: `diffLines(a: string, b: string): { type: 'eq' | 'add' | 'del'; text: string }[]`.
+- Consumes: `useRunStore`, `setRunTarget`, `clearRunTarget`, `fileRun` (A2).
 
-- [ ] **Step 1: Write the failing test** — `tests/version-diff.test.ts`:
+- [ ] **Step 1: Delete dead run state + functions.** Remove `runsByFile`, `currentRuns`, `isExecuting`, `clearAllRuns`, `deleteRun`, `runSingleInstance`, `handleRun`, and the `AgentState`/`RunInstance` interfaces (`page.tsx:21-43, 58, 88-103, 135-294`). Remove now-unused imports `AgentStreamOutput`, `nanoid`, `streamRun`, `RunEvent`, `AgentOutput`, `Trash2`, `Activity`, `Columns2`, `X`.
 
+- [ ] **Step 2: Add store-backed run.** After the `currentFileKey` definition:
 ```ts
-import assert from 'node:assert'
-import { diffLines } from '../lib/versionDiff'
+  const file = useRunStore(s => s.byFile[currentFileKey])
+  const running = file?.running ?? false
 
-const out = diffLines('a\nb\nc', 'a\nB\nc')
-assert.ok(out.some((d) => d.type === 'del' && d.text.includes('b')))
-assert.ok(out.some((d) => d.type === 'add' && d.text.includes('B')))
-assert.ok(out.some((d) => d.type === 'eq' && d.text.includes('a')))
+  // Agent + chain-YAML run from disk by name (graph view registers an inline-graph target in ChainEditor).
+  useEffect(() => {
+    if (!type || !slug) return
+    const isGraph = type === 'chain' && chainView === 'graph' && !!parsedChain
+    if (isGraph) return // ChainEditor owns the target for graph view
+    if (type !== 'agent' && type !== 'chain') return
+    setRunTarget(currentFileKey, {
+      type, slug,
+      buildBody: (seedPrompt) => ({ [type === 'chain' ? 'chainName' : 'agentName']: slug, seedPrompt, type, slug }),
+    })
+    return () => clearRunTarget(currentFileKey)
+  }, [type, slug, chainView, parsedChain, currentFileKey])
 
-console.log('✅ version-diff passed')
+  const handleRun = useCallback(() => {
+    useRunStore.getState().setSeed(currentFileKey, seedPrompt)
+    return useRunStore.getState().run(currentFileKey)
+  }, [currentFileKey, seedPrompt])
 ```
-
-- [ ] **Step 2: Run to confirm it fails**
-
-Run: `npx tsx tests/version-diff.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement** — `lib/versionDiff.ts`:
-
+Keep `seedPrompt`/`parallelCount` page useState **only** until Task D1 moves them into the header/store; wire `parallelCount` into the store now:
 ```ts
-import { diff_match_patch, DIFF_DELETE, DIFF_INSERT } from 'diff-match-patch'
-
-export interface DiffLine { type: 'eq' | 'add' | 'del'; text: string }
-
-// Line-mode diff: tokenize to lines, diff, expand back to lines.
-export function diffLines(a: string, b: string): DiffLine[] {
-  const dmp = new diff_match_patch()
-  const { chars1, chars2, lineArray } = dmp.diff_linesToChars_(a, b)
-  const diffs = dmp.diff_main(chars1, chars2, false)
-  dmp.diff_charsToLines_(diffs, lineArray)
-  const out: DiffLine[] = []
-  for (const [op, data] of diffs) {
-    const type = op === DIFF_INSERT ? 'add' : op === DIFF_DELETE ? 'del' : 'eq'
-    for (const line of data.replace(/\n$/, '').split('\n')) out.push({ type, text: line })
-  }
-  return out
-}
+  useEffect(() => { useRunStore.getState().setParallel(currentFileKey, parallelCount) }, [currentFileKey, parallelCount])
 ```
 
-- [ ] **Step 4: Run to confirm it passes**
-
-Run: `npx tsx tests/version-diff.test.ts`
-Expected: PASS — prints `✅ version-diff passed`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/versionDiff.ts tests/version-diff.test.ts
-git commit -m "feat: line-mode version diff util"
-```
-
----
-
-## Task 7: DockablePanel shell
-
-**Files:**
-- Create: `components/workspace/panel/DockablePanel.tsx`
-
-**Interfaces:**
-- Consumes: `useWorkspaceUiStore` (dock/collapse/size/tab), `DockSide`, `PanelTab`.
-- Produces: `<DockablePanel tabs={{ output, validation, history }} hiddenTabs?={PanelTab[]} switcher?={ReactNode} />` where each tab value is a `ReactNode`. Renders the active, non-hidden tab; honors dock side, collapse, and drag-resize.
-
-- [ ] **Step 1: Implement** — `components/workspace/panel/DockablePanel.tsx`:
-
+- [ ] **Step 3: Point the toolbar Run button at the new `handleRun`.** Its `onClick={handleRun}` already matches; update its label to use `running`:
 ```tsx
-'use client'
-import React, { useCallback, useRef } from 'react'
-import { useWorkspaceUiStore, type PanelTab } from '@/hooks/store/useWorkspaceUiStore'
-import { ChevronDown, PanelRight, PanelBottom } from 'lucide-react'
-
-const LABELS: Record<PanelTab, string> = { output: 'Output', validation: 'Validation', history: 'History' }
-
-export default function DockablePanel({
-  tabs, hiddenTabs = [], switcher,
-}: {
-  tabs: Partial<Record<PanelTab, React.ReactNode>>
-  hiddenTabs?: PanelTab[]
-  switcher?: React.ReactNode
-}) {
-  const { panelDock, panelCollapsed, panelSize, panelTab, setPanelTab, togglePanel, setPanelDock, setPanelSize } =
-    useWorkspaceUiStore()
-  const dragging = useRef(false)
-
-  const order = (['output', 'validation', 'history'] as PanelTab[]).filter((t) => !hiddenTabs.includes(t) && tabs[t] !== undefined)
-  const active = order.includes(panelTab) ? panelTab : order[0]
-
-  const onDrag = useCallback((e: React.MouseEvent) => {
-    dragging.current = true
-    const startPos = panelDock === 'bottom' ? e.clientY : e.clientX
-    const startSize = panelSize
-    const move = (m: MouseEvent) => {
-      if (!dragging.current) return
-      const delta = panelDock === 'bottom' ? startPos - m.clientY : startPos - m.clientX
-      setPanelSize(Math.min(700, Math.max(120, startSize + delta)))
-    }
-    const up = () => { dragging.current = false; window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
-    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
-  }, [panelDock, panelSize, setPanelSize])
-
-  const isBottom = panelDock === 'bottom'
-
-  if (panelCollapsed) {
-    return (
-      <button onClick={togglePanel}
-        className={`flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-white ${isBottom ? 'border-t h-7 w-full' : 'border-l w-7 h-full [writing-mode:vertical-rl]'} border-zinc-200 hover:bg-zinc-50`}>
-        {order.map((t) => LABELS[t]).join(' · ')}
-      </button>
-    )
-  }
-
-  return (
-    <div className={`flex bg-white ${isBottom ? 'flex-col border-t' : 'flex-row-reverse border-l'} border-zinc-200`}
-      style={isBottom ? { height: panelSize } : { width: panelSize }}>
-      <div className={isBottom ? 'h-1 w-full cursor-row-resize hover:bg-zinc-200' : 'w-1 h-full cursor-col-resize hover:bg-zinc-200'} onMouseDown={onDrag} />
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-        <div className="flex items-center border-b border-zinc-200 bg-zinc-50/40">
-          {order.map((t) => (
-            <button key={t} onClick={() => setPanelTab(t)}
-              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${active === t ? 'text-zinc-900 border-b-2 border-zinc-900 bg-white' : 'text-zinc-400 hover:text-zinc-600'}`}>
-              {LABELS[t]}
-            </button>
-          ))}
-          <div className="flex-1" />
-          {switcher}
-          <button onClick={() => setPanelDock(isBottom ? 'right' : 'bottom')} className="p-1.5 text-zinc-400 hover:text-zinc-700" title="Flip dock">
-            {isBottom ? <PanelRight size={14} /> : <PanelBottom size={14} />}
-          </button>
-          <button onClick={togglePanel} className="p-1.5 text-zinc-400 hover:text-zinc-700" title="Collapse"><ChevronDown size={14} /></button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto">{tabs[active]}</div>
-      </div>
-    </div>
-  )
-}
+            {running ? 'Running…' : 'Run'}
 ```
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 4: Remove the side Output console panel** (`page.tsx:445-553`, the `{isOutputVisible && (…)}` block) and the History panel block (`:555-566`) — both move into `DockPanel` (Phase C). Remove `isOutputVisible`/`isHistoryVisible` state and their toggle buttons (`:361-383`). The `Group`/`Panel` wrapper collapses to a single full-width editor panel for now:
+```tsx
+          <div className="h-full flex flex-col">
+            {/* chain Graph/YAML toggle + editor (unchanged inner content) */}
+          </div>
+```
+(Replace the `<Group orientation="horizontal">…</Group>` with the single `<div>`; keep the chain view toggle + `ChainEditor`/`FileEditor` switch inside it.)
 
-Run: `npx tsc --noEmit`
-Expected: no new errors. (Verify `PanelRight`/`PanelBottom`/`ChevronDown` exist in the installed `lucide-react`; if any is missing, substitute `Columns2`/`Rows2`/`ChevronDown`.)
+- [ ] **Step 5: Manual verify**
 
-- [ ] **Step 3: Commit**
+Run: `npm run dev`. Open an **agent**, set a seed, click Run — no error (output surface returns in Phase C; verify via Network tab that `/api/run` is POSTed with `{agentName, seedPrompt}` and streams 200). Open a **chain in YAML view**, Run — POSTs `{chainName,…}`. Open a chain in **Graph view**, Run — POSTs `{chain:{nodes,edges},…}` (ChainEditor's target). No `runsByFile` references remain (`grep -n runsByFile app/workspace/page.tsx` → empty).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add components/workspace/panel/DockablePanel.tsx
-git commit -m "feat: dockable panel shell (tabs, dock, collapse, resize)"
+git add app/workspace/page.tsx
+git commit -m "feat: route agent/YAML run through useRunStore; drop in-memory run list"
 ```
 
 ---
 
-## Task 8: InstanceSwitcher
+## Phase C — Merged dockable panel
+
+### Task C1: `InstanceSwitcher` control
 
 **Files:**
-- Create: `components/workspace/panel/InstanceSwitcher.tsx`
+- Create: `components/workspace/InstanceSwitcher.tsx`
 
 **Interfaces:**
-- Consumes: `useRunStore` (`runsByKey`, `setInstanceIndex`), `runKey`.
-- Produces: `<InstanceSwitcher fileKey={string} />` — renders nothing when the record has ≤1 instance; otherwise `‹ i/N ›`.
+- Produces: `InstanceSwitcher({ count, index, onChange }: { count: number; index: number; onChange: (i: number) => void })` — renders nothing when `count <= 1`.
 
-- [ ] **Step 1: Implement** — `components/workspace/panel/InstanceSwitcher.tsx`:
-
+- [ ] **Step 1: Implement.**
 ```tsx
 'use client'
 import React from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useRunStore } from '@/hooks/store/useRunStore'
 
-export default function InstanceSwitcher({ fileKey }: { fileKey: string }) {
-  const rec = useRunStore((s) => s.runsByKey[fileKey])
-  const setInstanceIndex = useRunStore((s) => s.setInstanceIndex)
-  const n = rec?.instances.length ?? 0
-  if (n <= 1) return null
-  const i = rec!.instanceIndex
+export default function InstanceSwitcher({ count, index, onChange }: {
+  count: number; index: number; onChange: (i: number) => void
+}) {
+  if (count <= 1) return null
   return (
-    <div className="flex items-center gap-1 px-2 text-[11px] text-zinc-600">
-      <button onClick={() => setInstanceIndex(fileKey, (i - 1 + n) % n)} className="hover:text-zinc-900"><ChevronLeft size={13} /></button>
-      <span className="tabular-nums">{i + 1}/{n}</span>
-      <button onClick={() => setInstanceIndex(fileKey, (i + 1) % n)} className="hover:text-zinc-900"><ChevronRight size={13} /></button>
+    <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+      <button className="p-0.5 hover:text-zinc-900 disabled:opacity-30" disabled={index <= 0}
+        onClick={() => onChange(index - 1)} aria-label="Previous instance"><ChevronLeft size={14} /></button>
+      <span className="font-mono tabular-nums">{index + 1}/{count}</span>
+      <button className="p-0.5 hover:text-zinc-900 disabled:opacity-30" disabled={index >= count - 1}
+        onClick={() => onChange(index + 1)} aria-label="Next instance"><ChevronRight size={14} /></button>
     </div>
   )
 }
 ```
 
-- [ ] **Step 2: Typecheck**
-
-Run: `npx tsc --noEmit`
-Expected: no new errors.
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Manual verify** — defer to C2 (rendered in the panel header). Commit now.
 
 ```bash
-git add components/workspace/panel/InstanceSwitcher.tsx
-git commit -m "feat: parallel instance switcher"
+git add components/workspace/InstanceSwitcher.tsx
+git commit -m "feat: InstanceSwitcher control"
 ```
 
 ---
 
-## Task 9: OutputTab (selected-node output)
+### Task C2: `OutputTab` body
 
 **Files:**
-- Create: `components/workspace/panel/OutputTab.tsx`
+- Create: `components/workspace/OutputTab.tsx`
 
 **Interfaces:**
-- Consumes: `useRunStore` (`runsByKey`), `nodeRunOf` (`lib/runState`), `useSelectionStore` (`selectedNodeId`).
-- Produces: `<OutputTab fileKey={string} mode={'graph' | 'stack' | 'single'} singleNodeId?={string} />`.
-  - `graph` → the selected node (from `useSelectionStore`).
-  - `single` → `singleNodeId` (agent view, = agent slug).
-  - `stack` → every node in the selected instance, in insertion order (YAML view).
+- Consumes: `fileRun`/`useRunStore` (A2), `nodeStateFor` (A1), `selectedNodeId`/`useSelectionStore` (A3), `NodeRunState` (`lib/runState.ts`).
+- Produces: `OutputTab({ fileKey, view }: { fileKey: string; view: 'graph' | 'yaml' | 'agent' })`.
 
-- [ ] **Step 1: Implement** — `components/workspace/panel/OutputTab.tsx`:
+Behavior (design matrix): `graph` → the selected node only (via `useSelectionStore`); `yaml` → all nodes in the current instance, stacked; `agent` → the single synthesized node (`nodeId = slug`, but we just render whatever the instance produced).
 
+- [ ] **Step 1: Implement.**
 ```tsx
 'use client'
 import React from 'react'
 import { useRunStore } from '@/hooks/store/useRunStore'
 import { useSelectionStore } from '@/hooks/store/useSelectionStore'
-import { nodeRunOf } from '@/lib/runState'
 import type { NodeRunState } from '@/lib/runState'
 
-function NodeBlock({ nodeId, run }: { nodeId: string; run?: NodeRunState }) {
-  if (!run) return <div className="px-4 py-3 text-[11px] text-zinc-400 italic">No output for “{nodeId}” in this instance.</div>
+function NodeOutput({ nodeId, run }: { nodeId: string; run?: NodeRunState }) {
+  if (!run) return <div className="px-4 py-2 text-[11px] text-zinc-400 italic">No output for “{nodeId}” yet.</div>
+  if (run.status === 'skipped') return <div className="px-4 py-2 text-[11px] text-zinc-400 italic">{nodeId} — skipped (no output)</div>
   return (
-    <div className="px-4 py-3">
+    <div className="px-4 py-2">
       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">{nodeId} · {run.status}</div>
       {run.rounds.length > 1
-        ? run.rounds.map((r) => (
+        ? run.rounds.map(r => (
             <div key={r.round} className="mb-2">
               <div className="text-[9px] font-bold text-zinc-400">round {r.round}</div>
               <pre className="text-[11px] whitespace-pre-wrap text-zinc-700">{r.output}</pre>
@@ -787,152 +819,387 @@ function NodeBlock({ nodeId, run }: { nodeId: string; run?: NodeRunState }) {
   )
 }
 
-export default function OutputTab({ fileKey, mode, singleNodeId }: {
-  fileKey: string; mode: 'graph' | 'stack' | 'single'; singleNodeId?: string
-}) {
-  const rec = useRunStore((s) => s.runsByKey[fileKey])
-  const selectedNodeId = useSelectionStore((s) => s.selectedNodeId)
+export default function OutputTab({ fileKey, view }: { fileKey: string; view: 'graph' | 'yaml' | 'agent' }) {
+  const file = useRunStore(s => s.byFile[fileKey])
+  const selected = useSelectionStore(s => s.byFile[fileKey] ?? null)
+  const instance = file?.currentInstance ?? 0
+  const map = file?.runState[instance] ?? {}
+  const nodeIds = Object.keys(map)
 
-  if (rec?.error) {
-    return <div className="px-4 py-3 text-[11px] text-red-600 bg-red-50 border-b border-red-100">Run error: {rec.error}</div>
+  if (!file || nodeIds.length === 0) {
+    return <div className="px-4 py-3 text-[11px] text-zinc-400 italic">No output yet. Click Run to start.</div>
   }
-  if (mode === 'stack') {
-    const inst = rec?.instances[rec.instanceIndex]
-    const ids = inst ? Object.keys(inst.nodes) : []
-    if (!ids.length) return <div className="px-4 py-3 text-[11px] text-zinc-400 italic">No run output yet.</div>
-    return <>{ids.map((id) => <NodeBlock key={id} nodeId={id} run={inst!.nodes[id]} />)}</>
+  if (view === 'graph') {
+    if (!selected) return <div className="px-4 py-3 text-[11px] text-zinc-400 italic">Select a node to see its output.</div>
+    return <NodeOutput nodeId={selected} run={map[selected]} />
   }
-  const nodeId = mode === 'single' ? (singleNodeId ?? '') : selectedNodeId
-  if (!nodeId) return <div className="px-4 py-3 text-[11px] text-zinc-400 italic">Select a node to see its output.</div>
-  return <NodeBlock nodeId={nodeId} run={nodeRunOf(rec, nodeId)} />
+  // yaml + agent: stack all nodes in the current instance
+  return <div className="divide-y divide-zinc-100">{nodeIds.map(id => <NodeOutput key={id} nodeId={id} run={map[id]} />)}</div>
 }
 ```
 
-- [ ] **Step 2: Typecheck**
-
-Run: `npx tsc --noEmit`
-Expected: no new errors.
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Manual verify** — defer to C3 (mounted inside `DockPanel`). Commit.
 
 ```bash
-git add components/workspace/panel/OutputTab.tsx
-git commit -m "feat: Output tab (selected-node / stacked / single)"
+git add components/workspace/OutputTab.tsx
+git commit -m "feat: OutputTab — per-instance node output (graph/yaml/agent)"
 ```
 
 ---
 
-## Task 10: ValidationTab
+### Task C3: `DockPanel` shell (tabs + dock + collapse + resize + instance switcher + error banner)
 
 **Files:**
-- Create: `components/workspace/panel/ValidationTab.tsx`
+- Create: `components/workspace/DockPanel.tsx`
 
 **Interfaces:**
-- Consumes: `ValidationIssue` (`lib/types`), `useSelectionStore` (`setSelectedNodeId`).
-- Produces: `<ValidationTab issues={ValidationIssue[]} />` (selecting an issue sets the selected node so the canvas/Output can react).
+- Consumes: `useWorkspaceUiStore` (A4), `clampTab`/`PanelTab` (A4), `useRunStore`/`fileRun` (A2), `OutputTab` (C2), `InstanceSwitcher` (C1), `ValidationPanel` (`components/editor/ValidationPanel.tsx`), `HistoryPane` (`components/workspace/HistoryPane.tsx`), `ValidationIssue` (`lib/types`).
+- Produces: `DockPanel({ type, slug, view, issues, onSelectIssueNode }: { type: string; slug: string; view: 'graph' | 'yaml' | 'agent' | 'none'; issues: ValidationIssue[]; onSelectIssueNode: (id: string | null) => void })`.
 
-- [ ] **Step 1: Implement** — `components/workspace/panel/ValidationTab.tsx` (relocated from `components/editor/ValidationPanel.tsx`, now writing selection to the store):
+Available tabs by view: `graph`/`yaml` → `['output','validation','history']`; `agent` → `['output','history']`; `none` (skill/template/context) → `['history']`.
 
+- [ ] **Step 1: Implement.**
 ```tsx
 'use client'
-import React from 'react'
+import React, { useEffect } from 'react'
+import { PanelBottom, PanelRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
+import { clampTab, type PanelTab } from '@/lib/tabClamp'
+import { useRunStore } from '@/hooks/store/useRunStore'
 import type { ValidationIssue } from '@/lib/types'
-import { useSelectionStore } from '@/hooks/store/useSelectionStore'
+import OutputTab from './OutputTab'
+import InstanceSwitcher from './InstanceSwitcher'
+import ValidationPanel from '@/components/editor/ValidationPanel'
+import { HistoryPane } from './HistoryPane'
 
-export default function ValidationTab({ issues }: { issues: ValidationIssue[] }) {
-  const setSelectedNodeId = useSelectionStore((s) => s.setSelectedNodeId)
-  if (issues.length === 0) return <div className="px-4 py-3 text-[11px] text-green-600">✓ No validation issues</div>
+type View = 'graph' | 'yaml' | 'agent' | 'none'
+
+const tabsForView: Record<View, PanelTab[]> = {
+  graph: ['output', 'validation', 'history'],
+  yaml: ['output', 'validation', 'history'],
+  agent: ['output', 'history'],
+  none: ['history'],
+}
+
+export default function DockPanel({ type, slug, view, issues, onSelectIssueNode }: {
+  type: string; slug: string; view: View; issues: ValidationIssue[]; onSelectIssueNode: (id: string | null) => void
+}) {
+  const fileKey = `${type}:${slug}`
+  const ui = useWorkspaceUiStore()
+  const available = tabsForView[view]
+  const active = clampTab(ui.activeTab, available)
+
+  const file = useRunStore(s => s.byFile[fileKey])
+  const error = file?.error ?? null
+  const instanceCount = file?.instanceCount ?? 0
+  const currentInstance = file?.currentInstance ?? 0
+
+  // a3: run-level error auto-switches to Validation (when available)
+  useEffect(() => {
+    if (error && available.includes('validation')) useWorkspaceUiStore.getState().setActiveTab('validation')
+  }, [error, available])
+
+  const isRight = ui.dockSide === 'right'
+  // Size is owned by the parent react-resizable Panel (Task C4/C5); DockPanel just fills it.
+  const containerCls = isRight
+    ? 'border-l border-zinc-200 h-full flex flex-col'
+    : 'border-t border-zinc-200 w-full flex flex-col'
+
+  if (ui.panelCollapsed) {
+    return (
+      <div className={`${isRight ? 'border-l h-full w-9' : 'border-t w-full h-9'} border-zinc-200 bg-white flex items-center gap-2 px-2`}>
+        <button onClick={ui.togglePanel} className="text-zinc-500 hover:text-zinc-900" aria-label="Expand panel">
+          {isRight ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
+        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{active}</span>
+      </div>
+    )
+  }
+
   return (
-    <div className="bg-red-50/40">
-      <div className="px-4 py-1.5 text-[10px] font-bold text-red-600 uppercase tracking-widest">{issues.length} issue(s)</div>
-      <ul className="px-2 pb-2 space-y-0.5">
-        {issues.map((i, idx) => (
-          <li key={idx}>
-            <button onClick={() => setSelectedNodeId(i.nodeId ?? i.edge?.toNode ?? null)}
-              className="w-full text-left text-[11px] text-red-700 hover:bg-red-100/60 rounded px-2 py-0.5">
-              {i.message}
-            </button>
-          </li>
+    <div className={`${containerCls} h-full`}>
+      {/* header: tabs + instance switcher + dock/collapse controls */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-zinc-200 bg-white">
+        {available.map(t => (
+          <button key={t} onClick={() => useWorkspaceUiStore.getState().setActiveTab(t)}
+            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded ${active === t ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}>
+            {t}{t === 'validation' && issues.length > 0 ? ` ${issues.length}` : ''}{t === 'validation' && issues.length === 0 ? ' ✓' : ''}
+          </button>
         ))}
-      </ul>
+        <div className="ml-auto flex items-center gap-2">
+          <InstanceSwitcher count={instanceCount} index={currentInstance}
+            onChange={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)} />
+          <button onClick={() => ui.setDockSide(isRight ? 'bottom' : 'right')} className="text-zinc-400 hover:text-zinc-900" aria-label="Flip dock side">
+            {isRight ? <PanelBottom size={14} /> : <PanelRight size={14} />}
+          </button>
+          <button onClick={ui.togglePanel} className="text-zinc-400 hover:text-zinc-900" aria-label="Collapse panel">
+            {isRight ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="px-3 py-1.5 text-[11px] text-red-600 bg-red-50 border-b border-red-100">{error}</div>
+      )}
+
+      <div className="flex-1 min-h-0 overflow-auto">
+        {active === 'output' && <OutputTab fileKey={fileKey} view={view === 'none' ? 'agent' : view} />}
+        {active === 'validation' && <ValidationPanel issues={issues} onSelect={onSelectIssueNode} />}
+        {active === 'history' && <HistoryPane entityType={type} slug={slug} onClose={ui.togglePanel} />}
+      </div>
     </div>
   )
 }
 ```
 
-- [ ] **Step 2: Typecheck → Commit**
+Note: resize handle is added in C4 (it depends on layout placement in `page.tsx`). For now the panel uses the persisted `panelSize` as a fixed size.
 
-Run: `npx tsc --noEmit` (no new errors).
+- [ ] **Step 2: Manual verify** — defer to C4 (DockPanel isn't mounted until then). Commit.
+
 ```bash
-git add components/workspace/panel/ValidationTab.tsx
-git commit -m "feat: Validation tab"
+git add components/workspace/DockPanel.tsx
+git commit -m "feat: DockPanel shell — tabs, dock flip, collapse, error banner"
 ```
 
 ---
 
-## Task 11: HistoryTab (relocated history + version diff)
+### Task C4: Mount `DockPanel` in `page.tsx` with a resize divider
 
 **Files:**
-- Create: `components/workspace/panel/HistoryTab.tsx`
+- Modify: `app/workspace/page.tsx`
 
 **Interfaces:**
-- Consumes: existing endpoints `/api/runs?entityType&slug` and `/api/workspace/${type}/${slug}/versions` (+ `?version=N` for content); `AgentStreamOutput`; `diffLines` (`lib/versionDiff`).
-- Produces: `<HistoryTab entityType={string} slug={string} />`.
+- Consumes: `DockPanel` (C3), `useWorkspaceUiStore` (A4). Needs chain validation issues + an issue→select callback for the Validation tab in YAML view; in graph view, selection feeds back into `ChainEditor` (handled in D-phase via the selection store; for now pass `() => {}` and the chain issues computed in `page.tsx`).
 
-- [ ] **Step 1: Implement** — start from the body of `components/workspace/HistoryPane.tsx` (Runs + Versions tabs), drop its outer `border-l`/header chrome (the DockablePanel provides chrome), and **add a version-diff affordance**: each version row gets a "Compare to current" button that fetches `?version=N` and the live content, renders `diffLines(versionContent, currentContent)` side-by-side. Keep the existing restore button and run list.
+The panel docks bottom or right around the editor area. Use `react-resizable-panels` `Group`/`Panel`/`Separator` (already imported) so the divider is draggable; persist size on drag-stop into `useWorkspaceUiStore.setPanelSize`.
 
-Key diff render block to add (inside the Versions list, shown when a version is selected for compare):
+- [ ] **Step 1: Compute the view + issues at page level.**
+```ts
+  const view: 'graph' | 'yaml' | 'agent' | 'none' =
+    type === 'chain' ? (chainView === 'graph' && parsedChain ? 'graph' : 'yaml')
+    : type === 'agent' ? 'agent' : 'none'
+```
+For YAML/agent/none views, chain issues come from `parsedChain` when available:
+```ts
+  const dockIssues = useMemo(() => {
+    if (type !== 'chain' || !parsedChain) return []
+    // validateChain needs agents+chains; reuse editorAgents/editorChains already fetched
+    return validateChain(parsedChain, editorAgents, editorChains).issues
+  }, [type, parsedChain, editorAgents, editorChains])
+```
+Add `import { validateChain } from '@/lib/chainGraph'`.
+(In **graph** view, `ChainEditor` computes its own issues and renders nothing at the bottom; the panel's Validation tab uses `dockIssues` from the same `parsedChain`, which matches the editor's initial graph. Live-edited issues in graph view are a known limitation tracked in §"Out of scope follow-ups" below — graph view's authoritative issues stay inside the editor's canvas borders/badges.)
 
+- [ ] **Step 2: Wrap the editor area + panel in a resizable group keyed off dock side.**
+Replace the single editor `<div className="h-full flex flex-col">…</div>` (from B3 Step 4) with:
 ```tsx
-// state: const [compare, setCompare] = useState<{ version: number; lines: DiffLine[] } | null>(null)
-// onClick handler:
-async function compareVersion(version: number) {
-  const [vRes, curRes] = await Promise.all([
-    fetch(`/api/workspace/${entityType}/${slug}/versions?version=${version}`),
-    fetch(`/api/workspace/${entityType}/${slug}`),
-  ])
-  const vBody = await vRes.json()
-  const curBody = await curRes.json()
-  setCompare({ version, lines: diffLines(vBody.content ?? '', curBody.raw ?? '') })
-}
+          <Group orientation={useWorkspaceUiStore.getState().dockSide === 'right' ? 'horizontal' : 'vertical'}>
+            <Panel minSize={30}>
+              <div className="h-full flex flex-col">
+                {/* existing chain Graph/YAML toggle + ChainEditor/FileEditor switch */}
+              </div>
+            </Panel>
+            <Separator className="bg-zinc-100 hover:bg-zinc-200 transition-colors data-[resize-handle-state=drag]:bg-zinc-300" />
+            <Panel defaultSize="30%" minSize={10} onResize={() => { /* size persisted via DockPanel controls */ }}>
+              <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
+            </Panel>
+          </Group>
+```
+Add `import DockPanel from '@/components/workspace/DockPanel'` and `import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'`. To make the group re-render on dock-side flip, read the value reactively:
+```ts
+  const dockSide = useWorkspaceUiStore(s => s.dockSide)
+```
+and use `orientation={dockSide === 'right' ? 'horizontal' : 'vertical'}`.
 
-// render:
-{compare && (
-  <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] border border-zinc-200 rounded p-2">
-    {compare.lines.map((l, i) => (
-      <div key={i} className={l.type === 'add' ? 'bg-green-50 text-green-800' : l.type === 'del' ? 'bg-red-50 text-red-800' : 'text-zinc-600'}>
-        <span className="select-none opacity-50 mr-2">{l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' '}</span>{l.text || ' '}
-      </div>
-    ))}
-  </div>
-)}
+- [ ] **Step 3: Manual verify**
+
+Run: `npm run dev`.
+1. **Agent:** Run → Output tab shows the synthesized node's streamed output; History tab lists past runs; no Validation tab.
+2. **Chain Graph:** Run → graph dots animate; click a node → Output tab shows that node; Validation tab shows issue count; flip dock to right (button) → panel moves to the right edge; collapse → strip with reopen affordance.
+3. **Parallel:** set Parallel = 3 (toolbar), Run → instance switcher `‹ 1/3 ›` appears in the panel header; stepping it re-renders the Output tab per instance.
+4. **Run-level error:** open a chain with a validation error and Run → red banner in panel + auto-switch to Validation tab (a3).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/workspace/page.tsx
+git commit -m "feat: mount DockPanel with resizable divider; compute view+issues"
 ```
 
-(Confirm the content field names against the API: versions returns `{ content }`, the file route returns `{ raw }` — see `components/workspace/HistoryPane.tsx:84-85` and `app/workspace/page.tsx:123`.)
+---
 
-- [ ] **Step 2: Manual verify**
+### Task C5: Persist panel size on divider drag
 
-Run app, open the History tab, expand a run (outputs render), click Compare on a version → see a red/green line diff vs current.
+**Files:**
+- Modify: `app/workspace/page.tsx`
+
+`react-resizable-panels` reports sizes in percentages, which is exactly how `useWorkspaceUiStore.panelSize` is already defined (Task A4: percent, clamp 10–80) and how `DockPanel` already behaves (Task C3: size owned by the parent `Panel`, no inline `sizeStyle`). This task only wires the parent `Panel` to read that value and persist it on drag.
+
+- [ ] **Step 1: Drive `Panel` size from the store + persist on resize** in `page.tsx`:
+```tsx
+            <Panel defaultSize={`${panelSize}%`} minSize={10}
+              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(typeof size === 'number' ? size : parseFloat(size))}>
+              <DockPanel … />
+            </Panel>
+```
+with `const panelSize = useWorkspaceUiStore(s => s.panelSize)`.
+
+- [ ] **Step 2: Manual verify** — drag the divider, reload the page; panel restores to the dragged size (persisted). Toggle dock side; size persists across orientation.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add components/workspace/panel/HistoryTab.tsx
-git commit -m "feat: History tab with version diff"
+git add app/workspace/page.tsx
+git commit -m "feat: persist DockPanel size across reload/dock-flip"
 ```
 
 ---
 
-## Task 12: Collapsible Chains sidebar
+### Task C6: History version-diff (decision a1)
 
 **Files:**
-- Modify: `app/workspace/layout.tsx`
-- Modify: `components/workspace/Sidebar.tsx`
+- Modify: `components/workspace/HistoryPane.tsx`
 
-- [ ] **Step 1: Add a collapse toggle + collapsed rail** — in `app/workspace/layout.tsx`, read `sidebarCollapsed` from `useWorkspaceUiStore`. When collapsed, render a 40px rail (a button with a `PanelLeftOpen` icon calling `toggleSidebar`) instead of the `<Panel>` with `Sidebar`. When expanded, render the resizable `Panel` as today plus a collapse button (`PanelLeftClose`) in `Sidebar`'s header that calls `toggleSidebar`.
+Add a side-by-side diff between two selected versions on the Versions tab, using `diff-match-patch` (already a dependency) for line-level highlighting.
 
-Replace the sidebar `<Panel>`/`<Separator>` block:
+- [ ] **Step 1: Add version-select + diff state.** In `HistoryPane`, add:
+```ts
+  const [diffPair, setDiffPair] = useState<[number, number] | null>(null)
+  const [diffText, setDiffText] = useState<{ a: string; b: string } | null>(null)
+```
+Add a checkbox per version row that fills `diffPair` (max two). When two are chosen, fetch both contents and store in `diffText`:
+```ts
+  useEffect(() => {
+    if (!diffPair) { setDiffText(null); return }
+    const [va, vb] = diffPair
+    Promise.all([
+      fetch(`/api/workspace/${entityType}/${slug}/versions?version=${va}`).then(r => r.json()),
+      fetch(`/api/workspace/${entityType}/${slug}/versions?version=${vb}`).then(r => r.json()),
+    ]).then(([a, b]) => setDiffText({ a: a.content, b: b.content })).catch(() => setDiffText(null))
+  }, [diffPair, entityType, slug])
+```
 
+- [ ] **Step 2: Render a diff view** above the version list when `diffText` is set, using `diff-match-patch`:
+```tsx
+import { diff_match_patch } from 'diff-match-patch'
+// …
+{diffText && (() => {
+  const dmp = new diff_match_patch()
+  const d = dmp.diff_main(diffText.a, diffText.b)
+  dmp.diff_cleanupSemantic(d)
+  return (
+    <div className="m-2 p-2 bg-white border border-zinc-200 rounded text-[11px] whitespace-pre-wrap font-mono">
+      {d.map(([op, text], i) => (
+        <span key={i} className={op === 1 ? 'bg-green-100' : op === -1 ? 'bg-red-100 line-through' : ''}>{text}</span>
+      ))}
+    </div>
+  )
+})()}
+```
+
+- [ ] **Step 3: Manual verify** — open History → Versions, check two versions; a side-by-side (inline) colorized diff renders. Unchecking clears it.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add components/workspace/HistoryPane.tsx
+git commit -m "feat: side-by-side version diff in History (a1)"
+```
+
+---
+
+## Phase D — Chrome collapse, one-line header, instance switcher, Interface popover
+
+### Task D1: One-line header in `page.tsx`
+
+**Files:**
+- Modify: `app/workspace/page.tsx`, `components/editor/ChainEditor.tsx`
+
+Collapse the page toolbar + the Graph/YAML toggle row + ChainEditor's seed/run/undo bar into a single header line (design §1). Seed prompt becomes a single-line field with a click-to-expand popover (a5). Move undo/redo into the canvas area is out-of-scope for the header — keep undo/redo keyboard shortcuts (already global in `ChainEditor`) and drop the visible Undo/Redo buttons from the editor bar (they remain reachable via Ctrl/Cmd+Z/Y).
+
+**Interfaces:**
+- Consumes: `useRunStore` (seed/parallel/run), `useWorkspaceUiStore` (panel toggle).
+
+- [ ] **Step 1: Build the one-line header** replacing the existing toolbar (`page.tsx:321-385`) and the Graph/YAML toggle row (`:398-416`). The header renders: title · (chains) Graph/YAML · seed (single-line + expand) · Parallel · Run · autosave · panel toggle. Non-runnable views render title only.
+```tsx
+      <header className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm">
+        <div className="h-6 w-1 bg-zinc-900 rounded-full" />
+        <h1 className="text-sm font-bold text-zinc-900 capitalize">{slug.replace(/-/g, ' ')}</h1>
+        {type === 'chain' && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => setChainView('graph')} className={`px-2 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}>Graph</button>
+            <button onClick={() => setChainView('yaml')} className={`px-2 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}>YAML</button>
+          </div>
+        )}
+        {(type === 'agent' || type === 'chain') && (
+          <>
+            <SeedField value={seedPrompt} onChange={setSeedPrompt} />
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
+              <input type="number" min={1} max={10} value={parallelCount}
+                onChange={(e) => setParallelCount(parseInt(e.target.value) || 1)}
+                className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded" />
+            </div>
+            <button onClick={handleRun} disabled={loading || running}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">
+              <Play size={12} className="fill-current" />{running ? 'Running…' : 'Run'}
+            </button>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
+          </>
+        )}
+        {type === 'chain' && <InterfacePopoverMount />}
+        <button onClick={() => useWorkspaceUiStore.getState().togglePanel()} className="ml-auto p-1.5 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50" aria-label="Toggle panel">
+          <PanelBottom size={16} />
+        </button>
+      </header>
+```
+(`InterfacePopoverMount` is added in Task D5; until then omit that line. `SeedField` defined next.)
+
+- [ ] **Step 2: Add the `SeedField` component** (single-line + click-to-expand popover, a5). Add at the bottom of `page.tsx` (module scope) or as a small file `components/workspace/SeedField.tsx`:
+```tsx
+'use client'
+import React, { useState } from 'react'
+function SeedField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative flex-1 min-w-[120px] max-w-[420px]">
+      <input value={value} onChange={e => onChange(e.target.value)} onFocus={() => setOpen(false)}
+        placeholder="Seed prompt ({input})…" className="w-full text-xs border border-zinc-200 rounded px-2 py-1" />
+      <button onClick={() => setOpen(o => !o)} className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 hover:text-zinc-700">⤢</button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-[420px] bg-white border border-zinc-200 rounded-md shadow-lg p-2">
+          <textarea value={value} onChange={e => onChange(e.target.value)} rows={6} autoFocus
+            className="w-full text-xs border border-zinc-100 rounded p-2 resize-none" placeholder="Seed prompt ({input})…" />
+        </div>
+      )}
+    </div>
+  )
+}
+```
+Create as `components/workspace/SeedField.tsx` and import it (cleaner than module scope). Keep `seedPrompt`/`setSeedPrompt` page state; the existing effect already pushes it into the run store.
+
+- [ ] **Step 3: Strip ChainEditor's top bar.** In `ChainEditor.tsx`, remove the entire header `<div className="px-4 py-2 border-b …">…</div>` (`:202-232`: seed input, Run, Undo, Redo, autosave). Keep the `conflict` file-watch banner; render it as the first child so it sits directly under the page header. The autosave `status` and seed now live in the page header. (ChainEditor still owns autosave via `useAutoSave`; the page header's `status` comes from the page's own `useAutoSave`. Confirm both editors don't double-save: graph view uses ChainEditor's `setContent`; the page's `useAutoSave` is for the YAML/FileEditor path. They key the same file — verify only the active view writes. If both fire, gate the page's `setContent` to non-graph views.)
+
+- [ ] **Step 4: Manual verify** — one header line only; no stacked toolbars; seed expand popover works; Run + Parallel + autosave label present; Graph/YAML toggle inline; non-runnable views (skill/template/context) show title + panel toggle only.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/workspace/page.tsx components/workspace/SeedField.tsx components/editor/ChainEditor.tsx
+git commit -m "feat: one-line workspace header with expandable seed field"
+```
+
+---
+
+### Task D2: Collapsible sidebar
+
+**Files:**
+- Modify: `app/workspace/layout.tsx`, `components/workspace/Sidebar.tsx`
+
+**Interfaces:**
+- Consumes: `useWorkspaceUiStore.sidebarCollapsed` / `toggleSidebar` (A4).
+
+- [ ] **Step 1: Collapse the layout panel.** In `layout.tsx`, read the store and swap the sidebar `Panel` for a thin rail when collapsed:
 ```tsx
 'use client'
 import Sidebar from '@/components/workspace/Sidebar'
@@ -942,13 +1209,15 @@ import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
 import { PanelLeftOpen } from 'lucide-react'
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
-  const { sidebarCollapsed, toggleSidebar } = useWorkspaceUiStore()
+  const collapsed = useWorkspaceUiStore(s => s.sidebarCollapsed)
   return (
     <div className="h-[calc(100vh-3.5rem)] overflow-hidden">
       <Group orientation="horizontal">
-        {sidebarCollapsed ? (
-          <div className="w-10 shrink-0 border-r border-zinc-200 bg-white flex flex-col items-center py-3">
-            <button onClick={toggleSidebar} className="p-2 text-zinc-400 hover:text-zinc-700" title="Expand sidebar"><PanelLeftOpen size={18} /></button>
+        {collapsed ? (
+          <div className="w-9 h-full border-r border-zinc-200 bg-white flex flex-col items-center py-3">
+            <button onClick={() => useWorkspaceUiStore.getState().toggleSidebar()} className="text-zinc-500 hover:text-zinc-900" aria-label="Open sidebar">
+              <PanelLeftOpen size={18} />
+            </button>
           </div>
         ) : (
           <>
@@ -969,242 +1238,144 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 }
 ```
 
-In `components/workspace/Sidebar.tsx`, add a collapse button at the top of the `w-[64px]` category rail (top of the `<div className="w-[64px] ...">`), before the category buttons:
-
+- [ ] **Step 2: Add a collapse button inside `Sidebar`.** In the category nav column (`Sidebar.tsx:281-302`), add a collapse button at the bottom:
 ```tsx
-import { PanelLeftClose } from 'lucide-react'
-import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
-// inside component:
-const toggleSidebar = useWorkspaceUiStore((s) => s.toggleSidebar)
-// first child of the 64px rail:
-<button onClick={toggleSidebar} className="p-2.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50" title="Collapse sidebar"><PanelLeftClose size={20} /></button>
+        <button onClick={() => useWorkspaceUiStore.getState().toggleSidebar()}
+          className="mt-auto p-2.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <PanelLeftClose size={20} />
+        </button>
 ```
+Add imports: `import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'` and `PanelLeftClose` from `lucide-react`.
 
-- [ ] **Step 2: Manual verify**
+- [ ] **Step 3: Manual verify** — collapse → thin rail with reopen icon; reopen restores width; state survives reload (persisted).
 
-Collapse → sidebar becomes a thin rail; the expand button restores it; reload preserves the state (persist).
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add app/workspace/layout.tsx components/workspace/Sidebar.tsx
-git commit -m "feat: collapsible chains sidebar"
+git commit -m "feat: collapsible workspace sidebar (persisted)"
 ```
 
 ---
 
-## Task 13: Collapsible node palette
+### Task D3: Collapsible node palette
 
 **Files:**
-- Modify: `components/editor/NodePalette.tsx`
+- Modify: `components/editor/NodePalette.tsx`, `components/editor/ChainEditor.tsx`
 
-- [ ] **Step 1: Add collapse** — read `paletteCollapsed`/`togglePalette` from `useWorkspaceUiStore`. When collapsed, render a 28px rail with a `PanelLeftOpen` button; when expanded, render today's palette plus a small collapse button (`PanelLeftClose`) at the top.
+**Interfaces:**
+- Consumes: `useWorkspaceUiStore.paletteCollapsed` / `togglePalette` (A4).
 
-Add at the top of the component:
-
+- [ ] **Step 1: Add collapse to `NodePalette`.** At the top of the returned `<div>`:
 ```tsx
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
-import { PanelLeftOpen, PanelLeftClose } from 'lucide-react'
-// inside component, before the return:
-const { paletteCollapsed, togglePalette } = useWorkspaceUiStore()
-if (paletteCollapsed) {
-  return (
-    <div className="w-7 shrink-0 border-r border-zinc-100 bg-white flex flex-col items-center py-2">
-      <button onClick={togglePalette} className="p-1.5 text-zinc-400 hover:text-zinc-700" title="Show nodes"><PanelLeftOpen size={16} /></button>
-    </div>
-  )
-}
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+// inside component:
+  const collapsed = useWorkspaceUiStore(s => s.paletteCollapsed)
+  if (collapsed) {
+    return (
+      <div className="w-9 shrink-0 border-r border-zinc-100 bg-white flex flex-col items-center py-2">
+        <button onClick={() => useWorkspaceUiStore.getState().togglePalette()} className="text-zinc-400 hover:text-zinc-700" aria-label="Open palette"><PanelLeftOpen size={16} /></button>
+      </div>
+    )
+  }
 ```
-
-And add a collapse button inside the expanded palette header (just above the search input):
-
+And add a collapse button into the expanded palette header (above the search input):
 ```tsx
-<div className="flex items-center justify-between mb-2">
-  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Nodes</span>
-  <button onClick={togglePalette} className="text-zinc-400 hover:text-zinc-700" title="Hide nodes"><PanelLeftClose size={14} /></button>
-</div>
+      <div className="flex justify-end mb-1">
+        <button onClick={() => useWorkspaceUiStore.getState().togglePalette()} className="text-zinc-300 hover:text-zinc-600" aria-label="Collapse palette"><PanelLeftClose size={14} /></button>
+      </div>
 ```
 
-- [ ] **Step 2: Manual verify** — palette collapses to a rail and restores; persists across reload.
+- [ ] **Step 2: Manual verify** — in Graph view, collapse palette → thin rail; reopen restores; persists across reload.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add components/editor/NodePalette.tsx
-git commit -m "feat: collapsible node palette"
+git commit -m "feat: collapsible node palette (persisted)"
 ```
 
 ---
 
-## Task 14: Canvas — store-driven highlighting, selection, instance overlay
+### Task D4: Canvas instance-switcher overlay
 
 **Files:**
-- Modify: `components/editor/ChainCanvas.tsx`
-- Modify: `components/editor/ChainEditor.tsx`
+- Modify: `components/editor/ChainCanvas.tsx`, `components/editor/ChainEditor.tsx`
+
+Show the instance switcher as an overlay on the graph canvas (design §6), so the user can switch which instance drives graph highlighting without going to the panel header.
 
 **Interfaces:**
-- Consumes: `useRunStore` (`runsByKey`), `nodeRunOf`, `useSelectionStore`, `runKey`, `InstanceSwitcher`.
+- Consumes: `useRunStore` (instanceCount, currentInstance, setCurrentInstance), `InstanceSwitcher` (C1). `ChainCanvas` gains props `instanceCount: number; currentInstance: number; onInstance: (i: number) => void`.
 
-- [ ] **Step 1: ChainEditor — derive node `run` from the store and report selection.** In `components/editor/ChainEditor.tsx`:
-  - Remove local `runState`/`setRunState`, `running`, `runError`, `seedPrompt` state and the `run` callback and the top run bar JSX (`ChainEditor.tsx:200-218`). The header (Task 16) now owns Run.
-  - Compute `const fileKey = runKey('chain', slug)` and `const rec = useRunStore(s => s.runsByKey[fileKey])`.
-  - In `buildData`, set `run: nodeRunOf(rec, node.id)` instead of `runState[node.id]`.
-  - In `selectIds`, after updating local `selectedIds`, also call `useSelectionStore.getState().setSelectedNodeId(ids[0] ?? null)`.
-  - Keep the autosave pipeline (`setContent`/`flush`) — Task 16's Run uses `flush` via `beforeRun`. Export a way for the header to call it: lift `flush` by having ChainEditor expose nothing new; instead the header serializes through the same autosave hook (see Task 16, which calls `useRunStore.run` with a `beforeRun` that the page provides). Simplest: keep `flush` usage inside ChainEditor by having ChainEditor render the Run button is **not** wanted; instead move save-then-run responsibility to the autosave already flushing on change + an explicit `flush` call in the header. **Decision:** the header calls `run({ ..., beforeRun: async () => { await flushRef.current?.() } })`; ChainEditor writes its `flush` into a shared ref passed down from the page. Add prop `registerFlush?: (fn: () => Promise<void>) => void` to ChainEditor and call `registerFlush?.(flush)` in an effect.
-
+- [ ] **Step 1: Add props + overlay to `ChainCanvas`.** Extend `ChainCanvasProps`:
+```ts
+  instanceCount: number
+  currentInstance: number
+  onInstance: (i: number) => void
+```
+Render an absolutely-positioned overlay inside the canvas wrapper `<div className="w-full h-full bg-zinc-50">` (before `<ReactFlowProvider>`):
 ```tsx
-// ChainEditor props: add registerFlush?: (fn: () => Promise<void>) => void
-useEffect(() => { registerFlush?.(async () => { await flush(serializeChain(meta, nodes, edges)) }) }, [registerFlush, flush, meta, nodes, edges])
+      {props.instanceCount > 1 && (
+        <div className="absolute top-2 right-2 z-10 bg-white/90 border border-zinc-200 rounded-md px-2 py-1 shadow-sm">
+          <InstanceSwitcher count={props.instanceCount} index={props.currentInstance} onChange={props.onInstance} />
+        </div>
+      )}
+```
+Make the wrapper `relative`: `className="w-full h-full bg-zinc-50 relative"`. Import `InstanceSwitcher`.
+
+- [ ] **Step 2: Pass the props from `ChainEditor`.**
+```tsx
+          <ChainCanvas
+            …
+            instanceCount={file?.instanceCount ?? 0}
+            currentInstance={currentInstance}
+            onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
+          />
 ```
 
-- [ ] **Step 2: ChainCanvas — instance switcher overlay.** Add an absolutely-positioned `InstanceSwitcher` over the canvas (top-right), and write selection to the store. Add prop `fileKey: string`. Inside the `<div className="w-full h-full ...">` wrapper, after `</ReactFlowProvider>`-adjacent content, add:
-
-```tsx
-import InstanceSwitcher from '@/components/workspace/panel/InstanceSwitcher'
-// in the wrapper div (which must be position-relative):
-<div className="absolute top-2 right-2 z-10 bg-white/90 border border-zinc-200 rounded-md shadow-sm">
-  <InstanceSwitcher fileKey={props.fileKey} />
-</div>
-```
-
-Make the wrapper `className="w-full h-full bg-zinc-50 relative"`.
-
-- [ ] **Step 3: Manual verify**
-
-Run a chain via the (temporary) old button or after Task 16. Click nodes → Output tab follows. Set Parallel 2 and run → canvas switcher appears; switching instances re-colors dots. Graph dots update live.
+- [ ] **Step 3: Manual verify** — Parallel = 3, Run; the `‹ 1/3 ›` overlay appears top-right of the canvas; stepping it changes which instance's status dots + node outputs show (graph highlighting follows the selected instance).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add components/editor/ChainCanvas.tsx components/editor/ChainEditor.tsx
-git commit -m "feat: store-driven graph highlighting, selection, instance overlay"
+git commit -m "feat: canvas instance-switcher overlay"
 ```
 
 ---
 
-## Task 15: Mount DockablePanel + per-view wiring in the page
+### Task D5: Interface authoring → header popover
 
 **Files:**
-- Modify: `app/workspace/page.tsx`
+- Create: `components/editor/InterfacePopover.tsx`
+- Modify: `app/workspace/page.tsx` (mount in header), `components/editor/ChainEditor.tsx` (expose iface + onChange)
 
-**Interfaces:**
-- Consumes: `DockablePanel`, `OutputTab`, `ValidationTab`, `HistoryTab`, `InstanceSwitcher`, `useWorkspaceUiStore`, `useRunStore`, `runKey`, `validateChain` (for the Validation tab issues on chains).
+The chain public-interface authoring (`InterfacePanel`, was a bottom strip) moves into a header "Interface ▾" popover (design Dependencies §C2.4). `InterfacePanel`'s body is reused unchanged; only its container moves.
 
-- [ ] **Step 1: Compute per-view panel config.** In `WorkspaceContent`, after computing `parsedChain`, derive:
+**Problem:** `iface` state lives inside `ChainEditor`, but the header lives in `page.tsx`. Lift `iface` to a small shared store-free bridge: since only the graph view authors the interface, render the popover **inside `ChainEditor`'s** subtree (as an absolutely-positioned element anchored under the header), not in `page.tsx`. This avoids lifting `iface`.
 
+- [ ] **Step 1: Create `InterfacePopover`** wrapping `InterfacePanel`:
 ```tsx
-const fileKey = runKey(type ?? '', slug ?? '')
-const runnable = type === 'chain' || type === 'agent'
-const isChain = type === 'chain'
-const validation = useMemo(() => (isChain && parsedChain ? validateChain({ ...parsedChain, filePath: '' }, editorAgents) : { issues: [] as any[], valid: true }), [isChain, parsedChain, editorAgents])
-const outputMode: 'graph' | 'stack' | 'single' = type === 'agent' ? 'single' : (isChain && chainView === 'graph') ? 'graph' : 'stack'
-const hiddenTabs = runnable ? (type === 'agent' ? ['validation'] as const : []) : (['output', 'validation'] as const)
-```
+'use client'
+import React, { useState } from 'react'
+import InterfacePanel from './InterfacePanel'
+import type { ChainNode, ChainPort } from '@/lib/types'
 
-- [ ] **Step 2: Render the panel** inside the main content area as a sibling of the canvas/editor, laid out per `panelDock`. Replace the old `isOutputVisible`/`isHistoryVisible` `<Group>` panels block with:
-
-```tsx
-const panelDock = useWorkspaceUiStore((s) => s.panelDock)
-// ...
-<div className={`flex-1 min-h-0 flex ${panelDock === 'bottom' ? 'flex-col' : 'flex-row'}`}>
-  <div className="flex-1 min-h-0 min-w-0">{/* existing graph/YAML editor block */}</div>
-  <DockablePanel
-    hiddenTabs={[...hiddenTabs]}
-    switcher={<InstanceSwitcher fileKey={fileKey} />}
-    tabs={{
-      output: runnable ? <OutputTab fileKey={fileKey} mode={outputMode} singleNodeId={type === 'agent' ? slug! : undefined} /> : undefined,
-      validation: isChain ? <ValidationTab issues={validation.issues} /> : undefined,
-      history: <HistoryTab entityType={type!} slug={slug!} />,
-    }}
-  />
-</div>
-```
-
-- [ ] **Step 3: Delete dead code** — remove `runsByFile`, `runSingleInstance`, `handleRun`'s console-specific bits, `isOutputVisible`, `isHistoryVisible`, the Output console JSX, the History `<Panel>`, the `Columns2`/`History` toggle buttons, and the `AgentStreamOutput` import (it now lives only in `HistoryTab`).
-
-- [ ] **Step 4: Manual verify**
-
-For a chain (graph + YAML), an agent, and a template: the panel shows the right tabs (Validation hidden for agents; Output/Validation hidden for templates → History only).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/workspace/page.tsx
-git commit -m "feat: mount dockable panel + per-view wiring; remove side console"
-```
-
----
-
-## Task 16: One-line header + single Run
-
-**Files:**
-- Modify: `app/workspace/page.tsx`
-
-**Interfaces:**
-- Consumes: `useRunStore` (`inputsByKey`, `setSeed`, `setParallel`, `run`), `useWorkspaceUiStore` (`togglePanel`, `openPanelTab`), `runKey`.
-
-- [ ] **Step 1: Replace the toolbar + Graph/YAML row with one line.** Build a single header row containing: title (`slug.replace(/-/g,' ')`), Graph/YAML toggle (chains only), a single-line seed input with a click-to-expand popover, Parallel number, the **single Run** button, autosave status, and a panel toggle. Wire Run:
-
-```tsx
-const flushRef = useRef<(() => Promise<void>) | null>(null)
-const inputs = useRunStore((s) => s.inputsByKey[fileKey]) ?? { seedPrompt: '', parallelCount: 1 }
-const running = useRunStore((s) => s.runsByKey[fileKey]?.running ?? false)
-const { setSeed, setParallel, run } = useRunStore()
-const openPanelTab = useWorkspaceUiStore((s) => s.openPanelTab)
-
-async function handleRun() {
-  if (!type || !slug || !runnable) return
-  openPanelTab('output')
-  await run({ key: fileKey, type, slug, beforeRun: async () => { await flushRef.current?.() } })
-  if (useRunStore.getState().runsByKey[fileKey]?.error) openPanelTab('validation') // a3
-}
-```
-
-Header JSX (one line; seed grows, everything stays on one row):
-
-```tsx
-<div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3 bg-white">
-  <div className="h-6 w-1 bg-zinc-900 rounded-full" />
-  <h1 className="text-sm font-bold text-zinc-900 capitalize whitespace-nowrap">{slug.replace(/-/g, ' ')}</h1>
-  {isChain && (
-    <div className="flex items-center gap-1">
-      <button onClick={() => setChainView('graph')} className={chainView === 'graph' ? 'px-2 py-0.5 text-xs rounded bg-zinc-900 text-white' : 'px-2 py-0.5 text-xs rounded border border-zinc-200 text-zinc-500'}>Graph</button>
-      <button onClick={() => setChainView('yaml')} className={chainView === 'yaml' ? 'px-2 py-0.5 text-xs rounded bg-zinc-900 text-white' : 'px-2 py-0.5 text-xs rounded border border-zinc-200 text-zinc-500'}>YAML</button>
-    </div>
-  )}
-  {runnable && (
-    <>
-      <SeedField value={inputs.seedPrompt} onChange={(v) => setSeed(fileKey, v)} />
-      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
-      <input type="number" min={1} max={10} value={inputs.parallelCount}
-        onChange={(e) => setParallel(fileKey, parseInt(e.target.value) || 1)}
-        className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded" />
-      <button onClick={handleRun} disabled={running}
-        className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">
-        <Play size={14} className="fill-current" /> {running ? 'Running…' : 'Run'}
-      </button>
-      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
-    </>
-  )}
-  <div className="flex-1" />
-  <button onClick={useWorkspaceUiStore.getState().togglePanel} className="p-1.5 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50" title="Toggle panel"><Columns2 size={16} /></button>
-</div>
-```
-
-- [ ] **Step 2: Add the `SeedField` click-to-expand component** (inline in the page file or `components/workspace/SeedField.tsx`): a single-line `<input>` that, on focus/click of an expand affordance, shows a `<textarea>` popover (absolute, below the field). Collapses on blur/escape.
-
-```tsx
-function SeedField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export default function InterfacePopover({ nodes, inputs, outputs, onChange }: {
+  nodes: ChainNode[]; inputs: ChainPort[]; outputs: ChainPort[]
+  onChange: (iface: { inputs: ChainPort[]; outputs: ChainPort[] }) => void
+}) {
   const [open, setOpen] = useState(false)
+  const count = inputs.length + outputs.length
   return (
-    <div className="relative flex-1 min-w-[120px]">
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Seed prompt ({input})…"
-        className="w-full text-xs border border-zinc-200 rounded px-2 py-1" />
-      <button onClick={() => setOpen((o) => !o)} className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700" title="Expand"><Maximize2 size={12} /></button>
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="px-2 py-1 text-xs rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50">
+        Interface{count ? ` (${count})` : ''} ▾
+      </button>
       {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 w-[480px] max-w-[60vw] bg-white border border-zinc-200 rounded-md shadow-lg p-2">
-          <textarea autoFocus value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
-            className="w-full h-40 text-sm border border-zinc-100 rounded p-2 resize-none focus:outline-none" placeholder="Enter initial instructions or data…" />
+        <div className="absolute z-30 mt-1 w-[460px] bg-white border border-zinc-200 rounded-md shadow-lg">
+          <InterfacePanel nodes={nodes} inputs={inputs} outputs={outputs} onChange={onChange} />
         </div>
       )}
     </div>
@@ -1212,53 +1383,100 @@ function SeedField({ value, onChange }: { value: string; onChange: (v: string) =
 }
 ```
 
-Add imports: `Maximize2` from `lucide-react`; pass `registerFlush={(fn) => { flushRef.current = fn }}` to `<ChainEditor>`.
+- [ ] **Step 2: Render the popover in `ChainEditor`** as the first row under the file-watch banner (it can sit in a thin bar above the canvas split, right-aligned):
+```tsx
+      <div className="px-4 py-1 border-b border-zinc-100 flex items-center justify-end bg-white">
+        <InterfacePopover nodes={nodes} inputs={iface.inputs} outputs={iface.outputs} onChange={setIface} />
+      </div>
+```
+Import `InterfacePopover`; remove the old bottom `InterfacePanel` import (already removed in B1 Step 5 if done; verify).
 
-- [ ] **Step 3: Manual verify**
-
-One header line only; a single Run button; seed expands on click; Parallel works; running shows live dots + Output; an invalid chain run flips the panel to Validation with the error banner.
+- [ ] **Step 3: Manual verify** — in Graph view, an "Interface ▾" button appears; clicking opens the inputs/outputs authoring; edits persist (serialized into the chain via the existing `iface` → `setContent` effect). No bottom Interface strip.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/workspace/page.tsx components/workspace/SeedField.tsx
-git commit -m "feat: one-line header with single Run + click-to-expand seed"
+git add components/editor/InterfacePopover.tsx components/editor/ChainEditor.tsx
+git commit -m "feat: chain interface authoring as header popover"
 ```
 
 ---
 
-## Task 17: Delete obsolete components + final sweep
+### Task D6: File-watch banner survives the header refactor
 
 **Files:**
-- Delete: `components/editor/ValidationPanel.tsx`, `components/editor/NodePreview.tsx`, `components/workspace/HistoryPane.tsx` (after confirming no remaining imports).
-- Modify: `components/editor/ChainEditor.tsx` — remove the now-unused `ValidationPanel`/`NodePreview` imports and their JSX (`ChainEditor.tsx:246-249`).
+- Modify: `components/editor/ChainEditor.tsx` (verify only)
 
-- [ ] **Step 1: Find stragglers**
+**Interfaces:** none.
 
-Run: `npx grep -rn "ValidationPanel\|NodePreview\|HistoryPane\|isOutputVisible\|runsByFile" app components` (or use the editor search). Expected: only the definitions about to be deleted.
+- [ ] **Step 1: Confirm placement.** The `conflict` banner (`This chain changed on disk…`) must render directly under the page header, above the Interface bar/canvas. Verify it is the first element in `ChainEditor`'s return after the header was stripped (B1/D1). If not, move it to the top.
 
-- [ ] **Step 2: Delete + fix imports**, then:
+- [ ] **Step 2: Manual verify** — edit the chain `.md` file on disk externally; the adopt/conflict banner appears under the header (not lost); "Reload from disk" / "Keep my version" work.
 
-Run: `npx tsc --noEmit` → no errors. `npm run test:run` → all green. `npm run lint` → clean.
+- [ ] **Step 3: Commit** (if any change)
 
-- [ ] **Step 3: Manual verify** the full flow once more (chain graph + YAML, agent, template), including collapse-everything "focus mode", dock flip to right, resize, reload persistence.
+```bash
+git add components/editor/ChainEditor.tsx
+git commit -m "fix: keep file-watch conflict banner under one-line header"
+```
 
-- [ ] **Step 4: Commit**
+---
+
+## Phase E — Cleanup & verification
+
+### Task E1: Delete `NodePreview`; remove dead code; full verification
+
+**Files:**
+- Delete: `components/editor/NodePreview.tsx`
+- Modify: any remaining importers
+
+- [ ] **Step 1: Delete the file + remove its import** from `ChainEditor.tsx` (should already be removed in B1; this confirms). Confirm no other importer:
+Run: `npx grep -rn "NodePreview" --include=*.tsx --include=*.ts .` (or use the editor search). Expected: no matches outside the deleted file.
+
+- [ ] **Step 2: Remove any remaining dead symbols.** Search and confirm empty:
+  - `grep -rn "AgentStreamOutput" app/workspace/page.tsx` → empty (still used by `HistoryPane` — that's fine; only `page.tsx` should be clean).
+  - `grep -rn "runsByFile\|runSingleInstance\|isOutputVisible\|isHistoryVisible" app/workspace/page.tsx` → empty.
+  - `grep -rn "registerFlush" .` → empty (seam never existed post-design; confirm).
+
+- [ ] **Step 3: Typecheck + lint + full test run.**
+Run: `npx tsc --noEmit`
+Expected: no errors.
+Run: `npm run lint`
+Expected: no new errors.
+Run: `npm run test:run`
+Expected: all `tests/**` pass (including the four new ones: run-model, run-store, selection-store, tab-clamp).
+
+- [ ] **Step 4: Full manual smoke (the design's per-view matrix).**
+Run: `npm run dev` and verify each row of the design's Per-view table:
+  - **Chain·Graph:** one header line; Run; click node → Output; Validation count; instance switcher on canvas + panel; collapse sidebar/palette/panel each leave a reopen rail.
+  - **Chain·YAML:** Output stacks all nodes; Validation present; instance switcher in panel header.
+  - **Agent:** Output = synthesized node; no Validation tab; instance switcher in panel header.
+  - **Skill/Template/Context:** title-only header; panel shows History only (Output/Validation hidden).
+  - **a4 boundary:** start a run, switch files/tabs/dock — run continues; F5 reload ends live stream but the run shows up in History.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "chore: remove obsolete panel components; final sweep"
+git commit -m "chore: delete NodePreview; remove dead run/console code; verify"
 ```
 
 ---
 
-## Self-Review (author checklist — completed)
+## Out-of-scope follow-ups (noted, not implemented here)
 
-**Spec coverage:**
-- One-line header → Task 16. Single Run / unified engine → Tasks 3, 16. Collapsible sidebar → Task 12. Collapsible palette → Task 13. Dockable panel (Output·Validation·History, dock/collapse/resize) → Tasks 7, 15. Output=clicked node → Task 9. Validation tab + a3 auto-switch → Tasks 10, 16. History + version diff (a1) → Tasks 6, 11. Instance switcher → Tasks 8, 14, 15. Nodes lose output → Task 5. Zustand stores + persistence (a2) → Tasks 2, 3, 4. Run survives navigation (a4) → Task 3 (store-owned). Per-view matrix → Task 15. Non-runnable = History only (a1) → Task 15 `hiddenTabs`. Seed click-to-expand (a5) → Task 16. Agent = one-node → Tasks 9, 15. All covered.
+- **Live-edited graph-view validation in the panel:** in Graph view the panel's Validation tab uses `parsedChain` issues (initial graph); the editor's canvas badges remain the authoritative live view. Unifying these means lifting graph topology to a store — explicitly out of scope (design "Out of scope").
+- **Live reconnect to an in-progress run after F5** — out of scope (design).
+- **Undo/Redo buttons** were dropped from the visible UI in D1 (keyboard shortcuts retained). Re-add as a canvas overlay if desired — not required by the design.
 
-**Placeholder scan:** UI tasks that relocate existing components (11, 12, 13, 15, 16) reference the concrete source files and give the key code; no `TBD`/`add error handling`-style gaps. Logic tasks (1, 2, 3, 6) have full code + tests.
+## Self-review notes (coverage map)
 
-**Type consistency:** `RunRecord`/`RunInstanceState`/`emptyInstance`/`applyEventToInstance`/`nodeRunOf` (Task 1) are consumed unchanged in Tasks 3, 9, 14. `runKey`, `inputsOf` (Task 3) consumed in 8, 14, 15, 16. `DockSide`/`PanelTab`/`openPanelTab` (Task 2) consumed in 7, 12, 13, 15, 16. `selectedNodeId`/`setSelectedNodeId` (Task 4) consumed in 9, 10, 14. `diffLines`/`DiffLine` (Task 6) consumed in 11. Consistent.
-
-**Out of scope (unchanged):** no `/api/run` semantic changes; live-reconnect-after-reload not attempted; graph topology stays in `ChainEditor`.
+- §1 one-line header → D1; seed expand (a5) → D1 `SeedField`.
+- §2 single run engine / fan-out / partial-run-single-instance → A2, B1, B3.
+- §3 collapsible sidebar → D2; §4 collapsible palette → D3.
+- §5 merged panel (Output/Validation/History, dock/collapse/resize, scrollable) → C2–C5; version diff (a1) → C6.
+- §6 instance switcher (canvas + panel) → C1, C3, D4.
+- §7 three stores (run/selection/ui), 2D shape, tab clamp, no run-state persistence → A1–A4, B1.
+- §8 AgentNode inline-output removal → B2.
+- Per-view matrix + edge cases (a1/a3/a4/a5, parallel divergence, skipped, new-run-reset, streaming) → C3 (error banner/auto-switch), C4 (parallel/instance), B1 (reset), A1/A2 (skipped + streaming via existing `applyRunEvent`).
+- Dependencies §C2.4 Interface popover → D5; §C2.8 file-watch banner → D6.

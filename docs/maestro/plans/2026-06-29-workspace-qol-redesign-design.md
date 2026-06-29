@@ -50,13 +50,13 @@ Replaces the page toolbar row, the Graph/YAML row, and the editor's seed/run bar
 One Run button per view. The two existing run paths collapse into a **store-owned run action** (`useRunStore.run()`) that:
 
 - posts the **inline graph** to `/api/run` (`{ chain: { name, description, nodes, edges }, … }`, per Group B §1.1) — so there is **no flush-before-run and no disk race**. The store reads the live graph from a getter that `ChainEditor` registers (this replaces the `registerFlush` seam discussed during planning);
-- honors **Parallel [N]** — runs N instances;
-- produces **per-instance, per-node** `runState` keyed by `nodeId`;
+- honors **Parallel [N]** — **fans out N concurrent fetches** (one per instance) and assembles the instance axis client-side; the server has no instance concept (mirrors today's `page.tsx` `Promise.all`);
+- produces **per-instance, per-node** `runState` (2D: `runState[instanceIndex][nodeId]`, see §7);
 - powers graph status dots, node status, and the Output tab from one source.
 
-Because the loop lives in the store (not a component effect), in-app navigation never interrupts it (a4).
+Because the run is **store-owned** rather than tied to a component effect, it survives `ChainEditor` unmounting on the graph↔YAML toggle and canvas teardown (a4) — not just file switches, which the page shell already survives.
 
-**Relationship to Group B:** the store-owned run **supersedes** B's local `runState`/`seedPrompt`/`running` useState (B kept run state in `ChainEditor`; we lift it to the store to satisfy a4). B's partial run (`runUpTo` / "▶ from here", §2.1–2.2) is **rewired onto the store** and its per-node preview output is shown in the **Output tab**, not the deleted bottom `NodePreview`. B's editor reducer + undo/redo (§1.2, §2.3) stay — they own graph topology + selection + clipboard; selection is bridged into `useSelectionStore` for the Output tab.
+**Relationship to Group B:** the store-owned run **supersedes** B's local `runState`/`seedPrompt`/`running` useState (B kept run state in `ChainEditor`; we lift it to the store to satisfy a4). B's partial run (`runUpTo` / "▶ from here", §2.1–2.2) is **rewired onto the store**; its per-node preview output is shown in the **Output tab**, not the deleted bottom `NodePreview`. **Partial run is single-instance** — Parallel [N] applies to whole-graph runs only; "▶ from here" is a debugging affordance and always runs one instance (no instance switcher). B's editor reducer + undo/redo (§1.2, §2.3) stay — they own graph topology + selection + clipboard; the primary selection is mirrored into `useSelectionStore` (§7) for the Output tab.
 
 ### 3. Collapsible Chains sidebar
 
@@ -68,7 +68,7 @@ The layout-level `Sidebar` (`app/workspace/layout.tsx` + `components/workspace/S
 
 ### 5. Merged dockable panel
 
-One panel replaces `ValidationPanel` + `NodePreview` + the side Output console + `HistoryPane`.
+One panel replaces `ValidationPanel` + `NodePreview` + the side Output console + `HistoryPane`. It **lives at page level** (shared across Agent/YAML/Graph views): it reads run state from `useRunStore` and the clicked node from `useSelectionStore` (§7), so it does not depend on `ChainEditor` being mounted.
 
 - **Tabs:** **Output** · **Validation** · **History**.
 - **Dock:** bottom (default) or right; **flip** at runtime.
@@ -85,12 +85,17 @@ One panel replaces `ValidationPanel` + `NodePreview` + the side Output console +
 
 ### 7. State architecture (Zustand)
 
-Zustand is already a dependency (v5.0.12) and used by `useToastStore`; this follows the same pattern.
+Zustand is already a dependency (v5.0.12) and used by `useToastStore`; this follows the same pattern. **Three** stores, split by lifecycle and persistence boundary:
 
-- **`useRunStore`** — run lifecycle + results, keyed by `type:slug`: per-instance/per-node `runState`, current instance index, running flag, run-level error, seed + Parallel inputs, and the `run()` action that owns the fetch+stream loop. Single source for graph dots, node status, and the Output tab. Keyed-by-file so each entity keeps its own run/output across tab switches.
-- **`useWorkspaceUiStore`** (with `persist` middleware → localStorage) — panel dock side / collapsed / size / active tab; sidebar collapsed; palette collapsed. This is the **persistence** for decision a2/D2 (global).
+- **`useRunStore`** (not persisted) — run lifecycle + results, keyed by `type:slug`: the **current run only** (one per file), its per-instance/per-node `runState`, current instance index, running flag, run-level error, and the seed + Parallel inputs. Owns the `run()` action. Single source for graph dots, node status, and the Output tab.
+  - **Shape is 2D:** `runState[instanceIndex][nodeId] → NodeRunState`. This replaces *both* current shapes — `ChainEditor`'s 1D `RunStateMap` (no instance axis) and `page.tsx`'s `RunInstance[]` (a list of batches of flat per-agent state).
+  - **`run()` fans out N concurrent fetches** to `/api/run` (one per Parallel instance) and tags each stream with its instance index. The **server has no instance concept** — each call is one independent run — so the instance axis is assembled client-side, exactly as `page.tsx` does today via `Promise.all`. "One run loop" means one owner, not one stream.
+  - **Single current run, not an accumulating list.** A new run **resets** `runState` (like `ChainEditor` today). `page.tsx`'s in-memory run history (`runsByFile` growing `[newRun, ...prev]`, with Clear-All / Delete-Run) is **dropped** — past runs live in the **History** tab (`/api/runs`), not memory.
+  - **Why a store (not lifting to `page.tsx`):** `WorkspaceContent` already survives file switches, so persistence-across-navigation is *not* the reason. The store earns its place by (a) surviving **`ChainEditor`'s** unmount on the graph↔YAML toggle (`key={slug}`, conditionally rendered) and on canvas teardown, and (b) giving both the page-level panel and deep nodes (`AgentNode` dots + `onRunFromHere`, ~4 levels down) a reactive read of one source **without prop-drilling**.
+- **`useWorkspaceUiStore`** (with `persist` middleware → localStorage) — panel dock side / collapsed / size / active tab; sidebar collapsed; palette collapsed. This is the **persistence** for decision a2/D2 (global). **Guard on hydrate:** a persisted `active-tab` may be invalid for the current view (e.g. Validation restored on an agent, which has no Validation tab) — clamp to an available tab.
+- **`useSelectionStore`** (not persisted, keyed by `type:slug`) — the primary selected `nodeId`, so the **page-level panel** can read the clicked node for the Output tab. Required because the panel lives at page level (it spans Agent/YAML/Graph) while selection originates inside `ChainEditor`'s reducer — different subtrees. The **reducer stays the source of truth** (it owns selection for copy/paste/undo); this store is a **write-through read-replica**, written once on the existing `setSelection` path (which is already `NON_HISTORIC`, so the mirror never touches undo/redo).
 
-**Out of the stores:** graph topology (`nodes`/`edges`) and its autosave pipeline stay in `ChainEditor`. Node selection is exposed minimally so the panel's Output tab can read the primary selected node (placement is a plan-time detail).
+**Out of the stores:** graph topology (`nodes`/`edges`) and its autosave pipeline stay in `ChainEditor`.
 
 ### 8. Nodes
 
@@ -114,7 +119,7 @@ Verified: a single-agent run synthesizes a one-node chain server-side (`app/api/
 - **a1 — Non-runnable views:** show the panel with **History only** (Output + Validation hidden), plus a **side-by-side version-diff** button.
 - **a2/D2 — Panel layout memory:** persist dock/collapse/size/active-tab **globally** via `useWorkspaceUiStore` + `persist`.
 - **a3 — Run-level failures:** a whole-run error (API failure or `/api/run` rejecting an invalid chain before any node starts) surfaces as a **banner in the panel** and **auto-switches to the Validation tab**.
-- **a4 — Run not disrupted:** the run is **store-owned** and keyed by `type:slug`. Tab switch, dock flip, collapse, and canvas unmount do **not** interrupt it. **Boundary:** a hard browser reload (F5) ends the live stream — the run still completes server-side and appears in History (`/api/runs`); live token reconnect after reload is **out of scope**.
+- **a4 — Run not disrupted:** the run is **store-owned** and keyed by `type:slug`, decoupling it from component lifecycle. The page shell (`WorkspaceContent`) already survives file switches; the store additionally covers **`ChainEditor` unmounting** on the graph↔YAML toggle and on canvas teardown. Tab switch, dock flip, and collapse do **not** interrupt it. **Boundary:** a hard browser reload (F5) ends the live stream — the run still completes server-side and appears in History (`/api/runs`); live token reconnect after reload is **out of scope**.
 - **a5 — Long seed prompt:** single-line field with **click-to-expand** popover.
 
 **Handled with defaults:**

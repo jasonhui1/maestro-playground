@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
-import { useAutoSave } from '@/hooks/useAutoSave';
+import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave';
 import { TabController } from '@/components/workspace/TabController';
 import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
@@ -71,23 +71,24 @@ function WorkspaceContent() {
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
-  const activeKey = (type === 'chain' && chainView === 'graph' && slug) ? slug : currentFileKey;
-  const running = useRunStore(state => state.byFile[activeKey]?.running ?? false);
-  const parallel = useRunStore(state => state.byFile[activeKey]?.parallel ?? 1);
+  // Graph view's real autosave runs inside ChainEditor; mirror its status up so the
+  // header reflects graph edits (the page-level useAutoSave above is inert there).
+  const [graphSaveStatus, setGraphSaveStatus] = useState<SaveStatus>('idle');
+  const headerStatus = view === 'graph' ? graphSaveStatus : status;
+
+  // Canonical per-file run-store key for every view (matches ChainEditor's `chain:${slug}`).
+  const running = useRunStore(state => state.byFile[currentFileKey]?.running ?? false);
+  const parallel = useRunStore(state => state.byFile[currentFileKey]?.parallel ?? 1);
   const setParallel = useRunStore(state => state.setParallel);
   const runFile = useRunStore(state => state.run);
-  const seedPrompt = useRunStore(state => state.byFile[activeKey]?.seedPrompt ?? '');
+  const seedPrompt = useRunStore(state => state.byFile[currentFileKey]?.seedPrompt ?? '');
   const setSeed = useRunStore(state => state.setSeed);
   const setSeedPrompt = useCallback((val: string) => {
-    setSeed(activeKey, val);
-  }, [activeKey, setSeed]);
+    setSeed(currentFileKey, val);
+  }, [currentFileKey, setSeed]);
 
   const handleRun = () => {
-    if (type === 'chain' && chainView === 'graph' && slug) {
-      runFile(slug);
-    } else if (slug) {
-      runFile(currentFileKey);
-    }
+    if (slug) runFile(currentFileKey);
   };
 
   useEffect(() => {
@@ -112,9 +113,9 @@ function WorkspaceContent() {
 
   useEffect(() => {
     if (seedParam !== undefined && type && slug) {
-      setSeed(activeKey, seedParam);
+      setSeed(currentFileKey, seedParam);
     }
-  }, [activeKey, seedParam, type, slug, setSeed]);
+  }, [currentFileKey, seedParam, type, slug, setSeed]);
 
   useEffect(() => {
     if (!type || !slug) {
@@ -183,14 +184,14 @@ function WorkspaceContent() {
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
               <input type="number" min={1} max={10} value={parallel}
-                onChange={(e) => setParallel(activeKey, parseInt(e.target.value) || 1)}
+                onChange={(e) => setParallel(currentFileKey, parseInt(e.target.value) || 1)}
                 className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300" />
             </div>
             <button onClick={handleRun} disabled={loading || running}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">
               <Play size={12} className="fill-current" />{running ? 'Running…' : 'Run'}
             </button>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{headerStatus}</span>
           </>
         )}
         <button onClick={() => useWorkspaceUiStore.getState().togglePanel()} className="ml-auto p-1.5 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50" aria-label="Toggle panel">
@@ -220,6 +221,7 @@ function WorkspaceContent() {
                       refetchAgents={refetchEditorData}
                       initialSeedPrompt={seedParam}
                       chains={editorChains}
+                      onSaveStatus={setGraphSaveStatus}
                     />
                   ) : (
                     <div className="h-full p-6 pt-4">
@@ -238,7 +240,7 @@ function WorkspaceContent() {
             </Panel>
             <Separator className={`bg-zinc-100 hover:bg-zinc-200 transition-colors ${dockSide === 'right' ? 'w-1 border-x' : 'h-1 border-y'} border-zinc-200`} />
             <Panel defaultSize={`${panelSize}%`} minSize={10}
-              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(typeof size === 'number' ? size : parseFloat(String(size)))}>
+              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(size.asPercentage)}>
               <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
             </Panel>
           </Group>

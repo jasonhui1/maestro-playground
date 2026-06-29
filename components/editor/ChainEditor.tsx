@@ -1,7 +1,7 @@
 'use client'
 import React, { useCallback, useEffect, useMemo, useState, useReducer } from 'react'
 import dagre from 'dagre'
-import { useAutoSave } from '@/hooks/useAutoSave'
+import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
@@ -11,6 +11,7 @@ import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort } from '@/lib/types'
+import type { RunStateMap } from '@/lib/runState'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
 import NodePalette from './NodePalette'
@@ -25,6 +26,10 @@ import InterfacePopover from './InterfacePopover'
 
 const NODE_W = 240, NODE_H = 120
 
+// Stable empty reference: a zustand v5 selector must return a cached value, never a fresh
+// `{}` each call, or useSyncExternalStore reports "getSnapshot should be cached" and loops.
+const EMPTY_RUN_STATE: RunStateMap = {}
+
 function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   if (nodes.every(n => n.pos)) return nodes
   const g = new dagre.graphlib.Graph()
@@ -36,7 +41,7 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, onSaveStatus }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
@@ -44,6 +49,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   refetchAgents?: () => void
   initialSeedPrompt?: string
   chains: ChainDef[]
+  onSaveStatus?: (status: SaveStatus) => void
 }) {
   const historced = useMemo(() => withHistory(applyEditorAction, (a: EditorAction) => !NON_HISTORIC.has(a.type)), [])
   const [hist, dispatch] = useReducer(historced, undefined, () => ({
@@ -58,16 +64,23 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }))
   const { nodes, edges, selectedIds, clipboard } = hist.present
   const primaryId = selectedIds[0] ?? null
+  // Canonical per-file store key — must match page.tsx `currentFileKey` (`${type}:${slug}`)
+  // and DockPanel/OutputTab so the merged panel reads the same run/selection slice.
+  const fileKey = `chain:${slug}`
 
   const setSelectedIds = useCallback((ids: string[]) => {
     dispatch({ type: 'setSelection', ids })
-    useSelectionStore.getState().setSelected(slug, ids[0] ?? null)
-  }, [slug])
+    useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
+  }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
   const initialMarkdown = useMemo(() => serializeChain({ name: initialChain.name, description: initialChain.description, inputs: initialChain.inputs, outputs: initialChain.outputs }, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
   const { setContent, status, content, getLastSaved } = useAutoSave('chain', slug, initialMarkdown)
+
+  // Mirror graph-view autosave status up so the page header can show it (page's own
+  // useAutoSave is inert in graph view because FileEditor isn't mounted).
+  useEffect(() => { onSaveStatus?.(status) }, [status, onSaveStatus])
 
   const [iface, setIface] = useState<{ inputs: ChainPort[]; outputs: ChainPort[] }>(() => ({
     inputs: initialChain.inputs ?? [],
@@ -91,16 +104,16 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }, [incoming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runState = useRunStore(state => {
-    const f = state.byFile[slug]
-    if (!f) return {}
-    return f.runState[f.currentInstance] ?? {}
+    const f = state.byFile[fileKey]
+    if (!f) return EMPTY_RUN_STATE
+    return f.runState[f.currentInstance] ?? EMPTY_RUN_STATE
   })
-  const seedPrompt = useRunStore(state => state.byFile[slug]?.seedPrompt ?? '')
-  const running = useRunStore(state => state.byFile[slug]?.running ?? false)
+  const seedPrompt = useRunStore(state => state.byFile[fileKey]?.seedPrompt ?? '')
+  const running = useRunStore(state => state.byFile[fileKey]?.running ?? false)
   const setSeed = useRunStore(state => state.setSeed)
   const triggerRun = useRunStore(state => state.run)
-  const currentInstance = useRunStore(state => state.byFile[slug]?.currentInstance ?? 0)
-  const instanceCount = useRunStore(state => state.byFile[slug]?.instanceCount ?? 0)
+  const currentInstance = useRunStore(state => state.byFile[fileKey]?.currentInstance ?? 0)
+  const instanceCount = useRunStore(state => state.byFile[fileKey]?.instanceCount ?? 0)
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   useEffect(() => {
@@ -122,12 +135,12 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   useEffect(() => {
     if (initialSeedPrompt !== undefined) {
-      useRunStore.getState().setSeed(slug, initialSeedPrompt)
+      useRunStore.getState().setSeed(fileKey, initialSeedPrompt)
     }
-  }, [slug, initialSeedPrompt])
+  }, [fileKey, initialSeedPrompt])
 
   useEffect(() => {
-    setRunTarget(slug, {
+    setRunTarget(fileKey, {
       type: 'chain',
       slug,
       buildBody: (seed) => ({
@@ -145,15 +158,17 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       }),
     })
     return () => {
-      clearRunTarget(slug)
+      clearRunTarget(fileKey)
     }
-  }, [slug, meta, iface, nodes, edges])
+  }, [fileKey, slug, meta, iface, nodes, edges])
 
-  const run = useCallback(() => triggerRun(slug), [triggerRun, slug])
+  const run = useCallback(() => triggerRun(fileKey), [triggerRun, fileKey])
 
   const runUpTo = useCallback((targetId: string) => {
     const sub = upstreamSubgraph({ ...initialChain, nodes, edges }, targetId)
-    return triggerRun(slug, {
+    // Partial "run from here" is single-instance (design §2) — never fan out.
+    return triggerRun(fileKey, {
+      parallel: 1,
       bodyOverride: (seed) => ({
         chain: {
           name: meta.name,
@@ -168,7 +183,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         slug,
       }),
     })
-  }, [triggerRun, slug, initialChain, nodes, edges, meta, iface])
+  }, [triggerRun, fileKey, slug, initialChain, nodes, edges, meta, iface])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
   const moveNode = useCallback((id: string, pos: [number, number]) => {
@@ -260,7 +275,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
             onDeleteEdge={deleteEdge}
             instanceCount={instanceCount}
             currentInstance={currentInstance}
-            onInstance={(i) => useRunStore.getState().setCurrentInstance(slug, i)}
+            onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
           />
           {drawerSlug && (
             <AgentDrawer
