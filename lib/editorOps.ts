@@ -39,3 +39,55 @@ export function makeLoopZone(existingIds: string[], pos: [number, number]): Chai
     { id: endId, kind: 'loop-end', zone, until: '', maxIterations: 3, pos: [pos[0] + 360, pos[1]] },
   ]
 }
+
+export interface Subgraph {
+  nodes: ChainNode[]
+  edges: ChainEdge[]
+}
+
+// Selected nodes plus only the edges whose BOTH endpoints are in the selection.
+export function copySubgraph(nodes: ChainNode[], edges: ChainEdge[], ids: string[]): Subgraph {
+  const set = new Set(ids)
+  return {
+    nodes: nodes.filter(n => set.has(n.id)).map(n => structuredClone(n)),
+    edges: edges.filter(e => set.has(e.fromNode) && set.has(e.toNode)).map(e => ({ ...e })),
+  }
+}
+
+// Clone a subgraph with fresh node ids, fresh zone ids, remapped edges and offset positions.
+export function pasteSubgraph(
+  clip: Subgraph,
+  existingIds: string[],
+  offset: [number, number],
+): { nodes: ChainNode[]; edges: ChainEdge[]; newIds: string[] } {
+  const taken = [...existingIds]
+  const idMap = new Map<string, string>()
+  for (const n of clip.nodes) {
+    const fresh = uniqueNodeId(n.kind, taken)
+    idMap.set(n.id, fresh)
+    taken.push(fresh)
+  }
+  const zoneMap = new Map<string, string>()
+  for (const n of clip.nodes) {
+    if (n.zone && !zoneMap.has(n.zone)) {
+      const freshZone = uniqueNodeId('zone', taken)
+      zoneMap.set(n.zone, freshZone)
+      taken.push(freshZone)
+    }
+  }
+  const nodes: ChainNode[] = clip.nodes.map(n => {
+    const copy = structuredClone(n)
+    copy.id = idMap.get(n.id)!
+    if (n.zone) copy.zone = zoneMap.get(n.zone)!
+    const [x, y] = n.pos ?? [0, 0]
+    copy.pos = [x + offset[0], y + offset[1]]
+    return copy
+  })
+  const edges: ChainEdge[] = clip.edges.map(e => ({
+    fromNode: idMap.get(e.fromNode)!,
+    fromSocket: e.fromSocket,
+    toNode: idMap.get(e.toNode)!,
+    toSocket: e.toSocket,
+  }))
+  return { nodes, edges, newIds: [...idMap.values()] }
+}
