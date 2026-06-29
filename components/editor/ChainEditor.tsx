@@ -8,6 +8,7 @@ import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
 import { uniqueNodeId } from '@/lib/editorOps'
 import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReducer'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
+import { upstreamSubgraph } from '@/lib/partialRun'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -84,36 +85,30 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     return m
   }, [validation])
 
-  const run = useCallback(async () => {
-    setRunError(null)
-    setRunState({})
-    setRunning(true)
+  const streamInline = useCallback(async (gNodes: ChainNode[], gEdges: ChainEdge[]) => {
+    setRunError(null); setRunState({}); setRunning(true)
     try {
       const res = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chain: { name: meta.name, description: meta.description, nodes, edges },
-          seedPrompt, type: 'chain', slug,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chain: { name: meta.name, description: meta.description, nodes: gNodes, edges: gEdges }, seedPrompt, type: 'chain', slug }),
       })
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setRunError((body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`)
-        return
+        const b = await res.json().catch(() => ({}))
+        setRunError((b.errors as string[] | undefined)?.join('; ') ?? b.error ?? `Run failed (${res.status})`); return
       }
-      const reader = res.body?.getReader()
-      if (!reader) return
-      await streamRun(reader, e => {
-        if (e.type === 'error') { setRunError(e.error); return }
-        setRunState(prev => applyRunEvent(prev, e))
-      })
+      const reader = res.body?.getReader(); if (!reader) return
+      await streamRun(reader, e => { if (e.type === 'error') { setRunError(e.error); return } setRunState(prev => applyRunEvent(prev, e)) })
     } catch (err) {
       setRunError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRunning(false)
-    }
-  }, [meta, nodes, edges, slug, seedPrompt])
+    } finally { setRunning(false) }
+  }, [meta, seedPrompt, slug])
+
+  const run = useCallback(() => streamInline(nodes, edges), [streamInline, nodes, edges])
+
+  const runUpTo = useCallback((targetId: string) => {
+    const sub = upstreamSubgraph({ ...initialChain, nodes, edges }, targetId)
+    return streamInline(sub.nodes, sub.edges)
+  }, [streamInline, initialChain, nodes, edges])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
   const moveNode = useCallback((id: string, pos: [number, number]) => dispatch({ type: 'moveNode', id, pos }), [])
