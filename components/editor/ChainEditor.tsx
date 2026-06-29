@@ -229,38 +229,6 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3">
-        <input
-          value={seedPrompt}
-          onChange={e => setSeed(slug, e.target.value)}
-          placeholder="Seed prompt ({input})…"
-          className="flex-1 text-xs border border-zinc-200 rounded px-2 py-1"
-        />
-        <button
-          onClick={run}
-          disabled={running}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50"
-        >
-          <Play size={12} className="fill-current" />
-          {running ? 'Running…' : 'Run'}
-        </button>
-        <button
-          onClick={() => dispatch({ type: 'undo' })}
-          disabled={!canUndo(hist)}
-          className="px-2.5 py-1.5 border border-zinc-200 rounded-md text-xs font-medium hover:bg-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          Undo
-        </button>
-        <button
-          onClick={() => dispatch({ type: 'redo' })}
-          disabled={!canRedo(hist)}
-          className="px-2.5 py-1.5 border border-zinc-200 rounded-md text-xs font-medium hover:bg-zinc-50 disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          Redo
-        </button>
-        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
-      </div>
-
       {conflict && (
         <div className="px-4 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
           <span>This chain changed on disk.</span>

@@ -6,7 +6,7 @@ import { FileEditor } from '@/components/workspace/FileEditor';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { TabController } from '@/components/workspace/TabController';
 import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
-import { Play, Network, FileCode } from 'lucide-react';
+import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
 import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
 import { ChainDef, AgentDef } from '@/lib/types';
@@ -15,9 +15,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { validateChain } from '@/lib/chainGraph';
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import DockPanel from '@/components/workspace/DockPanel';
-
-
-
+import SeedField from '@/components/workspace/SeedField';
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
@@ -75,9 +73,14 @@ function WorkspaceContent() {
 
   const activeKey = (type === 'chain' && chainView === 'graph' && slug) ? slug : currentFileKey;
   const running = useRunStore(state => state.byFile[activeKey]?.running ?? false);
-  const parallel = useRunStore(state => state.byFile[currentFileKey]?.parallel ?? 1);
+  const parallel = useRunStore(state => state.byFile[activeKey]?.parallel ?? 1);
   const setParallel = useRunStore(state => state.setParallel);
   const runFile = useRunStore(state => state.run);
+  const seedPrompt = useRunStore(state => state.byFile[activeKey]?.seedPrompt ?? '');
+  const setSeed = useRunStore(state => state.setSeed);
+  const setSeedPrompt = useCallback((val: string) => {
+    setSeed(activeKey, val);
+  }, [activeKey, setSeed]);
 
   const handleRun = () => {
     if (type === 'chain' && chainView === 'graph' && slug) {
@@ -109,9 +112,9 @@ function WorkspaceContent() {
 
   useEffect(() => {
     if (seedParam !== undefined && type && slug) {
-      useRunStore.getState().setSeed(currentFileKey, seedParam);
+      setSeed(activeKey, seedParam);
     }
-  }, [currentFileKey, seedParam, type, slug]);
+  }, [activeKey, seedParam, type, slug, setSeed]);
 
   useEffect(() => {
     if (!type || !slug) {
@@ -137,7 +140,7 @@ function WorkspaceContent() {
     }
 
     fetchContent();
-  }, [type, slug]);
+  }, [type, slug, chainView]);
 
   if (!type || !slug) {
     return (
@@ -164,47 +167,36 @@ function WorkspaceContent() {
         <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-zinc-50 to-transparent pointer-events-none opacity-0 group-hover/tabs:opacity-100 transition-opacity duration-300" />
       </div>
 
-      {/* Toolbar */}
-      <div className="px-6 py-3 border-b border-zinc-100 flex items-center justify-between bg-white/80 backdrop-blur-sm sticky top-0 z-20">
-        <div className="flex items-center gap-4">
-          <div className="h-8 w-1 bg-zinc-900 rounded-full mr-1" />
-          <div>
-            <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">
-              <span className="hover:text-zinc-600 cursor-default transition-colors">{type}</span>
-              <span className="text-zinc-200">/</span>
-              <span className="hover:text-zinc-600 cursor-default transition-colors">{slug}</span>
+      {/* Header */}
+      <header className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="h-6 w-1 bg-zinc-900 rounded-full" />
+        <h1 className="text-sm font-bold text-zinc-900 capitalize">{slug.replace(/-/g, ' ')}</h1>
+        {type === 'chain' && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => setChainView('graph')} className={`px-2 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}>Graph</button>
+            <button onClick={() => setChainView('yaml')} className={`px-2 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}>YAML</button>
+          </div>
+        )}
+        {(type === 'agent' || type === 'chain') && (
+          <>
+            <SeedField value={seedPrompt} onChange={setSeedPrompt} />
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
+              <input type="number" min={1} max={10} value={parallel}
+                onChange={(e) => setParallel(activeKey, parseInt(e.target.value) || 1)}
+                className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300" />
             </div>
-            <h1 className="text-base font-bold text-zinc-900 capitalize leading-tight">
-              {slug.replace(/-/g, ' ')}
-            </h1>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-3">
-
-
-          <div className="flex items-center gap-2 mr-2">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={parallel}
-              onChange={(e) => setParallel(currentFileKey, parseInt(e.target.value) || 1)}
-              className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300"
-            />
-          </div>
-
-          <button
-            onClick={handleRun}
-            disabled={loading || (type !== 'agent' && type !== 'chain') || running}
-            className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded-md hover:bg-zinc-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-          >
-            <Play size={14} className="fill-current" />
-            {running ? 'Running…' : 'Run'}
-          </button>
-        </div>
-      </div>
+            <button onClick={handleRun} disabled={loading || running}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">
+              <Play size={12} className="fill-current" />{running ? 'Running…' : 'Run'}
+            </button>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
+          </>
+        )}
+        <button onClick={() => useWorkspaceUiStore.getState().togglePanel()} className="ml-auto p-1.5 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50" aria-label="Toggle panel">
+          <PanelBottom size={16} />
+        </button>
+      </header>
       
       <div className="flex-1 min-h-0">
         {loading ? (
@@ -217,25 +209,6 @@ function WorkspaceContent() {
           <Group orientation={dockSide === 'right' ? 'horizontal' : 'vertical'}>
             <Panel minSize={30}>
               <div className="h-full flex flex-col">
-                {type === 'chain' && (
-                  <div className="flex items-center gap-1 px-6 pt-3">
-                    <button
-                      onClick={() => setChainView('graph')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'graph' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
-                    >
-                      <Network size={12} /> Graph
-                    </button>
-                    <button
-                      onClick={() => setChainView('yaml')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border ${chainView === 'yaml' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200'}`}
-                    >
-                      <FileCode size={12} /> YAML
-                    </button>
-                    {chainView === 'graph' && !parsedChain && (
-                      <span className="ml-2 text-[11px] text-amber-600">Couldn’t parse as a graph — showing YAML</span>
-                    )}
-                  </div>
-                )}
                 <div className="flex-1 min-h-0">
                   {type === 'chain' && chainView === 'graph' && parsedChain ? (
                     <ChainEditor
