@@ -15,8 +15,10 @@ import {
   Trash2, 
   Search, 
   X,
-  AlertTriangle
+  AlertTriangle,
+  PanelLeftClose
 } from 'lucide-react';
+import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import { useToastStore } from '@/hooks/store/useToastStore';
 
 interface WorkspaceData {
@@ -299,6 +301,14 @@ export default function Sidebar() {
             </button>
           );
         })}
+        <button
+          onClick={() => useWorkspaceUiStore.getState().toggleSidebar()}
+          className="mt-auto p-2.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
+          title="Collapse sidebar"
+          aria-label="Collapse sidebar"
+        >
+          <PanelLeftClose size={20} />
+        </button>
       </div>
 
       {/* Content Area (Right Panel) */}
