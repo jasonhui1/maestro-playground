@@ -1,4 +1,10 @@
-export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end'
+export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain'
+
+export interface ChainPort {
+  name: string      // public socket name shown on subchain nodes
+  node: string      // inner node this port binds to (seed for inputs; any node for outputs)
+  socket?: string   // inner output socket (outputs only); defaults to 'output'
+}
 
 export interface BranchCase {
   label: string
@@ -18,6 +24,7 @@ export interface ChainNode {
   state?: string[]       // loop-start: names of carried state items
   until?: string         // loop-end: exit condition
   maxIterations?: number // loop-end
+  subchain?: string      // kind === 'subchain' (referenced chain slug)
 }
 
 export interface ChainEdge {
@@ -76,6 +83,8 @@ export interface ChainDef {
   edges: ChainEdge[]
   filePath: string
   isFavorite?: boolean
+  inputs?: ChainPort[]
+  outputs?: ChainPort[]
 }
 
 export interface AgentOutput {

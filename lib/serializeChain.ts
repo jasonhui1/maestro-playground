@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import { ChainNode, ChainEdge } from './types'
+import { ChainNode, ChainEdge, ChainPort } from './types'
 
 function serializeNode(n: ChainNode): Record<string, unknown> {
   const out: Record<string, unknown> = { id: n.id, kind: n.kind }
@@ -27,6 +27,9 @@ function serializeNode(n: ChainNode): Record<string, unknown> {
       if (n.until !== undefined) out.until = n.until
       if (n.maxIterations !== undefined) out.maxIterations = n.maxIterations
       break
+    case 'subchain':
+      if (n.subchain !== undefined) out.subchain = n.subchain
+      break
   }
   return out
 }
@@ -38,20 +41,23 @@ function serializeEdge(e: ChainEdge): { from: string; to: string } {
 }
 
 export function chainToData(
-  meta: { name: string; description?: string },
+  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[] },
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): Record<string, unknown> {
-  return {
+  const data: Record<string, unknown> = {
     name: meta.name,
     description: meta.description ?? '',
     nodes: nodes.map(serializeNode),
     edges: edges.map(serializeEdge),
   }
+  if (meta.inputs && meta.inputs.length) data.inputs = meta.inputs
+  if (meta.outputs && meta.outputs.length) data.outputs = meta.outputs
+  return data
 }
 
 export function serializeChain(
-  meta: { name: string; description?: string },
+  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[] },
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): string {

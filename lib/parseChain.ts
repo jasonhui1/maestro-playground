@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import { ChainDef, ChainNode, ChainEdge } from './types'
+import { ChainDef, ChainNode, ChainEdge, ChainPort } from './types'
 
 export function parseEndpoint(s: string): { node: string; socket: string } {
   const str = String(s)
@@ -26,6 +26,7 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
         state: Array.isArray(n.state) ? (n.state as unknown[]).map(String) : undefined,
         until: n.until as string | undefined,
         maxIterations: typeof n.maxIterations === 'number' ? n.maxIterations : undefined,
+        subchain: n.subchain as string | undefined,
       }))
     : []
   const edges: ChainEdge[] = Array.isArray(data.edges)
@@ -35,5 +36,13 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
         return { fromNode: from.node, fromSocket: from.socket, toNode: to.node, toSocket: to.socket }
       })
     : []
-  return { slug, name: data.name, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false }
+  const ports = (key: 'inputs' | 'outputs'): ChainPort[] | undefined =>
+    Array.isArray(data[key])
+      ? (data[key] as Record<string, unknown>[]).map(p => ({
+          name: String(p.name), node: String(p.node),
+          ...(p.socket !== undefined ? { socket: String(p.socket) } : {}),
+        }))
+      : undefined
+
+  return { slug, name: data.name, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false, inputs: ports('inputs'), outputs: ports('outputs') }
 }
