@@ -5,46 +5,29 @@ import { snapshotVersion } from '@/lib/fs/versions'
 import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput, AgentDef, ChainDef } from '@/lib/types'
+import { resolveRunChain } from '@/lib/resolveRunChain'
 import { nanoid } from 'nanoid'
 import fs from 'fs'
 import path from 'path'
 
 export async function POST(req: NextRequest) {
-  const { chainName, agentName, seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs, type, slug } =
-    await req.json()
+  const body = await req.json()
+  const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } = body
 
   const { agents, skills, chains } = loadWorkspace()
 
-  let chain: ChainDef | null = null
-  let runTitle = ''
-  let currentVersion = 0
+  const resolved = resolveRunChain(body, { agents, chains })
+  if ('error' in resolved) return new Response(resolved.error, { status: resolved.status })
+  const { chain, title: runTitle, kind } = resolved
 
-  if (chainName) {
-    const found = chains.find(c => c.name === chainName) || chains.find(c => c.slug === chainName)
-    if (!found) return new Response('Chain not found', { status: 404 })
-    chain = found
-    runTitle = found.name
+  let currentVersion = 0
+  if (kind === 'chain' && chain.filePath) {
     let rawContent = ''
-    try {
-      if (found.filePath) rawContent = fs.readFileSync(found.filePath, 'utf-8')
-    } catch {}
-    currentVersion = snapshotVersion('chain', found.slug, rawContent)
-  } else if (agentName) {
-    const agent = agents.find(a => a.name === agentName) || agents.find(a => a.slug === agentName)
-    if (!agent) return new Response('Agent not found', { status: 404 })
-    // Synthesize a one-node chain: seed -> agent.input
-    chain = {
-      slug: agent.slug, name: agent.name, description: '', filePath: '',
-      nodes: [
-        { id: 'seed', kind: 'seed' },
-        { id: agent.slug, kind: 'agent', agent: agent.slug },
-      ],
-      edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: agent.slug, toSocket: 'input' }],
-    }
-    runTitle = agent.name
-    currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt)
-  } else {
-    return new Response('No chain or agent specified', { status: 400 })
+    try { rawContent = fs.readFileSync(chain.filePath, 'utf-8') } catch {}
+    currentVersion = snapshotVersion('chain', chain.slug, rawContent)
+  } else if (kind === 'agent') {
+    const agent = agents.find(a => a.slug === chain.slug)
+    if (agent) currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt)
   }
 
   const validation = validateChain(chain, agents)

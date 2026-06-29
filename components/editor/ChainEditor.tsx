@@ -54,7 +54,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
 
   const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
-  const { setContent, status, flush } = useAutoSave('chain', slug, initialMarkdown)
+  const { setContent, status } = useAutoSave('chain', slug, initialMarkdown)
 
   const [runState, setRunState] = useState<RunStateMap>({})
   const [seedPrompt, setSeedPrompt] = useState(initialSeedPrompt ?? '')
@@ -84,11 +84,13 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     setRunState({})
     setRunning(true)
     try {
-      await flush(serializeChain(meta, nodes, edges)) // save-then-run: disk = canvas
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chainName: slug, seedPrompt, type: 'chain', slug }),
+        body: JSON.stringify({
+          chain: { name: meta.name, description: meta.description, nodes, edges },
+          seedPrompt, type: 'chain', slug,
+        }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -106,7 +108,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     } finally {
       setRunning(false)
     }
-  }, [flush, meta, nodes, edges, slug, seedPrompt])
+  }, [meta, nodes, edges, slug, seedPrompt])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => {
     setNodes(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n))
