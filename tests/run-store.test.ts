@@ -22,7 +22,7 @@ const done = (output: string) => ({
 await (async () => {
   // each instance gets its own stream; tag output with the instance index so we can assert routing
   let call = -1
-  // @ts-expect-error - override global fetch for the test
+  // override global fetch for the test
   global.fetch = async () => {
     call += 1
     const tag = `i${call}`
@@ -55,7 +55,7 @@ await (async () => {
 
 await (async () => {
   // run-level failure: non-ok response sets error and leaves running=false
-  // @ts-expect-error - override global fetch
+  // override global fetch
   global.fetch = async () => new Response(JSON.stringify({ error: 'bad chain' }), { status: 400 })
   setRunTarget('chain:bad', { type: 'chain', slug: 'bad', buildBody: () => ({}) })
   useRunStore.getState().setParallel('chain:bad', 1)
