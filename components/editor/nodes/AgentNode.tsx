@@ -68,12 +68,6 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
             ))}
           </div>
         </div>
-
-        {run && run.output && (
-          <div className="mt-2 text-[10px] text-zinc-600 bg-zinc-50 border border-zinc-100 rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
-            {run.output.slice(0, 240)}
-          </div>
-        )}
       </div>
     </div>
   )
