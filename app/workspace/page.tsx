@@ -67,6 +67,7 @@ function WorkspaceContent() {
   }, [type, parsedChain, editorAgents, editorChains])
 
   const dockSide = useWorkspaceUiStore(s => s.dockSide)
+  // Persisted panel size percentage driven from useWorkspaceUiStore
   const panelSize = useWorkspaceUiStore(s => s.panelSize)
 
 
