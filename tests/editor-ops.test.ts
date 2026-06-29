@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { uniqueNodeId, connectEdge, deleteNode, deleteEdge, makeLoopZone, copySubgraph, pasteSubgraph } from '../lib/editorOps'
+import { uniqueNodeId, connectEdge, deleteNode, deleteEdge, makeLoopZone, copySubgraph, pasteSubgraph, reservedIds } from '../lib/editorOps'
 import type { Subgraph } from '../lib/editorOps'
 import { ChainEdge, ChainNode } from '../lib/types'
 
@@ -76,5 +76,23 @@ const loopClip: Subgraph = {
 const loopPasted = pasteSubgraph(loopClip, ['loop-start-1', 'loop-end-1', 'zone-1'], [0, 0])
 assert.strictEqual(loopPasted.nodes[0].zone, loopPasted.nodes[1].zone)  // shared
 assert.notStrictEqual(loopPasted.nodes[0].zone, 'zone-1')               // fresh
+
+// reservedIds spans node ids AND the distinct zone ids they reference (deduped)
+const zonedNodes: ChainNode[] = [
+  { id: 'loop-start-1', kind: 'loop-start', zone: 'zone-1', state: [] },
+  { id: 'loop-end-1', kind: 'loop-end', zone: 'zone-1', until: '', maxIterations: 3 },
+  { id: 'a', kind: 'agent', agent: 'x' },
+]
+const reserved = reservedIds(zonedNodes)
+assert.ok(reserved.includes('loop-start-1') && reserved.includes('a'))
+assert.ok(reserved.includes('zone-1'))
+assert.strictEqual(reserved.filter(id => id === 'zone-1').length, 1)    // deduped
+
+// regression: pasting a loop back into its own graph must NOT reuse the source zone.
+// The real caller passes reservedIds(nodes); node-ids alone would hand back 'zone-1'.
+const selfClip = copySubgraph(zonedNodes, [], ['loop-start-1', 'loop-end-1'])
+const selfPaste = pasteSubgraph(selfClip, reservedIds(zonedNodes), [40, 40])
+assert.notStrictEqual(selfPaste.nodes[0].zone, 'zone-1')               // fresh, not the source zone
+assert.strictEqual(selfPaste.nodes[0].zone, selfPaste.nodes[1].zone)   // still shared within the pasted pair
 
 console.log('✅ editor-ops tests passed')

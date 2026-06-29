@@ -7,6 +7,16 @@ export function uniqueNodeId(kind: string, existing: string[]): string {
   return `${kind}-${i}`
 }
 
+// The full id space a node list occupies: node ids PLUS the distinct zone ids they
+// reference. Mint fresh node *or* zone ids against this. Zone ids live in `node.zone`,
+// never in the node-id list, so checking node ids alone hands back an already-used zone
+// id — two loops collapsing into one zone. Callers that add/paste zones must pass this.
+export function reservedIds(nodes: ChainNode[]): string[] {
+  const zones = new Set<string>()
+  for (const n of nodes) if (n.zone) zones.add(n.zone)
+  return [...nodes.map(n => n.id), ...zones]
+}
+
 export function connectEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
   const kept = edges.filter(e => !(e.toNode === edge.toNode && e.toSocket === edge.toSocket))
   return [...kept, edge]

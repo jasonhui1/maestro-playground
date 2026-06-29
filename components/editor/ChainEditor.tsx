@@ -5,7 +5,7 @@ import { useAutoSave } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
-import { connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge, uniqueNodeId, makeLoopZone, copySubgraph, pasteSubgraph, type Subgraph } from '@/lib/editorOps'
+import { connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge, uniqueNodeId, makeLoopZone, copySubgraph, pasteSubgraph, reservedIds, type Subgraph } from '@/lib/editorOps'
 import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -126,7 +126,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const addLoopZone = useCallback(() => {
     setNodes(prev => {
-      const pair = makeLoopZone(prev.map(n => n.id), [120, 120])
+      const pair = makeLoopZone(reservedIds(prev), [120, 120])
       return [...prev, ...pair]
     })
   }, [])
@@ -149,7 +149,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }, [])
 
   const pasteClip = useCallback((clip: Subgraph) => {
-    const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, nodes.map(n => n.id), [40, 40])
+    const { nodes: add, edges: addE, newIds } = pasteSubgraph(clip, reservedIds(nodes), [40, 40])
     setNodes(prev => [...prev, ...add])
     setEdges(prevE => [...prevE, ...addE])
     setSelectedIds(newIds)
@@ -162,6 +162,9 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
       if (key === 'c' && selectedIds.length) {
+        // Don't steal Ctrl/Cmd+C when the user is copying highlighted text (e.g. a node's
+        // run-output preview) — only hijack it for node copy when there's no text selection.
+        if (window.getSelection()?.toString()) return
         e.preventDefault()
         setClipboard(copySubgraph(nodes, edges, selectedIds))
       } else if (key === 'v' && clipboard) {

@@ -28,8 +28,8 @@ nodes:
   - id: dm
     kind: agent
     pos:
-      - 1000
-      - 0
+      - 1145.1458701850183
+      - 47.50228478782419
     agent: dungeon-master
 edges:
   - from: seed

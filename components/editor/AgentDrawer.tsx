@@ -1,5 +1,6 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { FileEditor } from '@/components/workspace/FileEditor'
 import { X, ExternalLink } from 'lucide-react'
@@ -11,6 +12,8 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
   onSaved?: () => void
 }) {
   const [initial, setInitial] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     let active = true
@@ -22,6 +25,20 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
     return () => { active = false }
   }, [slug])
 
+  // Open the agent in its own tab while preserving the current tabs/params — a bare
+  // <a href="/workspace?type=agent&slug=…"> would discard `tabs` and reset the tab bar.
+  const openFullFile = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('type', 'agent')
+    params.set('slug', slug)
+    params.delete('seed')
+    const tab = `agent:${slug}`
+    const tabs = params.get('tabs')
+    if (!tabs) params.set('tabs', tab)
+    else if (!tabs.split(',').includes(tab)) params.set('tabs', `${tabs},${tab}`)
+    router.push(`/workspace?${params.toString()}`)
+  }
+
   return (
     <div className="absolute right-0 top-0 bottom-0 w-[380px] bg-white border-l border-zinc-200 shadow-xl z-30 flex flex-col">
       <div className="px-4 py-2 border-b border-zinc-100 flex items-center justify-between">
@@ -30,9 +47,9 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
           <div className="text-sm font-bold text-zinc-900">{agentName}</div>
         </div>
         <div className="flex items-center gap-2">
-          <a href={`/workspace?type=agent&slug=${slug}`} title="Open full file" className="text-zinc-400 hover:text-zinc-700">
+          <button onClick={openFullFile} title="Open full file" className="text-zinc-400 hover:text-zinc-700">
             <ExternalLink size={14} />
-          </a>
+          </button>
           <button onClick={onClose} title="Close" className="text-zinc-400 hover:text-zinc-700"><X size={16} /></button>
         </div>
       </div>
