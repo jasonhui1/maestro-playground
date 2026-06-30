@@ -43,6 +43,7 @@ interface ChainCanvasProps {
   instanceCount: number
   currentInstance: number
   onInstance: (i: number) => void
+  readOnly?: boolean
 }
 
 function edgeId(e: ChainEdge): string {
@@ -116,22 +117,28 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           edges={rfEdges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
-          onNodeDragStop={(_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
+          nodesDraggable={!props.readOnly}
+          nodesConnectable={!props.readOnly}
+          edgesReconnectable={!props.readOnly}
+          onNodeDragStop={props.readOnly ? undefined : (_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
           onSelectionChange={handleSelectionChange}
-          onSelectionDragStop={handleSelectionDragStop}
+          onSelectionDragStop={props.readOnly ? undefined : handleSelectionDragStop}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={['Meta', 'Control']}
-          onConnect={(c: Connection) => {
+          onConnect={props.readOnly ? undefined : (c) => {
             if (!c.source || !c.target || !c.sourceHandle || !c.targetHandle) return
             if (c.source === c.target) return
             props.onConnect({ fromNode: c.source, fromSocket: c.sourceHandle, toNode: c.target, toSocket: c.targetHandle })
           }}
-          onNodesDelete={(deleted) => deleted.forEach(d => props.onDeleteNode(d.id))}
-          onEdgesDelete={(deleted) => deleted.forEach(d => {
-            const e = props.edges.find(x => edgeId(x) === d.id)
-            if (e) props.onDeleteEdge(e)
-          })}
+          onDelete={props.readOnly ? undefined : ({ nodes, edges }) => {
+            nodes.forEach(n => props.onDeleteNode(n.id))
+            edges.forEach(e => {
+              const edge = props.edges.find(x => edgeId(x) === e.id)
+              if (edge) props.onDeleteEdge(edge)
+            })
+          }}
           fitView
+          fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#e5e7eb" gap={20} />
