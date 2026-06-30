@@ -16,15 +16,18 @@ function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
       <div className="px-4 py-2">
         <label className="block text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">zone</label>
         <input value={node.zone ?? ''} onChange={e => data.onChange({ zone: e.target.value })}
-          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2" />
+          disabled={data.readOnly}
+          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
         <label className="block text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">until</label>
         <input value={node.until ?? ''} onChange={e => data.onChange({ until: e.target.value })}
           placeholder='e.g. {ls.draft} contains "DONE"'
-          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2" />
+          disabled={data.readOnly}
+          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
         <label className="block text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">max iterations</label>
         <input type="number" min={1} value={node.maxIterations ?? 1}
           onChange={e => data.onChange({ maxIterations: parseInt(e.target.value) || 1 })}
-          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2" />
+          disabled={data.readOnly}
+          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
 
         <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
           <div className="flex flex-col gap-1.5">

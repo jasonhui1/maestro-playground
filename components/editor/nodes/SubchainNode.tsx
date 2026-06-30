@@ -20,7 +20,8 @@ function SubchainNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <select
           value={node.subchain ?? ''}
           onChange={e => data.onChange({ subchain: e.target.value })}
-          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag mb-2"
+          disabled={data.readOnly}
+          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
         >
           <option value="">— pick a chain —</option>
           {data.chains.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}

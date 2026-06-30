@@ -14,7 +14,8 @@ function ContextNode({ data }: NodeProps<Node<EditorNodeData>>) {
         <select
           value={data.node.file ?? ''}
           onChange={e => data.onChange({ file: e.target.value })}
-          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag"
+          disabled={data.readOnly}
+          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag disabled:bg-zinc-50 disabled:text-zinc-500"
         >
           <option value="">— pick a context file —</option>
           {data.contextFiles.map(f => <option key={f.slug} value={f.slug}>{f.name}</option>)}

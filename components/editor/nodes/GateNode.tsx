@@ -12,20 +12,23 @@ function GateNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <div className={`w-2.5 h-2.5 rounded-full ${statusDotClass(run)}`} />
         <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Gate</span>
         <span className="text-xs font-bold text-zinc-900 ml-1">{node.id}</span>
-        <button
-          onClick={() => data.onRunFromHere?.(node.id)}
-          title="Run up to here"
-          className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
-        >
-          ▶ here
-        </button>
+        {!data.readOnly && (
+          <button
+            onClick={() => data.onRunFromHere?.(node.id)}
+            title="Run up to here"
+            className="nodrag ml-auto text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
+          >
+            ▶ here
+          </button>
+        )}
       </div>
       <div className="px-4 py-2">
         <input
           value={node.condition ?? ''}
           onChange={e => data.onChange({ condition: e.target.value })}
           placeholder='e.g. {x.output} contains "OK"'
-          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2"
+          disabled={data.readOnly}
+          className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
         />
         <div className="flex justify-between text-[9px] font-mono text-zinc-400">
           <div className="relative pl-3 flex items-center h-5">

@@ -15,13 +15,15 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
           <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{kindLabel}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {issues.length > 0 && <span className="text-[9px] font-bold text-red-500">{issues.length}!</span>}
-            <button
-              onClick={() => data.onRunFromHere?.(node.id)}
-              title="Run up to here"
-              className="nodrag text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
-            >
-              ▶ here
-            </button>
+            {!data.readOnly && (
+              <button
+                onClick={() => data.onRunFromHere?.(node.id)}
+                title="Run up to here"
+                className="nodrag text-[9px] font-bold text-zinc-400 hover:text-zinc-900"
+              >
+                ▶ here
+              </button>
+            )}
           </div>
         </div>
         <div className="text-xs font-bold text-zinc-900">{node.id}</div>
@@ -31,13 +33,14 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
         <select
           value={node.agent ?? ''}
           onChange={e => data.onChange({ agent: e.target.value })}
-          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag mb-2"
+          disabled={data.readOnly}
+          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
         >
           <option value="">— pick an agent —</option>
           {data.agents.map(a => <option key={a.slug} value={a.slug}>{a.name}</option>)}
         </select>
 
-        {node.agent && (
+        {node.agent && !data.readOnly && (
           <button
             onClick={() => data.onEditAgent?.(node.agent!)}
             className="nodrag mb-2 text-[10px] font-bold text-zinc-500 hover:text-zinc-900 uppercase tracking-widest"

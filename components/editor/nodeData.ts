@@ -13,6 +13,7 @@ export interface EditorNodeData {
   onEditAgent?: (slug: string) => void
   onRunFromHere?: (id: string) => void
   chains: { slug: string; name: string }[]
+  readOnly?: boolean
   [key: string]: unknown
 }
 
