@@ -53,9 +53,9 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   const acceptsInputs = (n: ChainNode): boolean =>
     n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' ||
-    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain'
+    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain' || n.kind === 'report'
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain'])
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain', 'report'])
   const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined, nodeId: string) => {
     if (!expr) return
@@ -81,6 +81,11 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
         if (labels.has(c.label)) add(`Node "${n.id}": duplicate case label "${c.label}"`, { nodeId: n.id })
         labels.add(c.label)
         checkRefs(`Node "${n.id}" case "${c.label}"`, c.condition, n.id)
+      }
+    }
+    if (n.kind === 'report') {
+      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
+        warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
       }
     }
   }
