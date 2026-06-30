@@ -12,10 +12,12 @@ nodes:
   - { id: b, kind: branch, cases: [{ label: urgent, condition: '{t.output} contains "URGENT"' }], default: other, pos: [500, 0] }
   - { id: ls, kind: loop-start, zone: z1, state: [draft], pos: [750, 0] }
   - { id: le, kind: loop-end, zone: z1, until: '{ls.draft} contains "DONE"', maxIterations: 3, pos: [1000, 0] }
+  - { id: rep, kind: report, pos: [1250, 0] }
 edges:
   - { from: seed.output, to: t.input }
   - { from: t.output, to: b.in }
   - { from: b.urgent, to: ls.draft }
+  - { from: le.output, to: rep.in }
 ---
 `
 const c = parseChainContent(raw, 'triage-demo')
