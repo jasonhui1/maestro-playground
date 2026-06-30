@@ -19,31 +19,30 @@ nodes:
   - id: patch
     kind: agent
     pos:
-      - 644.6134808337994
-      - -215.3196326377822
+      - 613.6134808337994
+      - -222.3196326377822
     zone: refine
     agent: patch-agent
   - id: review
     kind: agent
     pos:
-      - 1014.7916995903909
-      - -245.63586452483509
+      - 924.7916995903909
+      - -222.6358645248351
     zone: refine
     agent: review-agent
   - id: le
     kind: loop-end
     pos:
-      - 1533.1187315407446
-      - -273.42852712818467
+      - 1287.1187315407446
+      - -303.8035633678087
     zone: refine
     until: '{review.output} contains "APPROVED"'
-    maxIterations: 5
-  - id: report
-    kind: agent
+    maxIterations: 2
+  - id: report-1
+    kind: report
     pos:
-      - 1827.400808414169
-      - -195.08609128988584
-    agent: normal-handler
+      - 1576.3295984106362
+      - -203.5018491701199
 edges:
   - from: seed
     to: ls.draft
@@ -58,7 +57,7 @@ edges:
   - from: review
     to: le.feedback
   - from: le.draft
-    to: report.in
+    to: report-1.in
 inputs:
   - name: ''
     node: seed
