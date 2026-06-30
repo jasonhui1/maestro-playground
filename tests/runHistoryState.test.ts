@@ -15,6 +15,8 @@ const outputs: AgentOutput[] = [
     costUsd: 0.01,
     latencyMs: 100,
     status: 'success',
+    model: 'm',
+    timestamp: 't',
   },
   {
     nodeId: 'n2',
@@ -28,6 +30,8 @@ const outputs: AgentOutput[] = [
     costUsd: 0.01,
     latencyMs: 100,
     status: 'success',
+    model: 'm',
+    timestamp: 't',
   },
   {
     nodeId: 'n2',
@@ -41,6 +45,8 @@ const outputs: AgentOutput[] = [
     costUsd: 0.01,
     latencyMs: 100,
     status: 'success',
+    model: 'm',
+    timestamp: 't',
   },
   {
     nodeId: 'n3',
@@ -53,6 +59,8 @@ const outputs: AgentOutput[] = [
     costUsd: 0,
     latencyMs: 0,
     status: 'skipped',
+    model: 'm',
+    timestamp: 't',
   },
 ]
 

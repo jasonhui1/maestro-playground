@@ -1,15 +1,16 @@
 'use client'
-
-import { useState, useEffect, use } from 'react'
-import { RunMeta, AgentDef } from '@/lib/types'
+import { useState, useEffect, use, useMemo, useCallback } from 'react'
+import { RunMeta, AgentDef, ChainNode } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
-import { buildRunGraph, buildRunGraphFromSnapshot } from '@/lib/graph'
-import RunGraph from '@/components/trace/RunGraph'
+import ChainCanvas from '@/components/editor/ChainCanvas'
+import type { EditorNodeData } from '@/components/editor/nodeData'
+import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
+import { buildRunStateMap } from '@/lib/runHistoryState'
 import RunNodePreview from '@/components/trace/RunNodePreview'
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
@@ -37,6 +38,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       .then(data => {
         setRun(data)
         setLoading(false)
+        setViewMode(data.graph ? 'graph' : 'list')
         if (data.agentOutputs.length > 1) {
           setRightIdx(1)
         } else {
@@ -125,7 +127,41 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     )
   }
 
-  const graph = run.graph ? buildRunGraphFromSnapshot(run) : buildRunGraph(run, agents)
+  const hasGraph = !!run.graph
+  const g = run.graph
+  const chainDef = useMemo(() => {
+    if (!g) return null
+    return {
+      slug: run.chainName,
+      name: run.chainName,
+      description: '',
+      filePath: '',
+      nodes: g.nodes,
+      edges: g.edges
+    }
+  }, [g, run.chainName])
+
+  const overlay = useMemo(() => {
+    return run ? buildRunStateMap(run.agentOutputs) : {}
+  }, [run])
+
+  const buildData = useCallback((node: ChainNode): EditorNodeData => {
+    if (!chainDef) {
+      throw new Error('chainDef is missing')
+    }
+    return {
+      node,
+      inputs: inputSocketsOf(node, chainDef, agents, []),
+      outputs: outputSocketsOf(node, chainDef, agents, []),
+      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
+      contextFiles: [],
+      run: overlay[node.id],
+      issues: [],
+      onChange: () => {},
+      chains: [],
+      readOnly: true,
+    }
+  }, [chainDef, agents, overlay])
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
@@ -147,7 +183,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         </div>
 
         <div className="flex gap-3">
-          {!compareMode && (
+          {!compareMode && hasGraph && (
             <div className="flex rounded-xl border border-zinc-200 overflow-hidden">
               <button
                 onClick={() => setViewMode('graph')}
@@ -233,11 +269,28 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
             rightContent={run.agentOutputs[rightIdx]?.output || ''}
           />
         </div>
-      ) : viewMode === 'graph' ? (
+      ) : (viewMode === 'graph' && hasGraph && g) ? (
         <div className="flex flex-col gap-6">
-          <RunGraph graph={graph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
+          <div className="w-full h-[520px] border border-zinc-200 rounded-2xl overflow-hidden">
+            <ChainCanvas
+              nodes={g.nodes}
+              edges={g.edges}
+              buildData={buildData}
+              selectedIds={selectedNodeId ? [selectedNodeId] : []}
+              onSelectionChange={(ids) => setSelectedNodeId(ids[0] ?? null)}
+              onMove={() => {}}
+              onMoveMany={() => {}}
+              onConnect={() => {}}
+              onDeleteNode={() => {}}
+              onDeleteEdge={() => {}}
+              instanceCount={0}
+              currentInstance={0}
+              onInstance={() => {}}
+              readOnly
+            />
+          </div>
           <RunNodePreview
-            node={graph.nodes.find(n => n.id === selectedNodeId) || null}
+            node={g.nodes.find(n => n.id === selectedNodeId) || null}
             run={run}
             onBranch={handleBranch}
             isBranching={isBranching}
