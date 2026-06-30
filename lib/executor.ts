@@ -68,7 +68,7 @@ export async function runChainGraph(
       const a = node.agent ? agentBySlug.get(node.agent) : undefined
       return a ? parseSlots(a.systemPrompt) : []
     }
-    if (node.kind === 'gate' || node.kind === 'branch') return ['in']
+    if (node.kind === 'gate' || node.kind === 'branch' || node.kind === 'report') return ['in']
     if (node.kind === 'subchain') {
       // Only declared inputs the host actually wired gate the node; unwired
       // inputs are intentionally left unset (the inner seed falls back to the
@@ -242,6 +242,10 @@ export async function runChainGraph(
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
+    } else if (node.kind === 'report') {
+      const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
+      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      markOut(nodeId, () => true)
     } else if (node.kind === 'subchain') {
       const ref = chains.find(c => c.slug === node.subchain)
       if (!ref) {
