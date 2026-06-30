@@ -16,8 +16,9 @@ const ITEMS: PaletteItem[] = [
   { kind: 'branch', label: 'Branch', group: 'Control flow' },
   { kind: 'loop-zone', label: 'Loop zone', group: 'Loop' },
   { kind: 'subchain', label: 'Subchain', group: 'Composite' },
+  { kind: 'report', label: 'Report', group: 'Output' },
 ]
-const GROUPS = ['Sources', 'Agents', 'Control flow', 'Loop', 'Composite']
+const GROUPS = ['Sources', 'Agents', 'Control flow', 'Loop', 'Composite', 'Output']
 
 export default function NodePalette({ onAdd, onAddLoopZone }: {
   onAdd: (kind: ChainNodeKind) => void
