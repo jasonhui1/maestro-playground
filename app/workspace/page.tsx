@@ -65,6 +65,7 @@ function WorkspaceContent() {
   }, [type, parsedChain, editorAgents, editorChains])
 
   const dockSide = useWorkspaceUiStore(s => s.dockSide)
+  const panelCollapsed = useWorkspaceUiStore(s => s.panelCollapsed)
   // Persisted panel size percentage driven from useWorkspaceUiStore
   const panelSize = useWorkspaceUiStore(s => s.panelSize)
 
@@ -206,9 +207,39 @@ function WorkspaceContent() {
               <WorkspaceSkeleton />
             </div>
           </div>
+                ) : panelCollapsed ? (
+          <div className={`h-full flex ${dockSide === 'right' ? 'flex-row' : 'flex-col'}`}>
+            <div className="flex-1 min-h-0">
+              {type === 'chain' && chainView === 'graph' && parsedChain ? (
+                <ChainEditor
+                  key={slug}
+                  slug={slug}
+                  initialChain={parsedChain}
+                  agents={editorAgents}
+                  contextFiles={editorContext}
+                  refetchAgents={refetchEditorData}
+                  initialSeedPrompt={seedParam}
+                  chains={editorChains}
+                  onSaveStatus={setGraphSaveStatus}
+                />
+              ) : (
+                <div className="h-full p-6 pt-4">
+                  <FileEditor
+                    content={content}
+                    onChange={setContent}
+                    status={status}
+                    error={saveError}
+                    type={type}
+                    language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                  />
+                </div>
+              )}
+            </div>
+            <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
+          </div>
         ) : (
           <Group orientation={dockSide === 'right' ? 'horizontal' : 'vertical'}>
-            <Panel minSize={30}>
+            <Panel minSize="30%">
               <div className="h-full flex flex-col">
                 <div className="flex-1 min-h-0">
                   {type === 'chain' && chainView === 'graph' && parsedChain ? (
@@ -239,8 +270,8 @@ function WorkspaceContent() {
               </div>
             </Panel>
             <Separator className={`bg-zinc-100 hover:bg-zinc-200 transition-colors ${dockSide === 'right' ? 'w-1 border-x' : 'h-1 border-y'} border-zinc-200`} />
-            <Panel defaultSize={`${panelSize}%`} minSize={10}
-              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(size.asPercentage)}>
+            <Panel defaultSize={`${panelSize}%`} minSize="10%"
+              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(size as unknown as number)}>
               <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
             </Panel>
           </Group>

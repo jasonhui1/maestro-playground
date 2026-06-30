@@ -1,8 +1,9 @@
 'use client'
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider,
   type Node, type Edge, type NodeTypes, type Connection,
+  applyNodeChanges, type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge } from '@/lib/types'
@@ -49,20 +50,11 @@ function edgeId(e: ChainEdge): string {
 export default function ChainCanvas(props: ChainCanvasProps) {
   const { onSelectionChange, onMoveMany } = props
 
-  // React Flow keys its selection effect off the handler's identity — these MUST
-  // be stable, or the effect re-fires every render and (via onSelectionChange's
-  // setState) loops "Maximum update depth exceeded".
-  const handleSelectionChange = useCallback(
-    ({ nodes }: { nodes: Node[] }) => onSelectionChange(nodes.map(n => n.id)),
-    [onSelectionChange],
-  )
-  const handleSelectionDragStop = useCallback(
-    (_: React.MouseEvent, nodes: Node[]) =>
-      onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] }))),
-    [onMoveMany],
-  )
+  // Local state for the rendered react flow nodes to buffer dragging
+  const [rfNodes, setRfNodes] = useState<Node[]>([])
 
-  const rfNodes = useMemo<Node[]>(() => {
+  // Keep local rfNodes synchronized when props change externally
+  useEffect(() => {
     const frames: Node[] = computeZoneFrames(props.nodes).map(f => ({
       id: `zone-frame-${f.zone}`,
       type: 'zoneFrame',
@@ -79,8 +71,25 @@ export default function ChainCanvas(props: ChainCanvasProps) {
       data: props.buildData(n),
       selected: props.selectedIds.includes(n.id),
     }))
-    return [...frames, ...nodes]
+    setRfNodes([...frames, ...nodes])
   }, [props.nodes, props.selectedIds, props.buildData])
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setRfNodes((nds) => applyNodeChanges(changes, nds))
+  }, [])
+
+  // React Flow keys its selection effect off the handler's identity — these MUST
+  // be stable, or the effect re-fires every render and (via onSelectionChange's
+  // setState) loops "Maximum update depth exceeded".
+  const handleSelectionChange = useCallback(
+    ({ nodes }: { nodes: Node[] }) => onSelectionChange(nodes.map(n => n.id)),
+    [onSelectionChange],
+  )
+  const handleSelectionDragStop = useCallback(
+    (_: React.MouseEvent, nodes: Node[]) =>
+      onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] }))),
+    [onMoveMany],
+  )
 
   const rfEdges = useMemo<Edge[]>(() => props.edges.map(e => ({
     id: edgeId(e),
@@ -104,6 +113,7 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           nodes={rfNodes}
           edges={rfEdges}
           nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
           onNodeDragStop={(_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
           onSelectionChange={handleSelectionChange}
           onSelectionDragStop={handleSelectionDragStop}

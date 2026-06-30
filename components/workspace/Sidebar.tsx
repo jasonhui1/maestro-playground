@@ -16,9 +16,10 @@ import {
   Search, 
   X,
   AlertTriangle,
-  PanelLeftClose
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
-import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
+import { useWorkspaceUiStore, type EntityType } from '@/hooks/store/useWorkspaceUiStore';
 import { useToastStore } from '@/hooks/store/useToastStore';
 
 interface WorkspaceData {
@@ -29,8 +30,6 @@ interface WorkspaceData {
   context: { slug: string; name: string; filePath: string }[];
 }
 
-type EntityType = 'agent' | 'skill' | 'chain' | 'template' | 'context';
-
 export default function Sidebar() {
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,11 +37,12 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const activeCategory = useWorkspaceUiStore((s) => s.activeCategory);
+  const setActiveCategory = useWorkspaceUiStore((s) => s.setActiveCategory);
   const [modalType, setModalType] = useState<EntityType>('agent');
   const [newName, setNewName] = useState('');
   const [fromTemplate, setFromTemplate] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<EntityType>('agent');
   const [itemToDelete, setItemToDelete] = useState<{ type: EntityType, slug: string, name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -57,7 +57,7 @@ export default function Sidebar() {
     if (activeType) {
       setActiveCategory(activeType as EntityType);
     }
-  }, [activeType]);
+  }, [activeType, setActiveCategory]);
 
   useEffect(() => {
     async function fetchData() {
@@ -278,41 +278,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-full h-full flex flex-row select-none bg-white">
-      {/* Category Navigation (Left Bar) */}
-      <div className="w-[64px] h-full flex flex-col items-center py-4 gap-4 border-r border-zinc-200 shrink-0">
-        {categories.map((cat) => {
-          const Icon = cat.icon;
-          const isActive = activeCategory === cat.id;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`p-2.5 rounded-lg transition-colors ${
-                isActive 
-                  ? 'bg-zinc-100 text-zinc-900' 
-                  : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50'
-              }`}
-              title={cat.label}
-              aria-label={cat.label}
-              aria-pressed={isActive}
-            >
-              <Icon size={20} />
-            </button>
-          );
-        })}
-        <button
-          onClick={() => useWorkspaceUiStore.getState().toggleSidebar()}
-          className="mt-auto p-2.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
-        >
-          <PanelLeftClose size={20} />
-        </button>
-      </div>
-
-      {/* Content Area (Right Panel) */}
-      <div className="flex-1 h-full flex flex-col border-r border-zinc-200 min-w-0">
+    <div className="w-full h-full flex flex-col border-r border-zinc-200 min-w-0 bg-white">
         <div className="p-4 border-b border-zinc-200 bg-white">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold text-zinc-800 capitalize">
@@ -401,7 +367,7 @@ export default function Sidebar() {
             )}
           </ul>
         </nav>
-      </div>
+
 
       {/* Creation Modal */}
       {isModalOpen && (
@@ -506,6 +472,63 @@ export default function Sidebar() {
           </div>
         </div>
       )}
-    </aside>
+    </div>
+  );
+}
+
+export function CategoryNavigation() {
+  const activeCategory = useWorkspaceUiStore((s) => s.activeCategory);
+  const setActiveCategory = useWorkspaceUiStore((s) => s.setActiveCategory);
+  const collapsed = useWorkspaceUiStore((s) => s.sidebarCollapsed);
+
+  const categories = [
+    { id: 'agent' as EntityType, label: 'Agents', icon: Bot },
+    { id: 'skill' as EntityType, label: 'Skills', icon: Settings2 },
+    { id: 'chain' as EntityType, label: 'Chains', icon: LinkIcon },
+    { id: 'template' as EntityType, label: 'Templates', icon: FileText },
+    { id: 'context' as EntityType, label: 'Context', icon: Folder },
+  ];
+
+  return (
+    <div className="w-[64px] h-[100%] flex flex-col items-center py-4 gap-4 border-r border-zinc-200 bg-white shrink-0 select-none">
+      {categories.map((cat) => {
+        const Icon = cat.icon;
+        const isActive = activeCategory === cat.id;
+        return (
+          <button
+            key={cat.id}
+            onClick={() => {
+              if (isActive) {
+                useWorkspaceUiStore.getState().toggleSidebar();
+              } else {
+                setActiveCategory(cat.id);
+                useWorkspaceUiStore.setState({ sidebarCollapsed: false });
+              }
+            }}
+            className={`p-2.5 rounded-lg transition-colors relative ${
+              isActive 
+                ? 'bg-zinc-100 text-zinc-900' 
+                : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50'
+            }`}
+            title={cat.label}
+            aria-label={cat.label}
+            aria-pressed={isActive}
+          >
+            {isActive && (
+              <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-indigo-500 rounded-r" />
+            )}
+            <Icon size={20} />
+          </button>
+        );
+      })}
+      <button
+        onClick={() => useWorkspaceUiStore.getState().toggleSidebar()}
+        className="mt-auto p-2.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+      </button>
+    </div>
   );
 }

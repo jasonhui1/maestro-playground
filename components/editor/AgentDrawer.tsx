@@ -40,7 +40,7 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
   }
 
   return (
-    <div className="absolute right-0 top-0 bottom-0 w-[380px] bg-white border-l border-zinc-200 shadow-xl z-30 flex flex-col">
+    <div className="h-full bg-white flex flex-col">
       <div className="px-4 py-2 border-b border-zinc-100 flex items-center justify-between">
         <div>
           <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Agent · its own file</div>

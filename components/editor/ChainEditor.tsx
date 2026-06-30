@@ -23,6 +23,7 @@ import { reconcileExternalEdit } from '@/lib/syncReconcile'
 import { useFileWatch } from '@/hooks/useFileWatch'
 import { Play } from 'lucide-react'
 import InterfacePopover from './InterfacePopover'
+import { Group, Panel, Separator } from 'react-resizable-panels'
 
 const NODE_W = 240, NODE_H = 120
 
@@ -262,27 +263,50 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       <div className="flex-1 min-h-0 flex">
         <NodePalette onAdd={addNodeOfKind} onAddLoopZone={addLoopZone} />
         <div className="flex-1 min-w-0 relative">
-          <ChainCanvas
-            nodes={nodes}
-            edges={edges}
-            buildData={buildData}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
-            onMove={moveNode}
-            onMoveMany={moveMany}
-            onConnect={connect}
-            onDeleteNode={deleteNode}
-            onDeleteEdge={deleteEdge}
-            instanceCount={instanceCount}
-            currentInstance={currentInstance}
-            onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
-          />
-          {drawerSlug && (
-            <AgentDrawer
-              slug={drawerSlug}
-              agentName={agents.find(a => a.slug === drawerSlug)?.name ?? drawerSlug}
-              onClose={() => setDrawerSlug(null)}
-              onSaved={refetchAgents}
+          {drawerSlug ? (
+            <Group orientation="horizontal" className="absolute inset-0">
+              <Panel minSize="30%">
+                <ChainCanvas
+                  nodes={nodes}
+                  edges={edges}
+                  buildData={buildData}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                  onMove={moveNode}
+                  onMoveMany={moveMany}
+                  onConnect={connect}
+                  onDeleteNode={deleteNode}
+                  onDeleteEdge={deleteEdge}
+                  instanceCount={instanceCount}
+                  currentInstance={currentInstance}
+                  onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
+                />
+              </Panel>
+              <Separator className="w-1 border-x border-zinc-200 bg-zinc-100 hover:bg-zinc-200 transition-colors" />
+              <Panel defaultSize="45%" minSize="20%" maxSize="80%">
+                <AgentDrawer
+                  slug={drawerSlug}
+                  agentName={agents.find(a => a.slug === drawerSlug)?.name ?? drawerSlug}
+                  onClose={() => setDrawerSlug(null)}
+                  onSaved={refetchAgents}
+                />
+              </Panel>
+            </Group>
+          ) : (
+            <ChainCanvas
+              nodes={nodes}
+              edges={edges}
+              buildData={buildData}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onMove={moveNode}
+              onMoveMany={moveMany}
+              onConnect={connect}
+              onDeleteNode={deleteNode}
+              onDeleteEdge={deleteEdge}
+              instanceCount={instanceCount}
+              currentInstance={currentInstance}
+              onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
             />
           )}
         </div>

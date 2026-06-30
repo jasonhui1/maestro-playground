@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect } from 'react'
-import { PanelBottom, PanelRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { PanelBottom, PanelRight, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
 import { clampTab, type PanelTab } from '@/lib/tabClamp'
 import { useRunStore } from '@/hooks/store/useRunStore'
@@ -45,11 +45,11 @@ export default function DockPanel({ type, slug, view, issues, onSelectIssueNode 
 
   if (ui.panelCollapsed) {
     return (
-      <div className={`${isRight ? 'border-l h-full w-9' : 'border-t w-full h-9'} border-zinc-200 bg-white flex items-center gap-2 px-2`}>
+      <div className={`${isRight ? 'border-l h-full w-9 flex-col py-4 items-center gap-4' : 'border-t w-full h-9 items-center gap-2 px-2'} border-zinc-200 bg-white flex`}>
         <button onClick={ui.togglePanel} className="text-zinc-500 hover:text-zinc-900" aria-label="Expand panel">
-          {isRight ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          {isRight ? <ChevronLeft size={16} /> : <ChevronUp size={16} />}
         </button>
-        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{active}</span>
+        <span className={`text-[10px] font-bold text-zinc-400 uppercase tracking-widest ${isRight ? '[writing-mode:vertical-lr] rotate-180' : ''}`}>{active}</span>
       </div>
     )
   }
@@ -71,7 +71,7 @@ export default function DockPanel({ type, slug, view, issues, onSelectIssueNode 
             {isRight ? <PanelBottom size={14} /> : <PanelRight size={14} />}
           </button>
           <button onClick={ui.togglePanel} className="text-zinc-400 hover:text-zinc-900" aria-label="Collapse panel">
-            {isRight ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {isRight ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
       </div>

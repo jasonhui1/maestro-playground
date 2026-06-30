@@ -5,19 +5,19 @@ nodes:
   - id: seed
     kind: seed
     pos:
-      - 0
-      - 0
+      - -309.0012170004036
+      - -1.3240544916996413
   - id: wb
     kind: agent
     pos:
-      - 94.17144916999388
-      - -0.8705505632961206
+      - -64.3090717151658
+      - -45.402267175655034
     agent: world-builder
   - id: cd
     kind: agent
     pos:
-      - 396.4044829677614
-      - -195.11215828229118
+      - 266.7386022435398
+      - -199.04142739514637
     agent: character-designer
   - id: ew
     kind: agent
