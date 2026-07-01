@@ -14,6 +14,7 @@ const ITEMS: PaletteItem[] = [
   { kind: 'decider', label: 'Decider', group: 'Agents' },
   { kind: 'gate', label: 'Gate', group: 'Control flow' },
   { kind: 'branch', label: 'Branch', group: 'Control flow' },
+  { kind: 'join', label: 'Join', group: 'Control flow' },
   { kind: 'loop-zone', label: 'Loop zone', group: 'Loop' },
   { kind: 'subchain', label: 'Subchain', group: 'Composite' },
   { kind: 'report', label: 'Report', group: 'Output' },
