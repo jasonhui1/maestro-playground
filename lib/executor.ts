@@ -202,42 +202,18 @@ export async function runChainGraph(
     emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
   }
 
-  for (const nodeId of topoOrder(chain)) {
-    if (handledByZone.has(nodeId)) continue
-    const startZone = zonesByStart.get(nodeId)
-    if (startZone) {
-      if (nodeOutputs.has(startZone.endId)) {
-        handledByZone.add(startZone.startId)
-        handledByZone.add(startZone.endId)
-        startZone.bodyIds.forEach(id => handledByZone.add(id))
-        markOut(startZone.endId, () => true)
-        continue
-      }
-      const inc = incomingByNode.get(nodeId) || []
-      const anyLive = inc.length === 0 || inc.some(i => live.has(i))
-      if (anyLive) { await runZone(startZone); continue }
-      // zone is unreachable (blocked upstream): record members skipped
-      for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
-        handledByZone.add(id)
-        const subNode = nodeById.get(id)
-        const label = subNode ? (subNode.agent || subNode.kind) : 'node'
-        const rec = controlOutput(id, label, '', 'skipped')
-        nodeOutputs.set(id, rec); emit(startZone.startId, rec); callbacks.onDone(id, rec)
-      }
-      continue
-    }
-
+  // process a single non-zone node (the old loop body, minus zone handling)
+  const processMainNode = async (nodeId: string): Promise<void> => {
     const node = nodeById.get(nodeId)
-    if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); continue }
-
-    if (node.kind === 'seed' || node.kind === 'context') { markOut(nodeId, () => true); continue }
+    if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
+    if (node.kind === 'seed' || node.kind === 'context') { markOut(nodeId, () => true); return }
 
     const slots = usedSlots(node)
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
     if (!available) {
       const rec = controlOutput(nodeId, node.agent || node.kind, '', 'skipped')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
-      continue // out-edges remain dead
+      return // out-edges remain dead
     }
 
     if (node.kind === 'agent' || node.kind === 'decider') {
@@ -301,6 +277,64 @@ export async function runChainGraph(
         markOut(nodeId, () => true)
       }
     }
+  }
+
+  // process a whole zone as one atomic unit (the old zone branch)
+  const processZoneUnit = async (startZone: Zone): Promise<void> => {
+    if (nodeOutputs.has(startZone.endId)) {
+      handledByZone.add(startZone.startId); handledByZone.add(startZone.endId)
+      startZone.bodyIds.forEach(id => handledByZone.add(id))
+      markOut(startZone.endId, () => true)
+      return
+    }
+    const inc = incomingByNode.get(startZone.startId) || []
+    const anyLive = inc.length === 0 || inc.some(i => live.has(i))
+    if (anyLive) { await runZone(startZone); return }
+    for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
+      handledByZone.add(id)
+      const subNode = nodeById.get(id)
+      const label = subNode ? (subNode.agent || subNode.kind) : 'node'
+      const rec = controlOutput(id, label, '', 'skipped')
+      nodeOutputs.set(id, rec); emit(startZone.startId, rec); callbacks.onDone(id, rec)
+    }
+  }
+
+  // --- units: a plain node, or a whole loop-zone anchored at its loop-start id ---
+  const unitOf = (nodeId: string): string => {
+    const n = nodeById.get(nodeId)
+    if (n?.zone) {
+      const start = chain.nodes.find(m => m.zone === n.zone && m.kind === 'loop-start')
+      if (start) return start.id
+    }
+    return nodeId
+  }
+  const allUnits = new Set<string>()
+  for (const n of chain.nodes) allUnits.add(unitOf(n.id))
+  const unitDeps = new Map<string, Set<string>>()
+  for (const u of allUnits) unitDeps.set(u, new Set())
+  for (const e of chain.edges) {
+    const fu = unitOf(e.fromNode), tu = unitOf(e.toNode)
+    if (fu !== tu) unitDeps.get(tu)!.add(fu)
+  }
+  const topoRank = new Map(topoOrder(chain).map((id, i) => [id, i]))
+  const doneUnits = new Set<string>()
+  const MAX_CONCURRENCY = Number(process.env.CHAIN_MAX_CONCURRENCY) || 4
+
+  const processUnit = async (unitId: string): Promise<void> => {
+    const startZone = zonesByStart.get(unitId)
+    if (startZone) { await processZoneUnit(startZone); return }
+    await processMainNode(unitId)
+  }
+
+  while (doneUnits.size < allUnits.size) {
+    const ready = [...allUnits]
+      .filter(u => !doneUnits.has(u) && [...unitDeps.get(u)!].every(d => doneUnits.has(d)))
+      .sort((a, b) => (topoRank.get(a) ?? 0) - (topoRank.get(b) ?? 0)) // deterministic dispatch order
+    if (ready.length === 0) break // DAG guarantees progress; guard against a malformed graph
+    for (let i = 0; i < ready.length; i += MAX_CONCURRENCY) {
+      await Promise.allSettled(ready.slice(i, i + MAX_CONCURRENCY).map(u => processUnit(u)))
+    }
+    for (const u of ready) doneUnits.add(u)
   }
   const finalResults: AgentOutput[] = []
   const emitted = new Set<string>()
