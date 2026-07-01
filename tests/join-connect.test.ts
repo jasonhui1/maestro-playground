@@ -4,7 +4,7 @@ import { applyEditorAction, EditorState } from '../lib/editorReducer'
 import { ChainEdge, ChainNode } from '../lib/types'
 
 const e = (from: string, to: string, toSocket: string): ChainEdge =>
-  ({ fromNode: from, fromSocket: 'output', toNode: to, toSocket })
+  ({ fromNode: from, fromSocket: 'output', toNode: to, toSocket });
 
 // default (non-join): a 2nd edge into the same slot REPLACES the 1st
 {
