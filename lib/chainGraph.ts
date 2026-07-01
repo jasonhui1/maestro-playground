@@ -53,9 +53,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   const acceptsInputs = (n: ChainNode): boolean =>
     n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' ||
-    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain' || n.kind === 'report'
+    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain' || n.kind === 'report' ||
+    n.kind === 'join'
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain', 'report'])
+  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain', 'report', 'join'])
   const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined, nodeId: string) => {
     if (!expr) return
@@ -88,6 +89,11 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
         warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
       }
     }
+    if (n.kind === 'join') {
+      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
+        warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
+      }
+    }
   }
 
   const incoming = new Map<string, number>()
@@ -105,8 +111,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       }
     }
     if (acceptsInputs(dst) && !inputSocketsOf(dst, chain, agents, chains).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
-    const key = `${e.toNode}.${e.toSocket}`
-    incoming.set(key, (incoming.get(key) || 0) + 1)
+    if (dst.kind !== 'join') {
+      const key = `${e.toNode}.${e.toSocket}`
+      incoming.set(key, (incoming.get(key) || 0) + 1)
+    }
   }
   for (const [key, count] of incoming) {
     if (count > 1) {
