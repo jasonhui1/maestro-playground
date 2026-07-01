@@ -51,6 +51,17 @@ export async function runChainGraph(
   const nodeOutputs = new Map<string, AgentOutput>()
   const results: AgentOutput[] = []
 
+  // Result ordering is decoupled from execution order: records are filed into a
+  // per-anchor bucket and flushed in topoOrder at the end (see anchor rules in
+  // the A1 task). `results` stays as a live push target for code paths that don't
+  // care about ordering yet; the RETURNED array is rebuilt from buckets.
+  const buckets = new Map<string, AgentOutput[]>()
+  const emit = (anchorId: string, rec: AgentOutput) => {
+    const arr = buckets.get(anchorId) ?? []
+    arr.push(rec)
+    buckets.set(anchorId, arr)
+  }
+
   // edge liveness, keyed by edge index
   const live = new Set<number>()
   const incomingByNode = new Map<string, number[]>()
@@ -88,14 +99,14 @@ export async function runChainGraph(
   }
   const inValue = (nodeId: string): string => slotValue(nodeId, 'in')
 
-  const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number): Promise<AgentOutput> => {
+  const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
     const body = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
     const systemPrompt = injectSkills(agent, skills, body)
     const output = await runFn(agent, systemPrompt, 'Follow your instructions.', (t, ty) => callbacks.onToken(node.id, t, ty))
     output.nodeId = node.id
     if (round !== undefined) output.round = round
-    nodeOutputs.set(node.id, output); results.push(output); callbacks.onDone(node.id, output)
+    nodeOutputs.set(node.id, output); emit(anchorId, output); callbacks.onDone(node.id, output)
     return output
   }
 
@@ -128,11 +139,11 @@ export async function runChainGraph(
     const base = a?.name ?? src?.agent ?? src?.id ?? e.fromNode
     return slugify(e.fromSocket) === 'output' ? base : `${base} (${e.fromSocket})`
   }
-  const setStateSockets = (nodeId: string, state: Map<string, string>) => {
+  const setStateSockets = (nodeId: string, state: Map<string, string>, anchorId: string = nodeId) => {
     for (const [name, val] of state) {
       const rec = controlOutput(`${nodeId}::${name}`, nodeId, val, 'success')
       nodeOutputs.set(`${nodeId}::${slugify(name)}`, rec)
-      results.push(rec)
+      emit(anchorId, rec)
     }
   }
   const bodyOrder = (zone: Zone): string[] => {
@@ -158,7 +169,7 @@ export async function runChainGraph(
     const order = bodyOrder(zone)
     let finalState = state
     for (let round = 0; round < zone.maxIterations; round++) {
-      setStateSockets(zone.startId, state)
+      setStateSockets(zone.startId, state, zone.startId)
       for (const id of order) {
         const bn = nodeById.get(id)!
         if (bn.kind === 'agent' || bn.kind === 'decider') {
@@ -168,7 +179,7 @@ export async function runChainGraph(
             if (replayed) {
               nodeOutputs.set(bn.id, replayed)
             } else {
-              await runAgentNode(bn, a, round)
+              await runAgentNode(bn, a, round, zone.startId)
             }
           }
         }
@@ -182,16 +193,16 @@ export async function runChainGraph(
       if (evalCondition(zone.until, nodeOutputs)) break
       state.clear(); for (const [k, v] of newState) state.set(k, v)
     }
-    setStateSockets(zone.endId, finalState)
+    setStateSockets(zone.endId, finalState, zone.startId)
     const rec = controlOutput(zone.endId, 'loop-end', '', 'success')
-    nodeOutputs.set(zone.endId, rec); results.push(rec); callbacks.onDone(zone.endId, rec)
+    nodeOutputs.set(zone.endId, rec); emit(zone.startId, rec); callbacks.onDone(zone.endId, rec)
     markOut(zone.endId, () => true)
   }
 
   // replay branched outputs (their out-edges are live)
   for (const o of startOutputs) {
     if (o.nodeId) { nodeOutputs.set(o.nodeId, o); markOut(o.nodeId, () => true) }
-    results.push(o); callbacks.onDone(o.nodeId || '', o)
+    emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
   }
 
   for (const nodeId of topoOrder(chain)) {
@@ -214,7 +225,7 @@ export async function runChainGraph(
         const subNode = nodeById.get(id)
         const label = subNode ? (subNode.agent || subNode.kind) : 'node'
         const rec = controlOutput(id, label, '', 'skipped')
-        nodeOutputs.set(id, rec); results.push(rec); callbacks.onDone(id, rec)
+        nodeOutputs.set(id, rec); emit(startZone.startId, rec); callbacks.onDone(id, rec)
       }
       continue
     }
@@ -228,7 +239,7 @@ export async function runChainGraph(
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
     if (!available) {
       const rec = controlOutput(nodeId, node.agent || node.kind, '', 'skipped')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       continue // out-edges remain dead
     }
 
@@ -241,16 +252,16 @@ export async function runChainGraph(
     } else if (node.kind === 'gate') {
       const pass = evalCondition(node.condition || '', nodeOutputs)
       const rec = controlOutput(nodeId, `gate: ${pass ? 'PASS' : 'BLOCK'}`, pass ? inValue(nodeId) : '', 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (pass) markOut(nodeId, () => true)
     } else if (node.kind === 'branch') {
       const active = (node.cases || []).find(c => evalCondition(c.condition, nodeOutputs))?.label ?? node.default
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
     } else if (node.kind === 'report') {
       const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       markOut(nodeId, () => true)
     } else if (node.kind === 'join') {
       const liveIn = (incomingByNode.get(nodeId) || []).filter(i => live.has(i))
@@ -259,13 +270,13 @@ export async function runChainGraph(
         return `## ${joinLabel(e)}\n${edgeVal(e)}`
       })
       const rec = controlOutput(nodeId, 'join', blocks.join('\n\n'), 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       markOut(nodeId, () => true)
     } else if (node.kind === 'subchain') {
       const ref = chains.find(c => c.slug === node.subchain)
       if (!ref) {
         const rec = controlOutput(nodeId, `subchain: ${node.subchain ?? '?'} (missing)`, '', 'error')
-        nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+        nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       } else {
         callbacks.onStart(nodeId, ref.name)
         // inject each *wired* declared input value into the matching inner seed
@@ -287,12 +298,22 @@ export async function runChainGraph(
           const val = r ? (slugify(p.socket ?? 'output') === 'output' ? r.output : extractSection(r.output, p.socket!)) : ''
           outMap.set(p.name, val)
         }
-        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records + pushes to results
+        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records + emits (anchor: nodeId)
         const statusRec = controlOutput(nodeId, ref.name, '', 'success')
-        nodeOutputs.set(nodeId, statusRec); results.push(statusRec); callbacks.onDone(nodeId, statusRec)
+        nodeOutputs.set(nodeId, statusRec); emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
       }
     }
   }
-  return results
+  const finalResults: AgentOutput[] = []
+  const emitted = new Set<string>()
+  for (const id of topoOrder(chain)) {
+    if (emitted.has(id)) continue
+    const b = buckets.get(id)
+    if (b) finalResults.push(...b)
+    emitted.add(id)
+  }
+  // safety: any anchor not present in topoOrder (should not happen) appended last
+  for (const [id, b] of buckets) if (!emitted.has(id)) finalResults.push(...b)
+  return finalResults
 }
