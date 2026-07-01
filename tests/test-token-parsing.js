@@ -1,4 +1,4 @@
-const { parseAgent } = require('./lib/fs/parseAgent');
+const { parseAgent } = require('../lib/fs/parseAgent');
 const path = require('path');
 
 const agentPath = path.join(__dirname, 'workspace/agents/token-test.md');
