@@ -49,12 +49,9 @@ export async function runChainGraph(
   const readContext = makeContextReader(workspacePath)
 
   const nodeOutputs = new Map<string, AgentOutput>()
-  const results: AgentOutput[] = []
 
-  // Result ordering is decoupled from execution order: records are filed into a
-  // per-anchor bucket and flushed in topoOrder at the end (see anchor rules in
-  // the A1 task). `results` stays as a live push target for code paths that don't
-  // care about ordering yet; the RETURNED array is rebuilt from buckets.
+  // Result ordering is decoupled from execution order: records are filed into
+  // per-anchor buckets via emit() and flushed in topoOrder at the end.
   const buckets = new Map<string, AgentOutput[]>()
   const emit = (anchorId: string, rec: AgentOutput) => {
     const arr = buckets.get(anchorId) ?? []
