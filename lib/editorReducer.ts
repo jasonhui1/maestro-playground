@@ -35,8 +35,10 @@ export function applyEditorAction(state: EditorState, action: EditorAction): Edi
       return { ...state, nodes: [...state.nodes, action.node] }
     case 'addLoopZone':
       return { ...state, nodes: [...state.nodes, ...makeLoopZone(reservedIds(state.nodes), action.pos)] }
-    case 'connect':
-      return { ...state, edges: connectEdge(state.edges, action.edge) }
+    case 'connect': {
+      const dst = state.nodes.find(n => n.id === action.edge.toNode)
+      return { ...state, edges: connectEdge(state.edges, action.edge, dst?.kind === 'join') }
+    }
     case 'deleteNode': {
       const { nodes, edges } = opDeleteNode(state.nodes, state.edges, action.id)
       return { ...state, nodes, edges, selectedIds: state.selectedIds.filter(x => x !== action.id) }
