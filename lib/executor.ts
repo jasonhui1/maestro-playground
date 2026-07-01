@@ -68,7 +68,7 @@ export async function runChainGraph(
       const a = node.agent ? agentBySlug.get(node.agent) : undefined
       return a ? parseSlots(a.systemPrompt) : []
     }
-    if (node.kind === 'gate' || node.kind === 'branch' || node.kind === 'report') return ['in']
+    if (node.kind === 'gate' || node.kind === 'branch' || node.kind === 'report' || node.kind === 'join') return ['in']
     if (node.kind === 'subchain') {
       // Only declared inputs the host actually wired gate the node; unwired
       // inputs are intentionally left unset (the inner seed falls back to the
@@ -121,6 +121,12 @@ export async function runChainGraph(
   const edgeVal = (e: typeof chain.edges[number]): string => {
     const src = nodeById.get(e.fromNode)
     return src ? socketValue(src, e.fromSocket, nodeOutputs, seedPrompt, readContext) : ''
+  }
+  const joinLabel = (e: typeof chain.edges[number]): string => {
+    const src = nodeById.get(e.fromNode)
+    const a = src?.agent ? agentBySlug.get(src.agent) : undefined
+    const base = a?.name ?? src?.agent ?? src?.id ?? e.fromNode
+    return slugify(e.fromSocket) === 'output' ? base : `${base} (${e.fromSocket})`
   }
   const setStateSockets = (nodeId: string, state: Map<string, string>) => {
     for (const [name, val] of state) {
@@ -244,6 +250,15 @@ export async function runChainGraph(
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
     } else if (node.kind === 'report') {
       const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
+      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      markOut(nodeId, () => true)
+    } else if (node.kind === 'join') {
+      const liveIn = (incomingByNode.get(nodeId) || []).filter(i => live.has(i))
+      const blocks = liveIn.map(i => {
+        const e = chain.edges[i]
+        return `## ${joinLabel(e)}\n${edgeVal(e)}`
+      })
+      const rec = controlOutput(nodeId, 'join', blocks.join('\n\n'), 'success')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       markOut(nodeId, () => true)
     } else if (node.kind === 'subchain') {
