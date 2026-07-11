@@ -4,104 +4,131 @@
 
 A local multi-agent playground for people who want to write their own AI agents, craft their own prompts, and experiment with chaining them together — without being locked into any framework's opinions about how that should work.
 
-The core insight: every multi-agent framework (LangGraph, CrewAI, AutoGen, OpenAI Agents SDK) differs only in how agents are *wired together*. The individual agent — its system prompt, its model, its tools — is the same concept everywhere. This playground makes the agent the first-class citizen. The orchestration is just a chain you define in a text file.
+The core insight: every multi-agent framework (LangGraph, CrewAI, AutoGen, OpenAI Agents SDK) differs only in how agents are *wired together*. The individual agent — its system prompt, its model, its tools — is the same concept everywhere. This playground makes the agent the first-class citizen. The orchestration is a DAG you define in a text file and can see on a canvas.
 
 ## Why it exists
 
 Most multi-agent frameworks hide too much. You define a "crew" or a "graph" and the framework handles context passing, state management, and routing — but you can't see exactly what each agent received, why it produced what it did, or how the chain degraded over multiple hops. Debugging becomes archaeology.
 
-This playground makes everything visible and editable:
+This playground makes everything visible:
 
-- Agents are `.md` files you can open in any text editor
-- Every `{}` reference in a prompt is explicit — you can read the agent file and know exactly what context it will receive
+- Agents, skills, tools, and chains are `.md`/YAML files you can open in any text editor
+- Every input an agent receives arrives through an explicit edge wired to a named slot
 - Every run is logged as readable `.md` files on disk — you don't need the app to read them
+- When an agent uses tools, every tool call and result is logged verbatim in the node's transcript
 - Branching lets you replay from any point in a chain without re-running earlier steps
 
 The philosophy is **filesystem-first**. The app is a nice face on top of files. The files are the truth.
 
-## The user
+## Who it's for
 
-Someone building a story — a world with characters, escalating events, dungeons, political intrigue. They're running a chain of agents (world builder → character designer → event writer → dungeon master) and iterating obsessively: tweaking the world builder's prompt, seeing how it changes the characters downstream, branching off to try a darker tone without losing the version they liked.
+Not a product, and not looking for users. Mature frameworks (LangGraph, CrewAI, OpenAI Agents SDK) are better at what they do — and difficult to see through and learn from. This project is:
 
-They think in terms of *agents and prompts*, not graphs and nodes. They want to see the output of each agent as it streams in. They want to compare two runs side by side. They want to know which agent cost the most tokens. They want to export the whole thing as a readable markdown document.
+- **A learning vehicle** — building the machinery myself (tool loops, retrieval, orchestration, logging) is how I understand how agents are actually implemented, beneath the framework abstractions.
+- **A CV artifact** — a codebase that demonstrates end-to-end understanding of agent systems.
+- **A personal workflow tool** — moving my own experiments toward something shaped the way I think: creative chains (world builder → character designer → event writer) and research/synthesis workflows are the two use cases that drive feature decisions.
 
-More broadly: anyone who wants to build and iterate on multi-agent chains using their own written prompts, without framework lock-in.
+Because the first audience is me-as-learner, visibility is doubly load-bearing: the transparency that would differentiate a product is also what makes the system teach — every mechanism is inspectable precisely because nothing is hidden.
 
-## What makes this different from existing tools
+## The core promise: explicit structure, observable execution
 
-**Not a framework.** There is no `Chain` class, no `Agent` base class, no SDK to learn. Agents are markdown files with YAML frontmatter. Chains are markdown files listing agent names in order. The `{}` reference system is the only "magic" — and it's three rules: `{input}` is the previous output, `{agent-name.summary}` is a specific agent's summary section, `{file-name}` is a file from the `/context/` folder.
+The promise has two tiers, and both are stated deliberately:
 
-**Not a no-code tool.** The user writes their own system prompts. The app helps them run, observe, and iterate — it doesn't generate prompts for them.
+1. **Structure is knowable at read time.** Open the chain file and you know the full graph: which agents run, what feeds each input slot, which tools each agent *may* call. The graph is fixed before the run starts. Nothing rewires itself at runtime.
+2. **Content is knowable after the run.** What an agent actually received and did — including every tool call it chose to make and every result that came back — is captured verbatim in its log. Nothing happens that the log doesn't show.
 
-**Git-native.** Because everything is files, the user gets version history of their agents for free. Checking out an old branch gives them old agents. Diffing a commit shows exactly what changed in a prompt. No import/export, no database migrations.
+Before tools, tier 1 covered everything: the agent file alone told you exactly what context an agent would receive. Tool loops make that impossible at read time — the model decides what to fetch while it runs. Maestro accepts that trade *consciously* and compensates with tier 2: read-time explicitness for structure, run-time observability for content.
 
 ## The file system is the data model
 
 ```
 workspace/
   agents/       ← agent .md files (one agent per file)
-  skills/       ← behavioural skills injected into agent prompts
-  context/      ← world lore, reference docs, anything {} can reference
-  chains/       ← ordered lists of agents forming a pipeline
+  skills/       ← behavioural prompt fragments injected into agent prompts
+  tools/        ← tool definitions (.md with YAML schema) agents can reference
+  context/      ← world lore, reference docs, anything a context node can inject
+  chains/       ← node DAGs: nodes + edges wiring outputs to input slots
   templates/    ← saved seed prompts with recommended chains
-  logs/         ← one folder per run, one .md per agent step
+  logs/         ← one folder per run, one .md per node step
 ```
 
-This structure is the whole system. The Next.js app reads it, runs chains against the Anthropic API server-side, and writes logs back. Nothing is stored in a database. A user can delete the app and still read all their runs.
+This structure is the whole system. The Next.js app reads it, runs chains against an OpenAI-compatible API (OpenRouter) server-side, and writes logs back. Nothing is stored in a database. A user can delete the app and still read all their runs.
 
-## The {} reference system
+## Slots and wiring
 
-The single most important design decision. In any agent's system prompt, curly-brace references are resolved before the API call:
+Variable passing is local, explicit, and edge-driven — the heart of the system:
 
-- `{input}` — the previous agent's full output (or the user's seed prompt if first agent)
-- `{agent-name.output}` — the full output of a named earlier agent in the chain
-- `{agent-name.summary}` — just the `## Summary` section of a named agent's output
-- `{file-name}` — the full contents of `context/file-name.md`
+- `{slot}` tokens in an agent's prompt are input slots, resolved by following the incoming edge wired to that slot
+- Sockets slice outputs: `output` is the full text, `summary` is just the `## Summary` section, and any markdown header can be sliced by name
+- Context nodes inject files from `context/`; seed nodes inject the run's initial prompt
 
-This means context passing is *explicit and readable*. You open an agent file and you can see exactly what it will receive. There is no hidden state, no framework-managed memory, no surprise.
+The `## Summary` convention matters: the base-protocol skill instructs every agent to end with a `## Summary` of key facts, so downstream agents can pull distilled facts instead of re-reading thousands of words.
 
-The `## Summary` convention is important: every agent is instructed by the base-protocol skill to end its output with a `## Summary` section of bullet-point key facts. This lets downstream agents pull just the distilled facts rather than re-reading thousands of words of prose. `{world-builder.summary}` is efficient; `{world-builder.output}` is the full text when you need it.
+## Tools
+
+Agents can use tools in an in-node agentic loop: the model requests a tool call mid-generation, Maestro executes it, feeds the result back, and the model continues — possibly calling more tools — until it produces its final output.
+
+**The graph is fixed; only the inside of a node is dynamic.** Tool loops never change the chain's structure. An agent can search five times or zero times, but it cannot spawn nodes, reroute edges, or call other agents. The drawn graph and the executed graph are always the same graph.
+
+Principles:
+
+- **Tools are workspace files.** `workspace/tools/*.md` defines each tool (name, description, input schema); agents reference them by name in frontmatter, exactly like skills. An agent's possible tools are always readable on disk.
+- **Read-only for now.** v1 tools observe the world (web search, page fetch, workspace retrieval) — no file writes, no shell, no side effects. Tool results are untrusted input; the ceiling stays low until observability proves itself.
+- **The transcript is part of the log contract.** A tool-using node's log gains a `## Tool Loop` section between the resolved prompt and the output: one entry per turn with the tool name, exact arguments, and the result verbatim. Token and cost metrics sum across every API call in the loop.
+- **Loops terminate.** A max-tool-turns cap per node; on hitting it, one final no-tools turn forces the node to emit output (with its `## Summary`) rather than dying mid-loop.
+- **`output` means final text only.** Downstream slots never see the transcript. Tool activity is visible in logs and the trace UI, but not wireable — chains must not depend on tool noise.
+- Tool-using agents route only to models that support tool calling (OpenRouter filters providers automatically when tools are present).
+
+## Retrieval
+
+Two faces of one engine, both grounded in the workspace's own files:
+
+- **Retrieve node** — a DAG node: query in, matched sections out, logged verbatim. Wired explicitly like any other node.
+- **Retrieve tool** — the same engine exposed as a tool, so an agent can search the workspace mid-loop (agentic search).
+
+Retrieval methods: lexical search (BM25-style keyword ranking — explainable, no index build) and embedding search (semantic matching via OpenRouter's embeddings endpoint). Chunking follows the markdown structure that already governs socket slicing: files split by header sections.
+
+**The embedding index is a cache, never truth.** It lives in a derived, gitignored directory, is rebuilt from the `.md` files whenever they change (content-hash staleness checks), and can be deleted at any time without losing anything. The source files remain the only source of truth — deleting the app still leaves everything readable.
+
+There is no "inject the entire corpus" mode: wholesale context stuffing costs more and performs worse than retrieval as the corpus grows. Explicit `context` nodes remain the way to inject a *specific* file whole.
 
 ## Skills
 
 Skills are reusable prompt fragments injected into agent system prompts. Two kinds:
 
-**Behavioural skills** — mechanical constraints that apply regardless of domain. The base-protocol skill is always injected and establishes the output contract: no preamble, no sign-off, end with a `## Summary` section. Other examples: `concise` (keep output under 600 words), `json-output` (respond only in valid JSON).
+**Behavioural skills** — mechanical constraints that apply regardless of domain. The base-protocol skill is always injected and establishes the output contract: no preamble, no sign-off, end with a `## Summary` section.
 
-**Craft knowledge** — domain-specific guidance like narrative craft, dialogue writing, world-building techniques. These come later, extracted from agent prompts when the repetition becomes painful.
-
-Skills listed in an agent's frontmatter are injected above the agent's system prompt body. The base-protocol skill is injected into every agent automatically.
+**Craft knowledge** — domain-specific guidance like narrative craft or world-building techniques, extracted from agent prompts when the repetition becomes painful.
 
 ## Branching
 
-The most powerful iteration feature. When looking at a completed run, the user can click "Branch from here" on any agent step. The new run re-uses all logged outputs up to that point and starts running fresh from that step forward — with whatever prompt changes the user has made since.
+The most powerful iteration feature. When looking at a completed run, the user can click "Branch from here" on any node. The new run re-uses all logged outputs up to that point and replays the downstream topological order fresh — with whatever prompt changes the user has made since.
 
-This means: you can change the event-writer's prompt and replay from step 3 without re-running the world-builder and character-designer. Fast iteration on the part that matters.
+With tools, the semantics are: **nodes before the branch point reuse their logs wholesale — tool calls included, never re-executed.** Re-run nodes use live tools, which means a searching node can differ between runs for reasons unrelated to your prompt change; a future "replay with logged tool results" toggle (the log folder doubles as a tool-result cache) would restore controlled experiments, but it is not v1.
 
 Branch lineage is recorded in `meta.json` (`branchedFromRunId`, `branchedFromStep`) so you can trace where any run came from.
 
 ## What the app does not do
 
-- **No visual graph editor.** Chains are text files. The UI shows the chain's agent list but you define it in the file.
-- **No agent-to-agent communication.** Agents don't call each other. The orchestrator runs them sequentially, passing outputs through `{}` references. This is intentional — it keeps the flow explicit and debuggable.
-- **No parallel execution in v1.** Chains are sequential. Parallelism can be added later once the core loop is solid.
-- **No hosted deployment.** This is a local tool. The Anthropic API key lives in `.env.local`. There is no auth, no multi-user support.
+- **No agent-to-agent communication — deliberately, still.** Agents are not tools for other agents. Dynamic delegation inside a model's head would make the executed graph different from the drawn graph, which is the one line Maestro exists to hold. The DAG is the only orchestrator.
+- **No write-capable tools in v1.** No file writes, no shell, no side effects. Revisit only after transcript observability has proven itself in real use.
+- **No hosted deployment.** This is a local tool. The API key lives in `.env.local`. No auth, no multi-user support.
 - **No prompt generation.** The app does not write prompts for the user. It runs the prompts the user wrote.
 
 ## Design principles for the codebase
 
-**Filesystem is the source of truth.** Never cache agent/chain/skill definitions in memory across requests. Always read from disk. This means live editing works — the user changes an agent file in VS Code, hits Run, and gets the new version with no restart needed.
+**Filesystem is the source of truth.** Never cache agent/chain/skill/tool definitions in memory across requests. Always read from disk. Live editing must work: change a file in VS Code, hit Run, get the new version. Derived artifacts (the embedding index) are caches with staleness checks, never truth.
 
-**Logs are human-readable without the app.** A run log folder should be fully intelligible to someone reading it in a text editor. YAML frontmatter for metadata, markdown body for output.
+**Logs are human-readable without the app.** A run log folder — including tool-loop transcripts — should be fully intelligible in a text editor. YAML frontmatter for metadata, markdown body for content.
 
-**Errors should be local, not global.** If one agent in a chain fails, log the error for that step and continue the chain where possible. Don't abort the entire run.
+**Errors should be local, not global.** If one node fails, log the error and continue where possible. Inside a tool loop, a failed tool call is returned to the model as an error result so it can work around it; the node only fails if it cannot produce output at all.
 
-**The {} resolver is the heart.** It touches every agent call. Keep it simple, keep it tested, keep it readable. Every other part of the system is scaffolding around it.
+**The slot resolver is the heart.** It touches every agent call. Keep it simple, tested, readable. The tool-loop executor is the second heart and gets the same treatment.
 
-**Server-side API calls only.** The Anthropic SDK is called from Next.js API routes, never from the browser. This avoids CORS, keeps the API key server-side, and enables proper streaming via SSE.
+**Server-side API calls only.** The AI provider is called from Next.js API routes, never from the browser.
 
 ## Aesthetic direction for the UI
 
-Utilitarian and focused. This is a tool for someone deep in creative work — the UI should stay out of the way. Clean zinc/white palette, monospace for agent outputs (they're content, not UI), generous whitespace. No decorative chrome. The output of the agents is the most important thing on screen — make it easy to read, easy to compare, easy to copy.
+Utilitarian and focused. This is a tool for someone deep in creative or analytical work — the UI should stay out of the way. Clean zinc/white palette, monospace for agent outputs (they're content, not UI), generous whitespace. No decorative chrome. The output of the agents is the most important thing on screen — make it easy to read, easy to compare, easy to copy.
 
 Think: a well-designed terminal emulator, not a SaaS dashboard.
