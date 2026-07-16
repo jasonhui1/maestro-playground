@@ -1,6 +1,8 @@
 import assert from 'node:assert'
-import { kindOf, WorkspaceLookup } from '../lib/nodeKinds'
+import { kindOf, WorkspaceLookup, FieldCodec } from '../lib/nodeKinds'
 import { inputSocketsOf, outputSocketsOf } from '../lib/nodeSockets'
+import { chainToData, serializeChain } from '../lib/serializeChain'
+import { parseChainContent } from '../lib/parseChain'
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef } from '../lib/types'
 
 function agent(slug: string, prompt: string, outputs = [{ name: 'output' }]): AgentDef {
@@ -62,21 +64,40 @@ for (const kind of ['seed', 'context', 'agent', 'decider', 'gate', 'branch', 'lo
   for (const s of kindOf(kind).inputs(node, workspace)) assert.strictEqual(s.optional, undefined, `${kind} input marked optional`)
 }
 
-// --- fields match serializeChain.ts / parseChain.ts persisted keys ---
-const expectedFields: Record<ChainNodeKind, string[]> = {
-  seed: [],
-  context: ['file'],
-  agent: ['agent'],
-  decider: ['agent'],
-  gate: ['condition'],
-  branch: ['cases', 'default'],
-  'loop-start': ['state'],
-  'loop-end': ['until', 'maxIterations'],
-  subchain: ['subchain'],
-  report: [],
+// --- fields parity: descriptors vs what serializeChain writes / parseChain reads ---
+// Build one fully-populated node per kind (every descriptor field set to a
+// codec-typical value), serialize it, and assert the emitted keys are exactly
+// the descriptor's field keys — then parse back and assert each value survives
+// with its codec's type. No hand-copied field lists: serializeChain/parseChain
+// themselves are the oracle.
+const sampleValue: Record<FieldCodec, unknown> = {
+  string: 'sample',
+  number: 3,
+  stringList: ['a', 'b'],
+  cases: [{ label: 'l1', condition: 'c1' }],
 }
-for (const [kind, keys] of Object.entries(expectedFields)) {
-  assert.deepStrictEqual(kindOf(kind as ChainNodeKind).fields.map(f => f.key), keys, `field keys mismatch for ${kind}`)
+const COMMON_KEYS = new Set(['id', 'kind', 'pos', 'zone'])
+const allKinds: ChainNodeKind[] = ['seed', 'context', 'agent', 'decider', 'gate', 'branch', 'loop-start', 'loop-end', 'subchain', 'report']
+
+const populated: ChainNode[] = allKinds.map((kind, i) => {
+  const node: Record<string, unknown> = { id: `n${i}`, kind, pos: [i, i * 2] as [number, number], zone: 'z1' }
+  for (const f of kindOf(kind).fields) node[f.key] = sampleValue[f.codec]
+  return node as ChainNode
+})
+
+const serialized = chainToData({ name: 'parity' }, populated, [])
+for (const [i, kind] of allKinds.entries()) {
+  const emitted = Object.keys((serialized.nodes as Record<string, unknown>[])[i]).filter(k => !COMMON_KEYS.has(k)).sort()
+  const declared = kindOf(kind).fields.map(f => f.key).sort()
+  assert.deepStrictEqual(emitted, declared, `serializeChain keys mismatch for ${kind}`)
+}
+
+const reparsed = parseChainContent(serializeChain({ name: 'parity' }, populated, []), 'parity')
+for (const [i, kind] of allKinds.entries()) {
+  const node = reparsed.nodes[i] as unknown as Record<string, unknown>
+  for (const f of kindOf(kind).fields) {
+    assert.deepStrictEqual(node[f.key], sampleValue[f.codec], `parseChain lost/coerced ${kind}.${f.key} (codec ${f.codec})`)
+  }
 }
 
 // --- palette entries match components/editor/NodePalette.tsx ITEMS ---
