@@ -58,14 +58,16 @@
 ## De-risk before/while building (small scratch scripts, not features)
 
 1. **`reasoning_details` round-trip** — ~20-line script: one Anthropic model via OpenRouter, thinking enabled, one tool call, echo the assistant message back through the `openai` npm client (whose types don't know OpenRouter's extra fields). Confirm no 400, confirm fields survive the client. Do this before building the runner loop's reasoning handling.
-2. **Outside-node → zone-body edges** — confirm `validateChain` permits them (executor resolution looks fine; validation path unread). Needed for the round-0 anchor pattern.
+2. **Outside-node → zone-body edges** — RESOLVED 2026-07-12 (statically, while planning slice 1): `validateChain` does NOT permit them — the zone-boundary rule (`lib/chainGraph.ts` `validateZones`) rejects every cross-zone edge that isn't into a loop-start or out of a loop-end, and an outside node (`zone: undefined`) into a body node always trips it. Executor resolution handles them fine (body slots resolve via `resolveNodePrompt` against all edges; an outside source's output is stable across rounds). Consequence: slice 4 needs a deliberate, *directional* relaxation — inbound outside→body allowed, outbound body→outside still blocked ("which round's output?" has no answer). Design the amendment in the slice-4 session; the round-0 anchor pattern itself stands. User leaning (2026-07-12): prefer `anchor: full` in the rounds digest (round 0's own output carried automatically) over a separate pre-loop draft node — direct outside→body wiring stays an optional variant, so the relaxation may end up nice-to-have rather than required.
 3. **Convention compliance spot-check** — run the intended default models against `loop-protocol`'s `## Changes` contract a few times; calibrate how loud the violation warning needs to be.
 
 ## Build roadmap — narrowest full slice first
 
 Principle: each slice is a *complete vertical* (file → registry → loop → log) you can run and observe; the map is expected to lose at least one argument with reality per slice — update it when it does.
 
-**Slice 0 — de-risk scripts** (above). An afternoon, zero product code.
+**Slice 0 — de-risk scripts** (above; #2 already resolved statically). An afternoon, zero product code.
+
+**Slice 0+1 impl plan:** `2026-07-12-tools-slice0-slice1-impl-plan.md` (confirmed 2026-07-12: non-streamed API turns for tool-using agents in slice 1 — streaming delta reconstruction is slice 2's job; loop extracted to `lib/tools/loop.ts` with injected `chatCall`; `max_tool_turns` agent frontmatter, default 8; optional `turnText` per turn). Constraint found while planning: `validateChain` runs in the browser, so everything validation needs (executor ids, `paramsToJsonSchema`, later slice-5 config schemas) must live in a pure client-safe module (`lib/tools/spec.ts`), separate from the fs-touching registry.
 
 **Slice 1 — the spine** (tool loop end-to-end, fully local, zero API keys beyond the existing one):
 - `tools/*.md` parser (name, executor, params, config, activity, body-as-description)
