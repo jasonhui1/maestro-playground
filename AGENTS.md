@@ -20,3 +20,17 @@ Always provide before/ after examples with purposed solutions. Define a core con
 When asked for clarification/ feel confused/ try to understand, drop all the abstractions and just walk through one run as example. Always speak with an example to show visual examples along with text if possible.
 
 Design decisions follow **walkthrough-then-confirm**: present a proposal as a concrete walkthrough (one run, traced end to end, showing each decision at the moment it acts), then WAIT for my explicit confirmation before recording it as settled in any doc (design maps, vision.md, plans). Never mark a decision settled in the same message that first proposes it. When I push back or ask "why", treat it as the design conversation, not an obstacle — the pushback often improves the design.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`gh` CLI). PRs are not treated as a triage request surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles, label string = role name. Additional effort/type labels (`easy`, `medium`, `hard`, `refactor`, `grilling`) are also in use alongside them. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
