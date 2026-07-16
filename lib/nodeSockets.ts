@@ -14,6 +14,7 @@ export function inputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentDe
     return (ref?.inputs ?? []).map(p => p.name)
   }
   if (node.kind === 'report') return ['in']
+  if (node.kind === 'join') return ['in']
   if (node.kind === 'agent' || node.kind === 'decider') {
     const a = node.agent ? agents.find(x => x.slug === node.agent) : undefined
     return a ? parseSlots(a.systemPrompt) : []
@@ -34,6 +35,7 @@ export function outputSocketsOf(node: ChainNode, chain: ChainDef, agents: AgentD
   if (node.kind === 'branch') return [...(node.cases ?? []).map(c => c.label), ...(node.default ? [node.default] : [])]
   if (node.kind === 'loop-start' || node.kind === 'loop-end') return zoneStateOf(node, chain)
   if (node.kind === 'report') return []
+  if (node.kind === 'join') return ['output']
   const a = node.agent ? agents.find(x => x.slug === node.agent) : undefined
   const sockets = ['output', ...(a?.outputs ?? []).map(s => slugify(s.name))]
   return Array.from(new Set(sockets))

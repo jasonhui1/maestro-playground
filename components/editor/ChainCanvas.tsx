@@ -20,10 +20,12 @@ import LoopEndNode from './nodes/LoopEndNode'
 import ZoneFrame from './nodes/ZoneFrame'
 import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
+import JoinNode from './nodes/JoinNode'
 
 const nodeTypes: NodeTypes = {
   seed: SeedNode, context: ContextNode, agent: AgentNode, decider: AgentNode,
   gate: GateNode, branch: BranchNode, 'loop-start': LoopStartNode, 'loop-end': LoopEndNode,
+  join: JoinNode,
   subchain: SubchainNode,
   report: ReportNode,
   zoneFrame: ZoneFrame,

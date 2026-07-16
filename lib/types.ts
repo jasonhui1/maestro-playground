@@ -1,4 +1,4 @@
-export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report'
+export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes

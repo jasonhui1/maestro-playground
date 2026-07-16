@@ -17,7 +17,14 @@ export function reservedIds(nodes: ChainNode[]): string[] {
   return [...nodes.map(n => n.id), ...zones]
 }
 
-export function connectEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
+export function connectEdge(edges: ChainEdge[], edge: ChainEdge, allowMulti = false): ChainEdge[] {
+  if (allowMulti) {
+    // keep sibling edges into this slot; drop only an exact duplicate of THIS edge
+    const dup = edges.some(x =>
+      x.fromNode === edge.fromNode && x.fromSocket === edge.fromSocket &&
+      x.toNode === edge.toNode && x.toSocket === edge.toSocket)
+    return dup ? edges : [...edges, edge]
+  }
   const kept = edges.filter(e => !(e.toNode === edge.toNode && e.toSocket === edge.toSocket))
   return [...kept, edge]
 }
