@@ -1,5 +1,6 @@
 import matter from 'gray-matter'
 import { ChainDef, ChainNode, ChainEdge, ChainPort } from './types'
+import { kindOf } from './nodeKinds'
 
 export function parseEndpoint(s: string): { node: string; socket: string } {
   const str = String(s)
@@ -11,23 +12,50 @@ export function parseEndpoint(s: string): { node: string; socket: string } {
 export function parseChainContent(raw: string, slug: string): ChainDef {
   const { data } = matter(raw)
   const nodes: ChainNode[] = Array.isArray(data.nodes)
-    ? data.nodes.map((n: Record<string, unknown>) => ({
-        id: String(n.id),
-        kind: n.kind as ChainNode['kind'],
-        agent: n.agent as string | undefined,
-        file: n.file as string | undefined,
-        pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
-        condition: n.condition as string | undefined,
-        cases: Array.isArray(n.cases)
-          ? (n.cases as Record<string, unknown>[]).map(c => ({ label: String(c.label), condition: String(c.condition) }))
-          : undefined,
-        default: n.default as string | undefined,
-        zone: n.zone as string | undefined,
-        state: Array.isArray(n.state) ? (n.state as unknown[]).map(String) : undefined,
-        until: n.until as string | undefined,
-        maxIterations: typeof n.maxIterations === 'number' ? n.maxIterations : undefined,
-        subchain: n.subchain as string | undefined,
-      }))
+    ? data.nodes.map((n: Record<string, unknown>) => {
+        const node: Record<string, any> = {
+          id: String(n.id),
+          kind: n.kind as ChainNode['kind'],
+          agent: undefined,
+          file: undefined,
+          pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
+          condition: undefined,
+          cases: undefined,
+          default: undefined,
+          zone: n.zone as string | undefined,
+          state: undefined,
+          until: undefined,
+          maxIterations: undefined,
+          subchain: undefined,
+        }
+
+        const descriptor = kindOf(node.kind)
+        if (descriptor) {
+          for (const field of descriptor.fields) {
+            const rawVal = n[field.key]
+            if (rawVal === undefined) {
+              continue
+            }
+            switch (field.codec) {
+              case 'string':
+                node[field.key] = String(rawVal)
+                break
+              case 'number':
+                node[field.key] = typeof rawVal === 'number' ? rawVal : undefined
+                break
+              case 'stringList':
+                node[field.key] = Array.isArray(rawVal) ? rawVal.map(String) : undefined
+                break
+              case 'cases':
+                node[field.key] = Array.isArray(rawVal)
+                  ? rawVal.map((c: any) => ({ label: String(c.label), condition: String(c.condition) }))
+                  : undefined
+                break
+            }
+          }
+        }
+        return node as ChainNode
+      })
     : []
   const edges: ChainEdge[] = Array.isArray(data.edges)
     ? data.edges.map((e: Record<string, unknown>) => {
