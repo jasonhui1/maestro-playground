@@ -137,3 +137,11 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
 }
+
+export const allFields: FieldDescriptor[] = (() => {
+  const seen = new Map<string, FieldDescriptor>()
+  for (const descriptor of Object.values(registry)) {
+    for (const f of descriptor.fields) if (!seen.has(f.key)) seen.set(f.key, f)
+  }
+  return Array.from(seen.values())
+})()

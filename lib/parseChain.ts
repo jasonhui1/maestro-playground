@@ -1,5 +1,6 @@
 import matter from 'gray-matter'
 import { ChainDef, ChainNode, ChainEdge, ChainPort } from './types'
+import { allFields, FieldCodec } from './nodeKinds'
 
 export function parseEndpoint(s: string): { node: string; socket: string } {
   const str = String(s)
@@ -8,26 +9,34 @@ export function parseEndpoint(s: string): { node: string; socket: string } {
   return { node: str.slice(0, dot).trim(), socket: str.slice(dot + 1).trim() }
 }
 
+function coerceField(raw: unknown, codec: FieldCodec): unknown {
+  switch (codec) {
+    case 'string':
+      return raw as string | undefined
+    case 'number':
+      return typeof raw === 'number' ? raw : undefined
+    case 'stringList':
+      return Array.isArray(raw) ? (raw as unknown[]).map(String) : undefined
+    case 'cases':
+      return Array.isArray(raw)
+        ? (raw as Record<string, unknown>[]).map(c => ({ label: String(c.label), condition: String(c.condition) }))
+        : undefined
+  }
+}
+
 export function parseChainContent(raw: string, slug: string): ChainDef {
   const { data } = matter(raw)
   const nodes: ChainNode[] = Array.isArray(data.nodes)
-    ? data.nodes.map((n: Record<string, unknown>) => ({
-        id: String(n.id),
-        kind: n.kind as ChainNode['kind'],
-        agent: n.agent as string | undefined,
-        file: n.file as string | undefined,
-        pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
-        condition: n.condition as string | undefined,
-        cases: Array.isArray(n.cases)
-          ? (n.cases as Record<string, unknown>[]).map(c => ({ label: String(c.label), condition: String(c.condition) }))
-          : undefined,
-        default: n.default as string | undefined,
-        zone: n.zone as string | undefined,
-        state: Array.isArray(n.state) ? (n.state as unknown[]).map(String) : undefined,
-        until: n.until as string | undefined,
-        maxIterations: typeof n.maxIterations === 'number' ? n.maxIterations : undefined,
-        subchain: n.subchain as string | undefined,
-      }))
+    ? data.nodes.map((n: Record<string, unknown>) => {
+        const node: Record<string, unknown> = {
+          id: String(n.id),
+          kind: n.kind as ChainNode['kind'],
+          pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
+          zone: n.zone as string | undefined,
+        }
+        for (const f of allFields) node[f.key] = coerceField(n[f.key], f.codec)
+        return node as unknown as ChainNode
+      })
     : []
   const edges: ChainEdge[] = Array.isArray(data.edges)
     ? data.edges.map((e: Record<string, unknown>) => {

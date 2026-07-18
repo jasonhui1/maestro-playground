@@ -1,35 +1,20 @@
 import matter from 'gray-matter'
-import { ChainNode, ChainEdge, ChainPort } from './types'
+import { ChainNode, ChainEdge, ChainPort, BranchCase } from './types'
+import { kindOf, FieldCodec } from './nodeKinds'
+
+function serializeFieldValue(value: unknown, codec: FieldCodec): unknown {
+  if (value === undefined) return undefined
+  if (codec === 'cases') return (value as BranchCase[]).map(c => ({ label: c.label, condition: c.condition }))
+  return value
+}
 
 function serializeNode(n: ChainNode): Record<string, unknown> {
   const out: Record<string, unknown> = { id: n.id, kind: n.kind }
   if (n.pos) out.pos = n.pos
   if (n.zone !== undefined) out.zone = n.zone
-  switch (n.kind) {
-    case 'agent':
-    case 'decider':
-      if (n.agent !== undefined) out.agent = n.agent
-      break
-    case 'context':
-      if (n.file !== undefined) out.file = n.file
-      break
-    case 'gate':
-      if (n.condition !== undefined) out.condition = n.condition
-      break
-    case 'branch':
-      if (n.cases) out.cases = n.cases.map(c => ({ label: c.label, condition: c.condition }))
-      if (n.default !== undefined) out.default = n.default
-      break
-    case 'loop-start':
-      if (n.state) out.state = n.state
-      break
-    case 'loop-end':
-      if (n.until !== undefined) out.until = n.until
-      if (n.maxIterations !== undefined) out.maxIterations = n.maxIterations
-      break
-    case 'subchain':
-      if (n.subchain !== undefined) out.subchain = n.subchain
-      break
+  for (const f of kindOf(n.kind).fields) {
+    const value = serializeFieldValue((n as unknown as Record<string, unknown>)[f.key], f.codec)
+    if (value !== undefined) out[f.key] = value
   }
   return out
 }
