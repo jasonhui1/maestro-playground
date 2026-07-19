@@ -11,21 +11,29 @@ export interface BranchCase {
   condition: string
 }
 
-export interface ChainNode {
+// Fields shared by every node kind. `zone` (loop membership) and `pos` live here —
+// not on the per-kind variants — because any kind can be a loop-body member, and the
+// serializer already writes them alongside id/kind, above the registry-field codec loop.
+export interface ChainNodeBase {
   id: string
-  kind: ChainNodeKind
-  agent?: string         // kind === 'agent' | 'decider' (slug)
-  file?: string          // kind === 'context' (slug)
   pos?: [number, number]
-  condition?: string     // gate
-  cases?: BranchCase[]   // branch
-  default?: string       // branch default case label
-  zone?: string          // loop-start / loop-end / body members
-  state?: string[]       // loop-start: names of carried state items
-  until?: string         // loop-end: exit condition
-  maxIterations?: number // loop-end
-  subchain?: string      // kind === 'subchain' (referenced chain slug)
+  zone?: string          // loop membership; any kind may carry it (loop-start/-end/body)
 }
+
+// Discriminated union: each variant's kind-specific fields mirror that kind's `fields`
+// list in lib/nodeKinds.ts (the authority). Narrow on `kind` to read a variant's fields;
+// dispatch switches get `never`-based exhaustiveness.
+export type ChainNode =
+  | (ChainNodeBase & { kind: 'seed' })
+  | (ChainNodeBase & { kind: 'context'; file?: string })
+  | (ChainNodeBase & { kind: 'agent'; agent?: string })
+  | (ChainNodeBase & { kind: 'decider'; agent?: string })
+  | (ChainNodeBase & { kind: 'gate'; condition?: string })
+  | (ChainNodeBase & { kind: 'branch'; cases?: BranchCase[]; default?: string })
+  | (ChainNodeBase & { kind: 'loop-start'; state?: string[] })
+  | (ChainNodeBase & { kind: 'loop-end'; until?: string; maxIterations?: number })
+  | (ChainNodeBase & { kind: 'subchain'; subchain?: string })
+  | (ChainNodeBase & { kind: 'report' })
 
 export interface ChainEdge {
   fromNode: string

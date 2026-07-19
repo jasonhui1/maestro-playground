@@ -62,7 +62,7 @@ assert.strictEqual(pasted.nodes.length, 2)
 assert.ok(!pasted.newIds.includes('b') && !pasted.newIds.includes('c'))
 assert.ok(pasted.newIds.includes(pasted.edges[0].fromNode))
 assert.ok(pasted.newIds.includes(pasted.edges[0].toNode))
-const pb = pasted.nodes.find(n => n.agent === 'x')!
+const pb = pasted.nodes.find(n => n.kind === 'agent' && n.agent === 'x')!
 assert.deepStrictEqual(pb.pos, [50, 60])            // [10,20] + [40,40]
 
 // pasteSubgraph mints a fresh, shared zone id for a copied loop pair

@@ -1,9 +1,10 @@
 'use client'
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import type { EditorNodeData } from '../nodeData'
+import type { EditorNodeData, NodeOfKind } from '../nodeData'
 
 function ContextNode({ data }: NodeProps<Node<EditorNodeData>>) {
+  const node = data.node as NodeOfKind<'context'>
   return (
     <div className="relative rounded-lg shadow-md border-2 border-zinc-200 bg-white min-w-[200px]">
       <div className="px-4 py-2 border-b border-zinc-100 bg-zinc-50/50 rounded-t-lg">
@@ -12,7 +13,7 @@ function ContextNode({ data }: NodeProps<Node<EditorNodeData>>) {
       </div>
       <div className="px-4 py-2 space-y-2">
         <select
-          value={data.node.file ?? ''}
+          value={node.file ?? ''}
           onChange={e => data.onChange({ file: e.target.value })}
           disabled={data.readOnly}
           className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag disabled:bg-zinc-50 disabled:text-zinc-500"

@@ -95,7 +95,7 @@ const allKinds: ChainNodeKind[] = ['seed', 'context', 'agent', 'decider', 'gate'
 const populated: ChainNode[] = allKinds.map((kind, i) => {
   const node: Record<string, unknown> = { id: `n${i}`, kind, pos: [i, i * 2] as [number, number], zone: 'z1' }
   for (const f of kindOf(kind).fields) node[f.key] = sampleValue[f.codec]
-  return node as ChainNode
+  return node as unknown as ChainNode
 })
 
 const serialized = chainToData({ name: 'parity' }, populated, [])

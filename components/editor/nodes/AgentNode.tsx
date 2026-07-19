@@ -2,10 +2,11 @@
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeData } from '../nodeData'
-import { statusDotClass } from '../nodeData'
+import { statusDotClass, type NodeOfKind } from '../nodeData'
 
 function AgentNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const { node, inputs, outputs, run, issues } = data
+  const node = data.node as NodeOfKind<'agent' | 'decider'>
+  const { inputs, outputs, run, issues } = data
   const kindLabel = node.kind === 'decider' ? 'Decider' : 'Agent'
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[240px] bg-white ${run?.status === 'skipped' ? 'opacity-60' : ''} ${issues.length ? 'border-red-400' : selected ? 'border-zinc-900 ring-4 ring-zinc-900/5' : 'border-zinc-200'}`}>

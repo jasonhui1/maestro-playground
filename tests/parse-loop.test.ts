@@ -1,5 +1,6 @@
 import assert from 'node:assert'
 import { parseChainContent } from '../lib/fs/parseChain'
+import type { ChainNode } from '../lib/types'
 
 const raw = `---
 name: demo
@@ -12,11 +13,11 @@ edges:
 ---
 `
 const c = parseChainContent(raw, 'demo')
-const ls = c.nodes.find(n => n.id === 'ls')!
+const ls = c.nodes.find(n => n.id === 'ls')! as Extract<ChainNode, { kind: 'loop-start' }>
 assert.strictEqual(ls.kind, 'loop-start')
 assert.strictEqual(ls.zone, 'refine')
 assert.deepStrictEqual(ls.state, ['draft', 'feedback'])
-const le = c.nodes.find(n => n.id === 'le')!
+const le = c.nodes.find(n => n.id === 'le')! as Extract<ChainNode, { kind: 'loop-end' }>
 assert.strictEqual(le.until, '{p.output} contains "DONE"')
 assert.strictEqual(le.maxIterations, 4)
 assert.strictEqual(c.nodes.find(n => n.id === 'p')!.zone, 'refine')

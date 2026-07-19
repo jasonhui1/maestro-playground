@@ -22,7 +22,7 @@ assert.deepStrictEqual(del.selectedIds, [])
 
 // updateNode patches in place
 const up = applyEditorAction(base, { type: 'updateNode', id: 'b', patch: { agent: 'y' } })
-assert.strictEqual(up.nodes.find(n => n.id === 'b')!.agent, 'y')
+assert.strictEqual((up.nodes.find(n => n.id === 'b')! as Extract<ChainNode, { kind: 'agent' }>).agent, 'y')
 
 // moveMany updates several positions
 const mv = applyEditorAction(base, { type: 'moveMany', updates: [{ id: 'a', pos: [5, 5] }, { id: 'b', pos: [9, 9] }] })

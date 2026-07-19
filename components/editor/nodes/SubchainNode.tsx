@@ -3,10 +3,11 @@ import React, { memo } from 'react'
 import Link from 'next/link'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeData } from '../nodeData'
-import { statusDotClass } from '../nodeData'
+import { statusDotClass, type NodeOfKind } from '../nodeData'
 
 function SubchainNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const { node, inputs, outputs, run, issues } = data
+  const node = data.node as NodeOfKind<'subchain'>
+  const { inputs, outputs, run, issues } = data
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[240px] bg-white ${issues.length ? 'border-red-400' : selected ? 'border-zinc-900 ring-4 ring-zinc-900/5' : 'border-indigo-300'}`}>
       <div className="px-4 py-2 border-b border-zinc-100 bg-indigo-50/50 rounded-t-lg flex items-center gap-2">

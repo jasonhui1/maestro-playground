@@ -1,5 +1,6 @@
 import assert from 'node:assert'
 import { parseChainContent } from '../lib/fs/parseChain'
+import type { ChainNode } from '../lib/types'
 
 const raw = `---
 name: demo
@@ -12,10 +13,13 @@ edges:
 ---
 `
 const c = parseChainContent(raw, 'demo')
-assert.strictEqual(c.nodes[0].kind, 'gate')
-assert.strictEqual(c.nodes[0].condition, '{v.output} contains "OK"')
-assert.deepStrictEqual(c.nodes[1].cases, [{ label: 'a', condition: '{t.output} contains "A"' }])
-assert.strictEqual(c.nodes[1].default, 'other')
-assert.strictEqual(c.nodes[2].kind, 'decider')
-assert.strictEqual(c.nodes[2].agent, 'judge')
+const gate = c.nodes[0] as Extract<ChainNode, { kind: 'gate' }>
+const branch = c.nodes[1] as Extract<ChainNode, { kind: 'branch' }>
+const decider = c.nodes[2] as Extract<ChainNode, { kind: 'decider' }>
+assert.strictEqual(gate.kind, 'gate')
+assert.strictEqual(gate.condition, '{v.output} contains "OK"')
+assert.deepStrictEqual(branch.cases, [{ label: 'a', condition: '{t.output} contains "A"' }])
+assert.strictEqual(branch.default, 'other')
+assert.strictEqual(decider.kind, 'decider')
+assert.strictEqual(decider.agent, 'judge')
 console.log('✅ parse-control tests passed')

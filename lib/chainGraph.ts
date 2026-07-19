@@ -161,7 +161,7 @@ function validateSubchains(
   const chainBySlug = (slug: string): ChainDef | undefined =>
     slug === chain.slug ? chain : bySlug.get(slug)
   const refsOf = (c: ChainDef): string[] =>
-    c.nodes.filter(n => n.kind === 'subchain' && n.subchain).map(n => n.subchain as string)
+    c.nodes.flatMap(n => (n.kind === 'subchain' && n.subchain ? [n.subchain] : []))
 
   for (const n of chain.nodes) {
     if (n.kind !== 'subchain') continue

@@ -38,16 +38,23 @@ export interface NodeKindDescriptor {
 function zoneStateOf(node: ChainNode, chain: ChainDef): string[] {
   if (!node.zone) return []
   const start = chain.nodes.find(n => n.kind === 'loop-start' && n.zone === node.zone)
-  return start?.state ?? []
+  return (start?.kind === 'loop-start' ? start.state : undefined) ?? []
+}
+
+// agent + decider both carry the `agent` slug; other kinds don't.
+export function agentSlugOf(node: ChainNode): string | undefined {
+  return node.kind === 'agent' || node.kind === 'decider' ? node.agent : undefined
 }
 
 function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[] {
-  const a = node.agent ? agents.find(x => x.slug === node.agent) : undefined
+  const slug = agentSlugOf(node)
+  const a = slug ? agents.find(x => x.slug === slug) : undefined
   return a ? parseSlots(a.systemPrompt).map(name => ({ name })) : []
 }
 
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {
-  const a = node.agent ? agents.find(x => x.slug === node.agent) : undefined
+  const slug = agentSlugOf(node)
+  const a = slug ? agents.find(x => x.slug === slug) : undefined
   const sockets = ['output', ...(a?.outputs ?? []).map(s => slugify(s.name))]
   return Array.from(new Set(sockets))
 }
@@ -97,7 +104,10 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     kind: 'branch',
     acceptsInputs: true,
     inputs: () => [{ name: 'in' }],
-    outputs: node => [...(node.cases ?? []).map(c => c.label), ...(node.default ? [node.default] : [])],
+    outputs: node =>
+      node.kind === 'branch'
+        ? [...(node.cases ?? []).map(c => c.label), ...(node.default ? [node.default] : [])]
+        : [],
     fields: [
       { key: 'cases', codec: 'cases' },
       { key: 'default', codec: 'string' },
@@ -125,11 +135,13 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     kind: 'subchain',
     acceptsInputs: true,
     inputs: (node, { chains }) => {
-      const ref = chains.find(c => c.slug === node.subchain)
+      const slug = node.kind === 'subchain' ? node.subchain : undefined
+      const ref = chains.find(c => c.slug === slug)
       return (ref?.inputs ?? []).map(p => ({ name: p.name, optional: true }))
     },
     outputs: (node, { chains }) => {
-      const ref = chains.find(c => c.slug === node.subchain)
+      const slug = node.kind === 'subchain' ? node.subchain : undefined
+      const ref = chains.find(c => c.slug === slug)
       const outs = (ref?.outputs ?? []).map(p => p.name)
       return outs.length ? outs : ['output']
     },

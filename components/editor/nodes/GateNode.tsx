@@ -2,10 +2,11 @@
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeData } from '../nodeData'
-import { statusDotClass } from '../nodeData'
+import { statusDotClass, type NodeOfKind } from '../nodeData'
 
 function GateNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const { node, run, issues } = data
+  const node = data.node as NodeOfKind<'gate'>
+  const { run, issues } = data
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[220px] bg-white ${issues.length ? 'border-red-400' : selected ? 'border-zinc-900 ring-4 ring-zinc-900/5' : 'border-zinc-200'}`}>
       <div className="px-4 py-2 border-b border-zinc-100 bg-zinc-50/50 rounded-t-lg flex items-center gap-2">

@@ -2,10 +2,11 @@
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeData } from '../nodeData'
-import { statusDotClass } from '../nodeData'
+import { statusDotClass, type NodeOfKind } from '../nodeData'
 
 function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const { node, inputs, outputs, run, issues } = data
+  const node = data.node as NodeOfKind<'loop-end'>
+  const { inputs, outputs, run, issues } = data
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[220px] bg-amber-50/40 ${issues.length ? 'border-red-400' : selected ? 'border-amber-600 ring-4 ring-amber-600/10' : 'border-amber-300'}`}>
       <div className="px-4 py-2 border-b border-amber-200 rounded-t-lg flex items-center gap-2">

@@ -17,6 +17,11 @@ export interface EditorNodeData {
   [key: string]: unknown
 }
 
+// The node variant for a given kind. Each node component renders exactly one kind
+// (guaranteed by the compiler-checked nodeTypes map in ChainCanvas), so it narrows
+// the union `data.node` to the matching variant with `data.node as NodeOfKind<...>`.
+export type NodeOfKind<K extends ChainNode['kind']> = Extract<ChainNode, { kind: K }>
+
 export function statusDotClass(run?: NodeRunState): string {
   if (!run || run.status === 'idle') return 'bg-zinc-300'
   if (run.status === 'running') return 'bg-blue-500 animate-pulse'

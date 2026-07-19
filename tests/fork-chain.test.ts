@@ -1,6 +1,6 @@
 import assert from 'node:assert'
 import { buildChainFromTemplate } from '../lib/fs/forkChain'
-import { ChainDef, TemplateDef } from '../lib/types'
+import { ChainDef, ChainNode, TemplateDef } from '../lib/types'
 
 const refChain: ChainDef = {
   slug: 'triage', name: 'Triage', description: '', filePath: '',
@@ -14,7 +14,7 @@ const forked = buildChainFromTemplate(tmpl, 'New Flow', [refChain])
 assert.strictEqual(forked.slug, 'new-flow')
 assert.strictEqual(forked.nodes.length, 2)
 assert.strictEqual(forked.edges.length, 1)
-assert.strictEqual(forked.nodes[1].agent, 'x')
+assert.strictEqual((forked.nodes[1] as Extract<ChainNode, { kind: 'agent' }>).agent, 'x')
 
 // the copy is independent of the source chain
 forked.nodes[0].id = 'changed'

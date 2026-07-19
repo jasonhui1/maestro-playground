@@ -8,7 +8,7 @@ import { resolveNodePrompt, socketValue } from './resolveNode'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { slugify, extractSection } from './graph'
-import { kindOf } from './nodeKinds'
+import { kindOf, agentSlugOf } from './nodeKinds'
 
 export interface RunCallbacks {
   onStart: (nodeId: string, agentName: string) => void
@@ -200,7 +200,7 @@ export async function runChainGraph(
       for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
         handledByZone.add(id)
         const subNode = nodeById.get(id)
-        const label = subNode ? (subNode.agent || subNode.kind) : 'node'
+        const label = subNode ? (agentSlugOf(subNode) || subNode.kind) : 'node'
         const rec = controlOutput(id, label, '', 'skipped')
         nodeOutputs.set(id, rec); results.push(rec); callbacks.onDone(id, rec)
       }
@@ -215,7 +215,7 @@ export async function runChainGraph(
     const slots = usedSlots(node)
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
     if (!available) {
-      const rec = controlOutput(nodeId, node.agent || node.kind, '', 'skipped')
+      const rec = controlOutput(nodeId, agentSlugOf(node) || node.kind, '', 'skipped')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       continue // out-edges remain dead
     }

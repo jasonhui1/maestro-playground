@@ -1,10 +1,11 @@
 'use client'
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import type { EditorNodeData } from '../nodeData'
+import type { EditorNodeData, NodeOfKind } from '../nodeData'
 
 function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const { node, issues } = data
+  const node = data.node as NodeOfKind<'loop-start'>
+  const { issues } = data
   const state = node.state ?? []
   const setName = (i: number, name: string) => data.onChange({ state: state.map((s, j) => j === i ? name : s) })
   const addName = () => data.onChange({ state: [...state, `state-${state.length + 1}`] })
