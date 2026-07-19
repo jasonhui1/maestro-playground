@@ -1,34 +1,73 @@
-// De-risk script for #18 (gate for the tool loop, #22).
-// Proves the wire-truth assumption: an assistant message with reasoning /
-// reasoning_details returned by OpenRouter (Anthropic model) survives the
-// openai npm client's serialization and can be echoed back verbatim with a
-// fabricated tool result without a 400.
+// De-risk for #18 (gate for the tool loop, #22). PROVIDER-ADAPTIVE.
 //
-// Run: AI_API_KEY=... npx tsx scripts/derisk/reasoning-roundtrip.ts
-// Optional: AI_BASE_URL, DERISK_MODEL (default anthropic/claude-sonnet-4.5)
+// One contract to prove, across two providers: an assistant message carrying
+// whatever reasoning the provider emits, plus tool_calls, can be echoed back
+// verbatim with fabricated tool results without a 400 — and parallel tool
+// calls work in a single turn.
+//
+//   • OpenRouter (Anthropic): reasoning arrives as a STRUCTURED `reasoning` /
+//     `reasoning_details` field that is absent from the openai client's
+//     TypeScript surface. The round-trip risk is real — we assert the field
+//     survives the client's runtime parsing and a JSON round-trip.
+//   • Google (gemma-4): reasoning arrives INLINE as <thought> content; there is
+//     no structured field. The round-trip is trivial (it's just string
+//     content) — we skip the structured assertion and prove tools + echo.
+//
+// The script detects which case it is in from the parsed message and asserts
+// accordingly, so a green run means something real on either provider.
+//
+// Provider is selected by DERISK_PROVIDER (default "google"):
+//   • google     → uses the app's AI_API_KEY / AI_BASE_URL / AI_MODEL_NAME
+//   • openrouter → uses OPENROUTER_API_KEY / OPENROUTER_BASE_URL / OPENROUTER_MODEL
+//
+// Run (gemma/google — defaults from env.local):
+//   set -a && . ./env.local && set +a && npx tsx scripts/derisk/reasoning-roundtrip.ts
+// Run (OpenRouter — set OPENROUTER_API_KEY in env.local first):
+//   set -a && . ./env.local && set +a && \
+//     DERISK_PROVIDER=openrouter npx tsx scripts/derisk/reasoning-roundtrip.ts
 //
 // Outputs:
-//   scripts/derisk/out/call1-response.json          first response (reasoning + tool call)
-//   scripts/derisk/out/echo-response.json           response after verbatim echo
-//   scripts/derisk/out/parallel-tool-calls.json     non-streamed parallel tool-call shape
+//   scripts/derisk/out/call1-response.json       first response (reasoning + tool call)
+//   scripts/derisk/out/echo-response.json        response after verbatim echo
+//   scripts/derisk/out/parallel-tool-calls.json  non-streamed parallel tool-call shape
 
 import OpenAI from 'openai'
 import assert from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const MODEL = process.env.DERISK_MODEL || 'anthropic/claude-sonnet-4.5'
-const OUT_DIR = path.resolve('scripts/derisk/out') // run from repo root
+const IS_OPENROUTER = (process.env.DERISK_PROVIDER || 'google').trim().toLowerCase() === 'openrouter'
 
-if (!process.env.AI_API_KEY) {
-  console.error('AI_API_KEY is not set. Run with AI_API_KEY=<openrouter key>.')
+// .trim() every env-derived value: a CRLF-terminated env file leaves a trailing
+// \r on each value. In the model name that \r reaches the JSON request body
+// untrimmed and Google hard-400s ("unexpected model name format"). Headers get
+// whitespace-trimmed by fetch, so the key/base-URL \r is silent — the model
+// name is the one that bites. (Empirically confirmed — see #18 notes.)
+const API_KEY = (IS_OPENROUTER ? process.env.OPENROUTER_API_KEY : process.env.AI_API_KEY)?.trim()
+// Also strip trailing slash(es): the openai client joins baseURL + '/chat/completions',
+// so a trailing slash yields '…/openai//chat/completions', which Google 404s.
+const BASE_URL = (
+  IS_OPENROUTER
+    ? process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'
+    : process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1'
+)
+  .trim()
+  .replace(/\/+$/, '')
+const MODEL = (
+  IS_OPENROUTER
+    ? process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5'
+    : process.env.DERISK_MODEL || process.env.AI_MODEL_NAME || 'gemma-4-31b-it'
+).trim()
+// Split artifacts per provider so a run of one track never clobbers the other's.
+const OUT_DIR = path.resolve('scripts/derisk/out', IS_OPENROUTER ? 'openrouter' : 'google')
+
+if (!API_KEY) {
+  const varName = IS_OPENROUTER ? 'OPENROUTER_API_KEY' : 'AI_API_KEY'
+  console.error(`${varName} is not set. \`set -a && . ./env.local && set +a\` first, or export it.`)
   process.exit(1)
 }
 
-const client = new OpenAI({
-  baseURL: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
-  apiKey: process.env.AI_API_KEY,
-})
+const client = new OpenAI({ baseURL: BASE_URL, apiKey: API_KEY })
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -49,8 +88,9 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
 ]
 
 // OpenRouter's `reasoning` request param is not in the openai client's types;
-// passed through untyped — exactly the pathway the real loop will use.
-const reasoningBody = { reasoning: { max_tokens: 1024 } }
+// passed through untyped. Google's shim rejects unknown top-level params, so we
+// only send it on OpenRouter — the one provider that acts on it.
+const reasoningBody = IS_OPENROUTER ? { reasoning: { max_tokens: 1024 } } : {}
 
 function save(name: string, data: unknown) {
   fs.mkdirSync(OUT_DIR, { recursive: true })
@@ -59,8 +99,10 @@ function save(name: string, data: unknown) {
 }
 
 async function main() {
+  console.log(`provider: ${IS_OPENROUTER ? 'OpenRouter' : 'Google/OpenAI-shim'}  model: ${MODEL}`)
+
   // ---- Call 1: reasoning + one tool call -----------------------------------
-  console.log(`[1/3] call 1 — model=${MODEL}, reasoning on, one tool`)
+  console.log(`[1/3] call 1 — reasoning ${IS_OPENROUTER ? 'on' : '(inline)'}, one tool`)
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: 'user',
@@ -80,19 +122,24 @@ async function main() {
   const msg1 = res1.choices[0].message as OpenAI.Chat.ChatCompletionMessage &
     Record<string, unknown>
 
-  // The wire-truth check: reasoning/reasoning_details are NOT in the openai
-  // client's TypeScript surface — verify they survive its runtime parsing.
-  assert.ok(
-    msg1.reasoning !== undefined || msg1.reasoning_details !== undefined,
-    'FAIL: neither reasoning nor reasoning_details present on the parsed assistant message',
-  )
+  // Detect the provider's reasoning shape from the parsed message.
+  const hasStructuredReasoning =
+    msg1.reasoning !== undefined || Array.isArray(msg1.reasoning_details)
+  const hasInlineThought =
+    typeof msg1.content === 'string' && msg1.content.includes('<thought>')
   console.log(
-    `  reasoning: ${msg1.reasoning !== undefined ? 'present' : 'absent'}, ` +
-      `reasoning_details: ${
-        Array.isArray(msg1.reasoning_details)
-          ? `present (${(msg1.reasoning_details as unknown[]).length} block(s))`
-          : 'absent'
-      }`,
+    `  reasoning shape: ${
+      hasStructuredReasoning
+        ? `STRUCTURED (reasoning=${msg1.reasoning !== undefined}, ` +
+          `reasoning_details=${
+            Array.isArray(msg1.reasoning_details)
+              ? `${(msg1.reasoning_details as unknown[]).length} block(s)`
+              : 'absent'
+          })`
+        : hasInlineThought
+          ? 'INLINE <thought> content (no structured field)'
+          : 'NONE detected'
+    }`,
   )
 
   assert.ok(
@@ -100,14 +147,24 @@ async function main() {
     'FAIL: model did not call the tool; cannot test the echo path',
   )
 
-  // Serialization check: JSON round-trip must preserve the extra fields.
-  const reserialized = JSON.parse(JSON.stringify(msg1))
-  assert.deepStrictEqual(
-    { r: reserialized.reasoning, rd: reserialized.reasoning_details },
-    { r: msg1.reasoning, rd: msg1.reasoning_details },
-    'FAIL: reasoning/reasoning_details lost or mutated by JSON serialization',
-  )
-  console.log('  serialization round-trip: reasoning_details intact')
+  // Structured-reasoning providers (OpenRouter): prove the field is NOT lost by
+  // the client's runtime parsing or a JSON round-trip. This is the wire-truth
+  // check #18 was created for. Inline providers have nothing structured to lose.
+  if (hasStructuredReasoning) {
+    const reserialized = JSON.parse(JSON.stringify(msg1))
+    assert.deepStrictEqual(
+      { r: reserialized.reasoning, rd: reserialized.reasoning_details },
+      { r: msg1.reasoning, rd: msg1.reasoning_details },
+      'FAIL: reasoning/reasoning_details lost or mutated by JSON serialization',
+    )
+    console.log('  serialization round-trip: reasoning_details intact')
+  } else {
+    console.log('  serialization round-trip: n/a (reasoning is inline content, round-trips as-is)')
+  }
+
+  // tool_calls must survive the round-trip on BOTH providers — the loop echoes them.
+  const reCalls = JSON.parse(JSON.stringify(msg1)).tool_calls
+  assert.deepStrictEqual(reCalls, msg1.tool_calls, 'FAIL: tool_calls lost/mutated by JSON round-trip')
 
   // ---- Call 2: verbatim echo + fabricated tool result ----------------------
   console.log('[2/3] call 2 — echo assistant message verbatim + fabricated tool result')
@@ -165,7 +222,7 @@ async function main() {
     )
   }
 
-  console.log('\nPASS: reasoning_details round-trip verified — the loop can echo verbatim.')
+  console.log('\nPASS: echo round-trip verified — the loop can echo verbatim on this provider.')
 }
 
 main().catch((err) => {
