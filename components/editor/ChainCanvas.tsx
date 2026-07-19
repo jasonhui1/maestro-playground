@@ -2,12 +2,12 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider,
-  type Node, type Edge, type Connection,
+  type Node, type Edge, type Connection, type NodeProps,
   applyNodeChanges, type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
-import type { EditorNodeData } from './nodeData'
+import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
@@ -21,9 +21,14 @@ import ZoneFrame from './nodes/ZoneFrame'
 import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
 
-// Typed as every registry kind plus zoneFrame (the loop-zone bounding box, not a node kind) —
-// adding a kind to the registry without a drawing component here becomes a compile error.
-const nodeTypes: Record<ChainNodeKind, React.ComponentType<any>> & { zoneFrame: React.ComponentType<any> } = {
+// Each kind maps to the component that renders it. Keying by the mapped type gives
+// two compile-time guarantees at once: every kind must have an entry (miss one and it
+// won't compile), and each entry must be *that kind's* component — a mis-wire like
+// `gate: ContextNode` is a type error, because each component declares its kind via
+// EditorNodeDataOf<K> in its props. `zoneFrame` is the loop-zone bounding box, not a
+// node kind, so it sits outside the mapped type.
+type KindComponents = { [K in ChainNodeKind]: React.ComponentType<NodeProps<Node<EditorNodeDataOf<K>>>> }
+const nodeTypes: KindComponents & { zoneFrame: React.ComponentType<any> } = {
   seed: SeedNode, context: ContextNode, agent: AgentNode, decider: AgentNode,
   gate: GateNode, branch: BranchNode, 'loop-start': LoopStartNode, 'loop-end': LoopEndNode,
   subchain: SubchainNode,

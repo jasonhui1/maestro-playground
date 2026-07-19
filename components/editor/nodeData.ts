@@ -17,10 +17,14 @@ export interface EditorNodeData {
   [key: string]: unknown
 }
 
-// The node variant for a given kind. Each node component renders exactly one kind
-// (guaranteed by the compiler-checked nodeTypes map in ChainCanvas), so it narrows
-// the union `data.node` to the matching variant with `data.node as NodeOfKind<...>`.
+// The node variant for a given kind.
 export type NodeOfKind<K extends ChainNode['kind']> = Extract<ChainNode, { kind: K }>
+
+// EditorNodeData whose `node` is narrowed to specific kind(s). A node component
+// types its props with this to declare which kind it renders; the `nodeType()`
+// pairing helper in ChainCanvas then compiler-checks that the component is
+// registered under a matching kind (a mis-wire becomes a type error).
+export type EditorNodeDataOf<K extends ChainNode['kind']> = EditorNodeData & { node: NodeOfKind<K> }
 
 export function statusDotClass(run?: NodeRunState): string {
   if (!run || run.status === 'idle') return 'bg-zinc-300'

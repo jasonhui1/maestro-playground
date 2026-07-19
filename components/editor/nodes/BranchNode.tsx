@@ -2,12 +2,11 @@
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { BranchCase } from '@/lib/types'
-import type { EditorNodeData } from '../nodeData'
-import { statusDotClass, type NodeOfKind } from '../nodeData'
+import type { EditorNodeDataOf } from '../nodeData'
+import { statusDotClass } from '../nodeData'
 
-function BranchNode({ data, selected }: NodeProps<Node<EditorNodeData>>) {
-  const node = data.node as NodeOfKind<'branch'>
-  const { run, issues } = data
+function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'>>>) {
+  const { node, run, issues } = data
   const cases: BranchCase[] = node.cases ?? []
 
   const setCase = (i: number, patch: Partial<BranchCase>) =>
