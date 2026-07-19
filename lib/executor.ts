@@ -271,6 +271,15 @@ export async function runChainGraph(
         nodeOutputs.set(nodeId, statusRec); results.push(statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
       }
+    } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
+      // Loop boundaries are consumed by runZone/zonesByStart above; one only reaches
+      // here if it carries no registered zone (a malformed chain). No-op — its
+      // out-edges stay dead, matching the prior silent fall-through.
+    } else {
+      // Every reachable kind is handled above. This makes a new ChainNode kind a
+      // compile error here until it gets a dispatch arm (see docs/adding-a-node-kind.md).
+      const _exhaustive: never = node
+      void _exhaustive
     }
   }
   return results
