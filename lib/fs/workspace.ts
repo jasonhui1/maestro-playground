@@ -2,6 +2,7 @@ import { loadAllAgents } from './parseAgent'
 import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
+import { loadAllTools } from './parseTool'
 import path from 'path'
 import fs from 'fs'
 
@@ -73,6 +74,7 @@ export function loadWorkspace() {
     skills: loadAllSkills(wp),
     chains: loadAllChains(wp),
     templates: loadAllTemplates(wp),
+    tools: loadAllTools(wp),
     context,
   }
 }

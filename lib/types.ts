@@ -70,6 +70,24 @@ export interface AgentDef {
   filePath: string
   max_tokens?: number
   isFavorite?: boolean
+  tools?: string[]      // tool names referenced from workspace/tools/*.md
+}
+
+export interface ToolParamDef {
+  type: 'string' | 'number' | 'boolean'
+  description?: string
+  required?: boolean
+}
+
+export interface ToolDef {
+  slug: string
+  name: string
+  executor: string
+  params: Record<string, ToolParamDef>
+  config: Record<string, unknown>
+  activity?: string
+  description: string  // body of the .md file, model-facing
+  filePath: string
 }
 
 export interface SkillDef {

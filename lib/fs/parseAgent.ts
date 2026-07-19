@@ -70,6 +70,7 @@ export function parseAgent(filePath: string): AgentDef {
     description: data.description ?? '',
     skills: data.skills ?? [],
     context: data.context ?? [],
+    tools: data.tools ?? [],
     input_from: data.input_from ?? 'user',
     output_format: data.output_format ?? 'markdown',
     outputs: normalizeOutputs(data.outputs),

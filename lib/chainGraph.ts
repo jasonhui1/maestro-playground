@@ -1,6 +1,7 @@
-import { ChainDef, ChainNode, AgentDef, ValidationResult } from './types'
+import { ChainDef, ChainNode, AgentDef, ToolDef, ValidationResult } from './types'
 import { slugify } from './graph'
 import { kindOf, allKinds } from './nodeKinds'
+import { isValidExecutorId } from './tools/spec'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -26,7 +27,7 @@ export function topoOrder(chain: ChainDef): string[] {
 
 import { ValidationIssue } from './types'
 
-export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = []): ValidationResult {
+export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = [], tools: ToolDef[] = []): ValidationResult {
   const errors: string[] = []
   const issues: ValidationIssue[] = []
   const add = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => {
@@ -52,6 +53,17 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const workspace = { chain, agents, chains }
 
+  // Tool refs match by frontmatter `name` (like skills), not filename slug.
+  const toolByName = new Map<string, ToolDef>()
+  const toolNameCounts = new Map<string, number>()
+  for (const t of tools) {
+    toolByName.set(t.name, t)
+    toolNameCounts.set(t.name, (toolNameCounts.get(t.name) || 0) + 1)
+  }
+  for (const [name, count] of toolNameCounts) {
+    if (count > 1) add(`Duplicate tool name "${name}" across tool files`)
+  }
+
   const acceptsInputs = (n: ChainNode): boolean => kindOf(n.kind)?.acceptsInputs === true
 
   const allowedKinds = new Set<string>(allKinds)
@@ -67,7 +79,22 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   for (const n of chain.nodes) {
     if (!allowedKinds.has(n.kind)) add(`Node "${n.id}": invalid or missing kind "${n.kind}"`, { nodeId: n.id })
-    if ((n.kind === 'agent' || n.kind === 'decider') && (!n.agent || !agentBySlug.has(n.agent))) add(`Node "${n.id}": agent "${n.agent ?? ''}" not found`, { nodeId: n.id })
+    if (n.kind === 'agent' || n.kind === 'decider') {
+      if (!n.agent || !agentBySlug.has(n.agent)) add(`Node "${n.id}": agent "${n.agent ?? ''}" not found`, { nodeId: n.id })
+      const nodeAgent = n.agent ? agentBySlug.get(n.agent) : undefined
+      for (const toolRef of nodeAgent?.tools ?? []) {
+        if (typeof toolRef !== 'string') {
+          add(`Node "${n.id}": agent "${nodeAgent!.slug}" has a non-string tools entry (inline tool config lands in Slice 5)`, { nodeId: n.id })
+          continue
+        }
+        const tool = toolByName.get(toolRef)
+        if (!tool) {
+          add(`Node "${n.id}": agent "${nodeAgent!.slug}" references unknown tool "${toolRef}"`, { nodeId: n.id })
+        } else if (!isValidExecutorId(tool.executor)) {
+          add(`Node "${n.id}": tool "${toolRef}" has unknown executor "${tool.executor}"`, { nodeId: n.id })
+        }
+      }
+    }
     if (n.kind === 'context' && !n.file) add(`Node "${n.id}": context node missing "file"`, { nodeId: n.id })
     if (n.kind === 'gate') {
       if (!n.condition || !n.condition.trim()) add(`Node "${n.id}": gate needs a condition`, { nodeId: n.id })
