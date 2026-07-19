@@ -2,11 +2,11 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider,
-  type Node, type Edge, type NodeTypes, type Connection,
+  type Node, type Edge, type Connection,
   applyNodeChanges, type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import type { ChainNode, ChainEdge } from '@/lib/types'
+import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
@@ -21,7 +21,9 @@ import ZoneFrame from './nodes/ZoneFrame'
 import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
 
-const nodeTypes: NodeTypes = {
+// Typed as every registry kind plus zoneFrame (the loop-zone bounding box, not a node kind) —
+// adding a kind to the registry without a drawing component here becomes a compile error.
+const nodeTypes: Record<ChainNodeKind, React.ComponentType<any>> & { zoneFrame: React.ComponentType<any> } = {
   seed: SeedNode, context: ContextNode, agent: AgentNode, decider: AgentNode,
   gate: GateNode, branch: BranchNode, 'loop-start': LoopStartNode, 'loop-end': LoopEndNode,
   subchain: SubchainNode,
