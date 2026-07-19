@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, ValidationResult } from './types'
 import { slugify } from './graph'
-import { kindOf } from './nodeKinds'
+import { kindOf, allKinds } from './nodeKinds'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -52,11 +52,9 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const workspace = { chain, agents, chains }
 
-  const acceptsInputs = (n: ChainNode): boolean =>
-    n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' ||
-    n.kind === 'loop-start' || n.kind === 'loop-end' || n.kind === 'subchain' || n.kind === 'report'
+  const acceptsInputs = (n: ChainNode): boolean => kindOf(n.kind)?.acceptsInputs === true
 
-  const allowedKinds = new Set<string>(['seed', 'context', 'agent', 'gate', 'branch', 'decider', 'loop-start', 'loop-end', 'subchain', 'report'])
+  const allowedKinds = new Set<string>(allKinds)
   const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined, nodeId: string) => {
     if (!expr) return

@@ -27,6 +27,8 @@ export interface PaletteEntry {
 
 export interface NodeKindDescriptor {
   kind: ChainNodeKind
+  /** Whether this kind can ever expose input sockets, independent of any one node's current data. */
+  acceptsInputs: boolean
   inputs(node: ChainNode, workspace: WorkspaceLookup): InputSocket[]
   outputs(node: ChainNode, workspace: WorkspaceLookup): string[]
   fields: FieldDescriptor[]
@@ -53,6 +55,7 @@ function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {
 const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   seed: {
     kind: 'seed',
+    acceptsInputs: false,
     inputs: () => [],
     outputs: () => ['output'],
     fields: [],
@@ -60,6 +63,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   context: {
     kind: 'context',
+    acceptsInputs: false,
     inputs: () => [],
     outputs: () => ['output'],
     fields: [{ key: 'file', codec: 'string' }],
@@ -67,6 +71,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   agent: {
     kind: 'agent',
+    acceptsInputs: true,
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [{ key: 'agent', codec: 'string' }],
@@ -74,6 +79,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   decider: {
     kind: 'decider',
+    acceptsInputs: true,
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [{ key: 'agent', codec: 'string' }],
@@ -81,6 +87,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   gate: {
     kind: 'gate',
+    acceptsInputs: true,
     inputs: () => [{ name: 'in' }],
     outputs: () => ['output'],
     fields: [{ key: 'condition', codec: 'string' }],
@@ -88,6 +95,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   branch: {
     kind: 'branch',
+    acceptsInputs: true,
     inputs: () => [{ name: 'in' }],
     outputs: node => [...(node.cases ?? []).map(c => c.label), ...(node.default ? [node.default] : [])],
     fields: [
@@ -98,12 +106,14 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   'loop-start': {
     kind: 'loop-start',
+    acceptsInputs: true,
     inputs: (node, { chain }) => zoneStateOf(node, chain).map(name => ({ name })),
     outputs: (node, { chain }) => zoneStateOf(node, chain),
     fields: [{ key: 'state', codec: 'stringList' }],
   },
   'loop-end': {
     kind: 'loop-end',
+    acceptsInputs: true,
     inputs: (node, { chain }) => zoneStateOf(node, chain).map(name => ({ name })),
     outputs: (node, { chain }) => zoneStateOf(node, chain),
     fields: [
@@ -113,6 +123,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   subchain: {
     kind: 'subchain',
+    acceptsInputs: true,
     inputs: (node, { chains }) => {
       const ref = chains.find(c => c.slug === node.subchain)
       return (ref?.inputs ?? []).map(p => ({ name: p.name, optional: true }))
@@ -127,6 +138,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
   report: {
     kind: 'report',
+    acceptsInputs: true,
     inputs: () => [{ name: 'in' }],
     outputs: () => [],
     fields: [],
@@ -137,6 +149,8 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
 }
+
+export const allKinds: ChainNodeKind[] = Object.keys(registry) as ChainNodeKind[]
 
 export const allFields: FieldDescriptor[] = (() => {
   const seen = new Map<string, FieldDescriptor>()
