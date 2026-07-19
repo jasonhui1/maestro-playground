@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, ValidationResult } from './types'
 import { slugify } from './graph'
-import { inputSocketsOf, outputSocketsOf } from './nodeSockets'
+import { kindOf } from './nodeKinds'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -50,6 +50,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
+  const workspace = { chain, agents, chains }
 
   const acceptsInputs = (n: ChainNode): boolean =>
     n.kind === 'agent' || n.kind === 'decider' || n.kind === 'gate' || n.kind === 'branch' ||
@@ -97,14 +98,14 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     if (!src) { add(`Edge from unknown node "${e.fromNode}"`, { edge: e }); continue }
     if (!dst) { add(`Edge to unknown node "${e.toNode}"`, { edge: e }); continue }
     if (!acceptsInputs(dst)) add(`Edge targets node "${e.toNode}" which has no inputs`, { edge: e })
-    if (!outputSocketsOf(src, chain, agents, chains).map(slugify).includes(slugify(e.fromSocket))) {
+    if (!kindOf(src.kind).outputs(src, workspace).map(slugify).includes(slugify(e.fromSocket))) {
       if (src.kind === 'branch') {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`, { edge: e })
       } else {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such output socket`, { edge: e })
       }
     }
-    if (acceptsInputs(dst) && !inputSocketsOf(dst, chain, agents, chains).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
+    if (acceptsInputs(dst) && !kindOf(dst.kind).inputs(dst, workspace).map(s => s.name).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
     const key = `${e.toNode}.${e.toSocket}`
     incoming.set(key, (incoming.get(key) || 0) + 1)
   }

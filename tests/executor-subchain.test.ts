@@ -49,6 +49,37 @@ async function main() {
   // depth guard
   await assert.rejects(() => runChainGraph(parent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [inner], 99), /too deep/i)
 
+  // subchain declares two inputs (topic, tone); only topic is wired by the host — the
+  // subchain still runs (unwired optional inputs never block).
+  {
+    const partialInner: ChainDef = {
+      slug: 'partial', name: 'Partial', description: '', filePath: '',
+      nodes: [{ id: 'seedA', kind: 'seed' }, { id: 'w', kind: 'agent', agent: 'w' }],
+      edges: [{ fromNode: 'seedA', fromSocket: 'output', toNode: 'w', toSocket: 'x' }],
+      inputs: [{ name: 'topic', node: 'seedA' }, { name: 'tone', node: 'seedA' }],
+      outputs: [{ name: 'rw', node: 'w' }],
+    }
+    const partialParent: ChainDef = {
+      slug: 'parent2', name: 'Parent2', description: '', filePath: '',
+      nodes: [{ id: 'seed', kind: 'seed' }, { id: 'sub', kind: 'subchain', subchain: 'partial' }],
+      edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: 'sub', toSocket: 'topic' }],
+    }
+    const res = await runChainGraph(partialParent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [partialInner])
+    const status = res.find(r => r.nodeId === 'sub')
+    assert.ok(status && status.status !== 'skipped', 'subchain with only one of two declared inputs wired still runs')
+  }
+  // an agent node's declared input is non-optional: leaving it unwired still skips the node.
+  {
+    const agents2 = [agent('needsInput', 'X={x}')]
+    const chain: ChainDef = {
+      slug: 'c3', name: 'c3', description: '', filePath: '',
+      nodes: [{ id: 'n', kind: 'agent', agent: 'needsInput' }],
+      edges: [],
+    }
+    const res = await runChainGraph(chain, agents2, [], 'SEED', '/tmp', noop, fakeRun)
+    assert.strictEqual(res.find(r => r.nodeId === 'n')!.status, 'skipped', 'agent node with an unwired slot still skips')
+  }
+
   console.log('✅ executor-subchain tests passed')
 }
 main().catch(e => { console.error(e); process.exit(1) })

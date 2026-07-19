@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
-import { inputSocketsOf, outputSocketsOf } from '@/lib/nodeSockets'
+import { kindOf } from '@/lib/nodeKinds'
 import { buildRunStateMap } from '@/lib/runHistoryState'
 import RunNodePreview from '@/components/trace/RunNodePreview'
 
@@ -149,10 +149,11 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     if (!chainDef) {
       throw new Error('chainDef is missing')
     }
+    const workspace = { chain: chainDef, agents, chains: [] }
     return {
       node,
-      inputs: inputSocketsOf(node, chainDef, agents, []),
-      outputs: outputSocketsOf(node, chainDef, agents, []),
+      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
+      outputs: kindOf(node.kind).outputs(node, workspace),
       agents: agents.map(a => ({ slug: a.slug, name: a.name })),
       contextFiles: [],
       run: overlay[node.id],

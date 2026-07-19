@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { inputSocketsOf, outputSocketsOf } from '../lib/nodeSockets'
+import { kindOf } from '../lib/nodeKinds'
 import { ChainDef, AgentDef } from '../lib/types'
 
 function agent(slug: string, prompt: string, outputs = [{ name: 'output' }]): AgentDef {
@@ -20,20 +20,22 @@ const chain: ChainDef = {
   ],
   edges: [],
 }
+const workspace = { chain, agents, chains: [] }
+const namesOf = (node: typeof chain.nodes[number]) => kindOf(node.kind).inputs(node, workspace).map(s => s.name)
 
 // agent inputs = prompt slots; outputs = output + declared (slugified)
-assert.deepStrictEqual(inputSocketsOf(chain.nodes[1], chain, agents), ['topic', 'audience'])
-assert.deepStrictEqual(outputSocketsOf(chain.nodes[1], chain, agents), ['output', 'summary'])
+assert.deepStrictEqual(namesOf(chain.nodes[1]), ['topic', 'audience'])
+assert.deepStrictEqual(kindOf('agent').outputs(chain.nodes[1], workspace), ['output', 'summary'])
 // seed
-assert.deepStrictEqual(inputSocketsOf(chain.nodes[0], chain, agents), [])
-assert.deepStrictEqual(outputSocketsOf(chain.nodes[0], chain, agents), ['output'])
+assert.deepStrictEqual(namesOf(chain.nodes[0]), [])
+assert.deepStrictEqual(kindOf('seed').outputs(chain.nodes[0], workspace), ['output'])
 // gate
-assert.deepStrictEqual(inputSocketsOf(chain.nodes[2], chain, agents), ['in'])
-assert.deepStrictEqual(outputSocketsOf(chain.nodes[2], chain, agents), ['output'])
+assert.deepStrictEqual(namesOf(chain.nodes[2]), ['in'])
+assert.deepStrictEqual(kindOf('gate').outputs(chain.nodes[2], workspace), ['output'])
 // branch outputs = case labels + default
-assert.deepStrictEqual(outputSocketsOf(chain.nodes[3], chain, agents), ['urgent', 'other'])
+assert.deepStrictEqual(kindOf('branch').outputs(chain.nodes[3], workspace), ['urgent', 'other'])
 // loop-end inherits state from its zone's loop-start
-assert.deepStrictEqual(inputSocketsOf(chain.nodes[5], chain, agents), ['draft'])
-assert.deepStrictEqual(outputSocketsOf(chain.nodes[5], chain, agents), ['draft'])
+assert.deepStrictEqual(namesOf(chain.nodes[5]), ['draft'])
+assert.deepStrictEqual(kindOf('loop-end').outputs(chain.nodes[5], workspace), ['draft'])
 
 console.log('✅ node-sockets tests passed')

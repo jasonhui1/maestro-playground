@@ -7,8 +7,8 @@ import { injectSkills } from './prompt'
 import { resolveNodePrompt, socketValue } from './resolveNode'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
-import { parseSlots } from './slots'
 import { slugify, extractSection } from './graph'
+import { kindOf } from './nodeKinds'
 
 export interface RunCallbacks {
   onStart: (nodeId: string, agentName: string) => void
@@ -63,21 +63,15 @@ export async function runChainGraph(
   const liveEdgeForSlot = (nodeId: string, slot: string): number | undefined =>
     (incomingByNode.get(nodeId) || []).find(i => chain.edges[i].toSocket === slot && live.has(i))
 
+  const workspace = { chain, agents, chains }
+  // A node is skipped unless every non-optional input has a live edge; an
+  // optional input (subchain only, today) counts only if it is actually wired —
+  // an unwired optional input never blocks the node.
   const usedSlots = (node: ChainNode): string[] => {
-    if (node.kind === 'agent' || node.kind === 'decider') {
-      const a = node.agent ? agentBySlug.get(node.agent) : undefined
-      return a ? parseSlots(a.systemPrompt) : []
-    }
-    if (node.kind === 'gate' || node.kind === 'branch' || node.kind === 'report') return ['in']
-    if (node.kind === 'subchain') {
-      // Only declared inputs the host actually wired gate the node; unwired
-      // inputs are intentionally left unset (the inner seed falls back to the
-      // seed prompt) rather than skipping the whole subchain.
-      const ref = chains.find(c => c.slug === node.subchain)
-      const wired = new Set((incomingByNode.get(node.id) ?? []).map(i => chain.edges[i].toSocket))
-      return (ref?.inputs ?? []).map(p => p.name).filter(name => wired.has(name))
-    }
-    return []
+    const wired = new Set((incomingByNode.get(node.id) ?? []).map(i => chain.edges[i].toSocket))
+    return kindOf(node.kind).inputs(node, workspace)
+      .filter(s => !s.optional || wired.has(s.name))
+      .map(s => s.name)
   }
   const slotValue = (nodeId: string, slot: string): string => {
     const idx = liveEdgeForSlot(nodeId, slot)

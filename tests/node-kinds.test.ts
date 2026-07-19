@@ -1,6 +1,5 @@
 import assert from 'node:assert'
 import { kindOf, WorkspaceLookup, FieldCodec } from '../lib/nodeKinds'
-import { inputSocketsOf, outputSocketsOf } from '../lib/nodeSockets'
 import { chainToData, serializeChain } from '../lib/serializeChain'
 import { parseChainContent } from '../lib/parseChain'
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef } from '../lib/types'
@@ -38,24 +37,38 @@ const bare: ChainDef = { slug: 'bare', name: 'Bare', description: '', filePath: 
 const sub: ChainNode = { id: 'sub', kind: 'subchain', subchain: 'triage' }
 const sub2: ChainNode = { id: 's2', kind: 'subchain', subchain: 'bare' }
 
-// --- registry inputs/outputs parity vs lib/nodeSockets.ts ---
-function assertParity(node: ChainNode, workspace: WorkspaceLookup) {
-  const descriptor = kindOf(node.kind)
-  const gotInputs = descriptor.inputs(node, workspace).map(s => s.name)
-  const gotOutputs = descriptor.outputs(node, workspace)
-  const wantInputs = inputSocketsOf(node, workspace.chain, workspace.agents, workspace.chains)
-  const wantOutputs = outputSocketsOf(node, workspace.chain, workspace.agents, workspace.chains)
-  assert.deepStrictEqual(gotInputs, wantInputs, `inputs mismatch for ${node.kind}`)
-  assert.deepStrictEqual(gotOutputs, wantOutputs, `outputs mismatch for ${node.kind}`)
+// --- registry inputs/outputs: direct expectations per kind ---
+function names(node: ChainNode, workspace: WorkspaceLookup): string[] {
+  return kindOf(node.kind).inputs(node, workspace).map(s => s.name)
 }
 
 const workspace: WorkspaceLookup = { chain, agents, chains: [] }
-for (const node of chain.nodes) assertParity(node, workspace)
+const byId = new Map(chain.nodes.map(n => [n.id, n]))
+assert.deepStrictEqual(names(byId.get('seed')!, workspace), [])
+assert.deepStrictEqual(kindOf('seed').outputs(byId.get('seed')!, workspace), ['output'])
+assert.deepStrictEqual(names(byId.get('ctx')!, workspace), [])
+assert.deepStrictEqual(kindOf('context').outputs(byId.get('ctx')!, workspace), ['output'])
+assert.deepStrictEqual(names(byId.get('w')!, workspace), ['topic', 'audience'])
+assert.deepStrictEqual(kindOf('agent').outputs(byId.get('w')!, workspace), ['output', 'summary'])
+assert.deepStrictEqual(names(byId.get('d')!, workspace), ['topic', 'audience'])
+assert.deepStrictEqual(kindOf('decider').outputs(byId.get('d')!, workspace), ['output', 'summary'])
+assert.deepStrictEqual(names(byId.get('g')!, workspace), ['in'])
+assert.deepStrictEqual(kindOf('gate').outputs(byId.get('g')!, workspace), ['output'])
+assert.deepStrictEqual(names(byId.get('b')!, workspace), ['in'])
+assert.deepStrictEqual(kindOf('branch').outputs(byId.get('b')!, workspace), ['urgent', 'other'])
+assert.deepStrictEqual(names(byId.get('ls')!, workspace), ['draft'])
+assert.deepStrictEqual(kindOf('loop-start').outputs(byId.get('ls')!, workspace), ['draft'])
+assert.deepStrictEqual(names(byId.get('le')!, workspace), ['draft'])
+assert.deepStrictEqual(kindOf('loop-end').outputs(byId.get('le')!, workspace), ['draft'])
+assert.deepStrictEqual(names(byId.get('rep')!, workspace), ['in'])
+assert.deepStrictEqual(kindOf('report').outputs(byId.get('rep')!, workspace), [])
 
 const hostWorkspace: WorkspaceLookup = { chain: { slug: 'host', name: 'Host', description: '', filePath: '', nodes: [], edges: [] }, agents: [], chains: [ref] }
-assertParity(sub, hostWorkspace)
+assert.deepStrictEqual(names(sub, hostWorkspace), ['topic'])
+assert.deepStrictEqual(kindOf('subchain').outputs(sub, hostWorkspace), ['verdict', 'summary'])
 const bareWorkspace: WorkspaceLookup = { ...hostWorkspace, chains: [bare] }
-assertParity(sub2, bareWorkspace)
+assert.deepStrictEqual(names(sub2, bareWorkspace), [])
+assert.deepStrictEqual(kindOf('subchain').outputs(sub2, bareWorkspace), ['output'])
 
 // --- optional: true only on subchain inputs ---
 assert.deepStrictEqual(kindOf('subchain').inputs(sub, hostWorkspace), [{ name: 'topic', optional: true }])
