@@ -90,6 +90,16 @@ export interface ToolDef {
   filePath: string
 }
 
+export interface ToolCallRecord {
+  turn: number          // 1-based tool turn (assistant message with tool_calls) this call belongs to
+  name: string
+  args: unknown         // parsed JSON args; the raw arguments string when malformed
+  result: string
+  latencyMs: number
+  isError: boolean
+  turnText?: string     // assistant text emitted alongside the calls; set on a turn's first record only
+}
+
 export interface SkillDef {
   slug: string
   name: string
