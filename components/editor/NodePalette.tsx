@@ -2,21 +2,20 @@
 import React, { useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import type { ChainNodeKind } from '@/lib/types'
+import { allKinds, kindOf } from '@/lib/nodeKinds'
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 interface PaletteItem { kind: ChainNodeKind | 'loop-zone'; label: string; group: string }
 
+// loop-zone is a compound palette entry (drops a paired loop-start + loop-end zone), not a node kind —
+// the registry can't represent it, so it's appended by hand.
 const ITEMS: PaletteItem[] = [
-  { kind: 'seed', label: 'Seed', group: 'Sources' },
-  { kind: 'context', label: 'Context', group: 'Sources' },
-  { kind: 'agent', label: 'Agent', group: 'Agents' },
-  { kind: 'decider', label: 'Decider', group: 'Agents' },
-  { kind: 'gate', label: 'Gate', group: 'Control flow' },
-  { kind: 'branch', label: 'Branch', group: 'Control flow' },
+  ...allKinds
+    .map(kindOf)
+    .filter(d => d.palette)
+    .map(d => ({ kind: d.kind, label: d.palette!.label, group: d.palette!.category })),
   { kind: 'loop-zone', label: 'Loop zone', group: 'Loop' },
-  { kind: 'subchain', label: 'Subchain', group: 'Composite' },
-  { kind: 'report', label: 'Report', group: 'Output' },
 ]
 const GROUPS = ['Sources', 'Agents', 'Control flow', 'Loop', 'Composite', 'Output']
 
