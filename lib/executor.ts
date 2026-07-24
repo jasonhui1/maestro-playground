@@ -1,8 +1,9 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput } from './types'
+import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef } from './types'
 import { runAgent } from './runner'
+import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
 import { resolveNodePrompt, socketValue } from './resolveNode'
 import { topoOrder } from './chainGraph'
@@ -40,6 +41,7 @@ export async function runChainGraph(
   runFn: typeof runAgent = runAgent,
   startOutputs: AgentOutput[] = [],
   chains: ChainDef[] = [],
+  tools: ToolDef[] = [],
   depth = 0,
 ): Promise<AgentOutput[]> {
   const MAX_SUBCHAIN_DEPTH = 10
@@ -86,7 +88,11 @@ export async function runChainGraph(
     callbacks.onStart(node.id, agent.name)
     const body = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
     const systemPrompt = injectSkills(agent, skills, body)
-    const output = await runFn(agent, systemPrompt, 'Follow your instructions.', (t, ty) => callbacks.onToken(node.id, t, ty))
+    // Binding is all the scheduler knows about tools: it hands the runner a list
+    // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
+    // took one API call or nine is entirely below this line.
+    const boundTools = bindAgentTools(agent, tools, workspacePath)
+    const output = await runFn(agent, systemPrompt, 'Follow your instructions.', (t, ty) => callbacks.onToken(node.id, t, ty), undefined, boundTools)
     output.nodeId = node.id
     if (round !== undefined) output.round = round
     nodeOutputs.set(node.id, output); results.push(output); callbacks.onDone(node.id, output)
@@ -255,7 +261,7 @@ export async function runChainGraph(
         const innerResults = await runChainGraph(
           ref, agents, skills, seedPrompt, workspacePath,
           { onStart: () => {}, onToken: () => {}, onDone: () => {} },
-          runFn, innerStart, chains, depth + 1,
+          runFn, innerStart, chains, tools, depth + 1,
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()

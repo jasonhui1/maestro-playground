@@ -66,7 +66,10 @@ export function parseAgent(filePath: string): AgentDef {
   return {
     slug,
     name: data.name,
-    model: process.env.AI_MODEL_NAME || data.model || 'anthropic/claude-3.5-sonnet',
+    // .trim(): a CRLF .env.local leaves a trailing \r on every value. Harmless in
+    // headers, fatal here — the model name reaches the JSON body and Google 400s
+    // with "unexpected model name format" (#18, and see .env.example).
+    model: process.env.AI_MODEL_NAME?.trim() || data.model || 'anthropic/claude-3.5-sonnet',
     description: data.description ?? '',
     skills: data.skills ?? [],
     context: data.context ?? [],
@@ -76,6 +79,7 @@ export function parseAgent(filePath: string): AgentDef {
     outputs: normalizeOutputs(data.outputs),
     inputs: normalizeInputs(data.inputs),
     max_tokens: data.max_tokens,
+    max_tool_turns: typeof data.max_tool_turns === 'number' ? data.max_tool_turns : undefined,
     systemPrompt: content.trim(),
     filePath,
     isFavorite: false,

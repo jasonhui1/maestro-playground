@@ -71,6 +71,7 @@ export interface AgentDef {
   max_tokens?: number
   isFavorite?: boolean
   tools?: string[]      // tool names referenced from workspace/tools/*.md
+  max_tool_turns?: number // cap per node execution; default DEFAULT_MAX_TOOL_TURNS
 }
 
 export interface ToolParamDef {
@@ -140,6 +141,8 @@ export interface AgentOutput {
   error?: string
   versionNumber?: number
   round?: number         // loop iteration (0-based), set for loop-body outputs
+  toolCalls?: ToolCallRecord[]  // in-node tool transcript; absent for tool-less agents
+  toolTurns?: number            // assistant messages that carried tool_calls
 }
 
 export interface RunMeta {

@@ -8,7 +8,7 @@
 - **The graph is fixed; only the inside of a node is dynamic.** Tool loops never alter chain structure. No agents-as-tools — the DAG is the only orchestrator.
 - **Read-only tool ceiling in v1**: search / fetch / retrieve only. No writes, no shell, no side effects.
 - **Tools are workspace files**: `workspace/tools/*.md`, referenced by name in agent frontmatter like skills.
-- **Transcript log contract**: node log gains a `## Tool Loop` section (per turn: tool name, exact args, result verbatim); token/cost metrics sum across all API calls in the loop.
+- **Transcript log contract**: node log gains a `## Tool Loop` section (per turn, then per call within it: tool name, exact args, result verbatim); token/cost metrics sum across all API calls in the loop. ⚠ The original wording said "per turn: tool name, exact args, result" — that conflates turn with call, and slice 1 found the distinction matters in practice (see *Slice 1 — what reality changed*).
 - **`output` socket = final text only.** Transcripts are visible in logs/UI but never wireable downstream.
 - **Loop caps + forced final turn**: max tool-turns per node; on cap, one no-tools turn forces output (preserving the `## Summary` contract).
 - **Branching**: pre-branch nodes reuse logs wholesale (tool calls never re-executed); re-run nodes use live tools. Frozen-replay toggle is a future feature.
@@ -77,6 +77,11 @@ Principle: each slice is a *complete vertical* (file → registry → loop → l
 - Validation: tool file exists + executor id known (rules 1–2 only)
 - *Parked from slice 1*: inline config overrides (plain references only), streaming events (transcript appears at `agent_done` only), all other executors, capability warning, convention-violation warnings
 - Exit test: one agent searches the lore mid-generation; the log file shows the full transcript; a downstream socket sees final text only.
+
+**Slice 1 — what reality changed (2026-07-24, exit test #23).** Per the roadmap principle, each slice is expected to lose at least one argument with reality. Slice 1 lost two:
+
+1. **A turn is not a call, and parallel calls are the common case — not the exception.** The worked example assumed one tool call per turn. On the *first* real run (`gemma-4-31b-it`, the app's actual wired model), the model opened with **four `retrieve` calls in a single assistant message**: `toolTurns: 1`, `toolCalls: 4`. Everything downstream of the design handled this correctly — the loop executes calls sequentially in order, one `role:"tool"` reply per id, and `ToolCallRecord.turn` already distinguishes the two — but the *log format* did not: it renders one `### Turn N — <tool>` heading per call, so one turn reads as four repeated turns, and D4's `**model:**` text attaches to call #1 rather than to the turn it belongs to. A second, related collision surfaced with it: `retrieve` results are themselves markdown with `###` headings, at the same level as the log's turn headings, so quoted material is indistinguishable from log structure. Both are rendering-only; the data model needs no change. Fix ticketed separately — do not assume the slice-2 trace UI inherits a correct log shape.
+2. **The "transient 400s" that justified a retry never existed.** `lib/tools/loop.ts` shipped a header comment committing the runner to a bounded retry over "occasional empty-body 400s (#18)". #18's own writeup had already retracted that: the 400s were two env footguns — a CRLF `.env.local` leaving `\r` on `AI_MODEL_NAME`, and a trailing-slash `AI_BASE_URL` producing `//chat/completions`. Never intermittent. The runner therefore retries **429 and 5xx only**; a 400 fails loudly on the first attempt, because a retry is exactly what would have kept those footguns hidden. The hardening #18 applied to `scripts/derisk` was never applied to the app itself; slice 1 fixed that too.
 
 **Slice 2 — live streaming**: `tool_pending`/`tool_call`/`tool_result` events, `turn` on tokens, `activity` labels, chips + per-turn collapsible blocks in the run panel. Add convention-violation warnings here (cheap once chips exist).
 

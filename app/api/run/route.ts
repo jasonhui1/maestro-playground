@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
           undefined,
           (branchOutputs as AgentOutput[]) ?? [],
           chains,
+          tools,
         )
 
         updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs: results })
