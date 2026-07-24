@@ -1,4 +1,5 @@
 // tests/run-store.test.ts
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { useRunStore, setRunTarget, fileRun } from '../hooks/store/useRunStore'
 
@@ -19,7 +20,7 @@ const done = (output: string) => ({
   costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
 })
 
-await (async () => {
+test('run-store — parallel instances route independently', async () => {
   // each instance gets its own stream; tag output with the instance index so we can assert routing
   let call = -1
   // override global fetch for the test
@@ -51,9 +52,9 @@ await (async () => {
   // reset clears results
   useRunStore.getState().reset(KEY)
   assert.deepStrictEqual(fileRun(KEY).runState, {})
-})()
+})
 
-await (async () => {
+test('run-store — a non-ok response sets error and clears running', async () => {
   // run-level failure: non-ok response sets error and leaves running=false
   // override global fetch
   global.fetch = async () => new Response(JSON.stringify({ error: 'bad chain' }), { status: 400 })
@@ -63,6 +64,4 @@ await (async () => {
   const f = fileRun('chain:bad')
   assert.strictEqual(f.running, false)
   assert.strictEqual(f.error, 'bad chain')
-})()
-
-console.log('✅ run-store tests passed')
+})

@@ -1,3 +1,4 @@
+import { test } from 'vitest';
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
@@ -182,13 +183,9 @@ async function runTests() {
     testEntitySaving();
     testValidationLogic();
     testLayoutStability();
-    console.log('\nAll integration tests passed! 🎉');
-  } catch (err) {
-    console.error('\nTests failed:', err.message);
-    process.exit(1);
   } finally {
     cleanup();
   }
 }
 
-runTests();
+test('workspace-integration', runTests);

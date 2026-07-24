@@ -1,3 +1,4 @@
+import { test, afterAll } from 'vitest'
 import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -94,12 +95,8 @@ async function main() {
     assert.ok(content.includes('### Turn 2 — retrieve (0 ms) — ERROR'), 'error turns are marked')
     assert.ok(content.includes('"not json at all"'), 'raw args are preserved when unparseable')
   }
-
-  fs.rmSync(tmp, { recursive: true, force: true })
 }
 
-main().then(() => console.log('log-tool-loop tests passed')).catch((err) => {
-  fs.rmSync(tmp, { recursive: true, force: true })
-  console.error(err)
-  process.exit(1)
-})
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }))
+
+test('log-tool-loop', main)

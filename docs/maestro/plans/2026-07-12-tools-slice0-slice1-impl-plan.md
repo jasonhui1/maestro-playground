@@ -168,7 +168,7 @@ Nothing parses log bodies programmatically (verified: the UI and export read `me
 - **`config` never reaches the model; `params` is the only model-visible surface.** Enforced by construction: only `params` is converted into the API `tools` array.
 - **Read-only ceiling:** the one executor reads workspace `.md` files under its configured folders and resolves paths inside the workspace (same traversal guard pattern as `resolveEntityPath`). No writes, no shell, no network.
 - **Parked from Slice 1** (unchanged from the map): inline config overrides (plain string references only — an object entry in `tools:` is a validation error naming Slice 5), streaming events, `web-search`/`fetch-page`, model-capability warning, convention-violation warnings.
-- **Tests:** existing style — `node:assert`, one file per feature, `npx tsx tests/<file>.test.ts`; whole suite green after each task.
+- **Tests:** existing style — `node:assert`, one file per feature, registered with vitest via `test()`, run as `npx vitest run tests/<file>.test.ts` (the `npx tsx` form no longer works — see [ADR-0004](../../adr/0004-test-files-register-with-vitest.md)); whole suite green (`npm run test:run`) after each task.
 - **No new npm dependencies.**
 
 ## File structure

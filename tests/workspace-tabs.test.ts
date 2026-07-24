@@ -1,3 +1,4 @@
+import { test } from 'vitest';
 import { parseTabs, serializeTabs } from '../lib/fs/tabs';
 import { WorkspaceTab } from '../lib/types';
 
@@ -35,7 +36,6 @@ function testParseTabs() {
   assert(tabs4.length === 1, 'Should only have the active tab');
   assert(tabs4[0].type === 'agent' && tabs4[0].slug === 'dm', 'Active tab mismatch');
 
-  console.log('✅ parseTabs tests passed');
 }
 
 function testSerializeTabs() {
@@ -49,18 +49,11 @@ function testSerializeTabs() {
   const serialized = serializeTabs(tabs);
   assert(serialized === 'agent:dm,chain:story', `Serialization mismatch: ${serialized}`);
 
-  console.log('✅ serializeTabs tests passed');
 }
 
 function runTests() {
-  try {
-    testParseTabs();
-    testSerializeTabs();
-    console.log('\nAll tab tests passed! 🎉');
-  } catch (err: unknown) {
-    console.error('\nTests failed:', err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
+  testParseTabs();
+  testSerializeTabs();
 }
 
-runTests();
+test('workspace-tabs', runTests);

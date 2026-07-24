@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { runAgent, splitThought, isTransient, withRetry, DEFAULT_MAX_TOOL_TURNS } from '../lib/runner'
 import { ChatCall, ChatCallRequest, ChatCallResponse, AssistantWireMessage } from '../lib/tools/loop'
@@ -211,4 +212,4 @@ async function main() {
 // hit the network. It is covered by the guard being a plain length check, by
 // executor-tools.test.ts (stub runFn, no tools bound), and by 1.9's manual run.
 
-main().then(() => console.log('runner-tools tests passed')).catch((err) => { console.error(err); process.exit(1) })
+test('runner-tools', main)

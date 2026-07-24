@@ -97,7 +97,7 @@ Per ADR-0001, behaviour lives here, not in the descriptor. The dispatch is an `i
 - [ ] `XxxNode.tsx` component typed `EditorNodeDataOf<'xxx'>` (no cast)
 - [ ] Register in the `nodeTypes` map (compiler-forced; mis-wire is a type error)
 - [ ] Executor dispatch arm (compiler-forced by the `never` default; write a no-op if there's no behaviour)
-- [ ] `tsc` clean; add/extend a test (assert-on-import script: `npx tsx tests/<file>.test.ts`)
+- [ ] `tsc` clean; add/extend a test (`node:assert` inside a vitest `test()`: `npx vitest run tests/<file>.test.ts`)
 
 ## Concept list
 

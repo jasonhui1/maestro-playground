@@ -1,3 +1,4 @@
+import { test } from 'vitest';
 const matter = require('gray-matter');
 
 /**
@@ -118,16 +119,9 @@ agents: []
 }
 
 async function runTests() {
-  try {
-    console.log('Running Flow Sync Integration Tests...\n');
-    testReorderAgents();
-    testAddAgent();
-    testEmptyAgents();
-    console.log('\nAll flow sync tests passed! 🎉');
-  } catch (err) {
-    console.error('\nTests failed:', err.message);
-    process.exit(1);
-  }
+  testReorderAgents();
+  testAddAgent();
+  testEmptyAgents();
 }
 
-runTests();
+test('flow-sync', runTests);

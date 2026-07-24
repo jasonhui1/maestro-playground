@@ -147,35 +147,48 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 
 Maestro includes a comprehensive suite of unit, integration, and synchronization tests.
 
-### Running TypeScript Unit & Graph Tests
+### Running the whole suite
 
-Run unit tests directly using `tsx`:
+```bash
+npm run test:run   # exits non-zero if any test fails, or if a file registers no tests
+npm test           # same suite, watch mode
+```
+
+### Running a single test file
+
+Every file in `tests/` registers its assertions with vitest, so a single file is
+run through vitest rather than through `tsx` directly:
 
 ```bash
 # Run condition expression parser/evaluator tests
-npx tsx tests/condition.test.ts
+npx vitest run tests/condition.test.ts
 
 # Run control flow & loop zone validation tests
-npx tsx tests/validate-control.test.ts
-npx tsx tests/validate-loop.test.ts
+npx vitest run tests/validate-control.test.ts
+npx vitest run tests/validate-loop.test.ts
 
 # Run executor tests (gate, branch, decider, loop iteration)
-npx tsx tests/executor-control.test.ts
-npx tsx tests/executor-loop.test.ts
+npx vitest run tests/executor-control.test.ts
+npx vitest run tests/executor-loop.test.ts
 
 # Run chain serialization/deserialization round-trip tests
-npx tsx tests/serialize-chain.test.ts
-```
+npx vitest run tests/serialize-chain.test.ts
 
-### Running Workspace & Sync Integration Tests
-
-```bash
 # Workspace saving & Monaco integration
-node tests/workspace-integration.test.js
+npx vitest run tests/workspace-integration.test.js
 
 # Flow-to-YAML graph synchronization
-node tests/flow-sync.test.js
+npx vitest run tests/flow-sync.test.js
+```
 
+`npx tsx tests/<file>.test.ts` no longer works — see
+[ADR-0004](docs/adr/0004-test-files-register-with-vitest.md).
+
+### Standalone scripts
+
+These are hand-run probes rather than suite members, so they still run directly:
+
+```bash
 # Verify server CORS headers
 node tests/verify-cors.js
 ```

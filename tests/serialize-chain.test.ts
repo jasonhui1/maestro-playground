@@ -1,9 +1,11 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { serializeChain } from '../lib/serializeChain'
 import { parseChainContent } from '../lib/parseChain'
 
-// Round-trip invariant: parse(serialize(parse(raw))) deep-equals parse(raw)
-const raw = `---
+test('serialize-chain', () => {
+  // Round-trip invariant: parse(serialize(parse(raw))) deep-equals parse(raw)
+  const raw = `---
 name: triage-demo
 description: demo
 nodes:
@@ -20,19 +22,18 @@ edges:
   - { from: le.output, to: rep.in }
 ---
 `
-const c = parseChainContent(raw, 'triage-demo')
-const out = serializeChain({ name: c.name, description: c.description }, c.nodes, c.edges)
-const c2 = parseChainContent(out, 'triage-demo')
-assert.deepStrictEqual(c2, c)
+  const c = parseChainContent(raw, 'triage-demo')
+  const out = serializeChain({ name: c.name, description: c.description }, c.nodes, c.edges)
+  const c2 = parseChainContent(out, 'triage-demo')
+  assert.deepStrictEqual(c2, c)
 
-// Edge socket collapsing: output omitted, named sockets kept
-assert.ok(/from: seed\n/.test(out) || /from: seed$/m.test(out), 'output socket should collapse to bare node')
-assert.ok(/t\.input/.test(out), 'named input socket retained')
+  // Edge socket collapsing: output omitted, named sockets kept
+  assert.ok(/from: seed\n/.test(out) || /from: seed$/m.test(out), 'output socket should collapse to bare node')
+  assert.ok(/t\.input/.test(out), 'named input socket retained')
 
-// Empty chain
-const empty = serializeChain({ name: 'x', description: '' }, [], [])
-const e2 = parseChainContent(empty, 'x')
-assert.deepStrictEqual(e2.nodes, [])
-assert.deepStrictEqual(e2.edges, [])
-
-console.log('✅ serialize-chain tests passed')
+  // Empty chain
+  const empty = serializeChain({ name: 'x', description: '' }, [], [])
+  const e2 = parseChainContent(empty, 'x')
+  assert.deepStrictEqual(e2.nodes, [])
+  assert.deepStrictEqual(e2.edges, [])
+})

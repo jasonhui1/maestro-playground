@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef } from '../lib/types'
@@ -59,10 +60,6 @@ async function main() {
     assert.strictEqual(res.find(o => o.nodeId === 'nf')!.status, 'success', 'fast ran')
     assert.strictEqual(res.find(o => o.nodeId === 'ns')!.status, 'skipped', 'slow skipped')
   }
-  console.log('✅ executor-control tests passed')
 }
 
-main().catch(err => {
-  console.error(err)
-  process.exit(1)
-})
+test('executor-control', main)

@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { AgentDef, AgentOutput, ChainDef } from '../lib/types'
@@ -80,6 +81,5 @@ async function main() {
     assert.strictEqual(res.find(r => r.nodeId === 'n')!.status, 'skipped', 'agent node with an unwired slot still skips')
   }
 
-  console.log('✅ executor-subchain tests passed')
 }
-main().catch(e => { console.error(e); process.exit(1) })
+test('executor-subchain', main)

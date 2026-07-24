@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { runAgent } from '../lib/runner'
@@ -146,4 +147,4 @@ async function main() {
   }
 }
 
-main().then(() => console.log('executor-tools tests passed')).catch((err) => { console.error(err); process.exit(1) })
+test('executor-tools', main)

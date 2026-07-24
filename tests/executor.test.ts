@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -48,10 +49,6 @@ async function main() {
   assert.deepStrictEqual(order, ['b'], 'only b runs when na is replayed')
   assert.strictEqual(results2.length, 2)
 
-  console.log('✅ executor tests passed')
 }
 
-main().catch(err => {
-  console.error(err)
-  process.exit(1)
-})
+test('executor', main)

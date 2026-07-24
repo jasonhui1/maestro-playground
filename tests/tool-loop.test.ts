@@ -1,3 +1,4 @@
+import { test } from 'vitest'
 import assert from 'node:assert'
 import {
   runToolLoop,
@@ -312,4 +313,4 @@ async function main() {
   }
 }
 
-main().then(() => console.log('tool-loop tests passed')).catch((err) => { console.error(err); process.exit(1) })
+test('tool-loop', main)
