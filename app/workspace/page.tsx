@@ -9,7 +9,7 @@ import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
 import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
-import { ChainDef, AgentDef } from '@/lib/types';
+import { ChainDef, AgentDef, ToolDef } from '@/lib/types';
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { validateChain } from '@/lib/chainGraph';
@@ -31,12 +31,13 @@ function WorkspaceContent() {
   const [editorAgents, setEditorAgents] = useState<AgentDef[]>([]);
   const [editorContext, setEditorContext] = useState<{ slug: string; name: string }[]>([]);
   const [editorChains, setEditorChains] = useState<ChainDef[]>([]);
+  const [editorTools, setEditorTools] = useState<ToolDef[]>([]);
 
   const refetchEditorData = useCallback(() => {
     fetch('/api/workspace')
       .then(r => r.json())
-      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); setEditorChains(w.chains ?? []) })
-      .catch(() => { setEditorAgents([]); setEditorContext([]); setEditorChains([]) })
+      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); setEditorChains(w.chains ?? []); setEditorTools(w.tools ?? []) })
+      .catch(() => { setEditorAgents([]); setEditorContext([]); setEditorChains([]); setEditorTools([]) })
   }, [])
 
   useEffect(() => {
@@ -61,8 +62,8 @@ function WorkspaceContent() {
 
   const dockIssues = useMemo(() => {
     if (type !== 'chain' || !parsedChain) return []
-    return validateChain(parsedChain, editorAgents, editorChains).issues
-  }, [type, parsedChain, editorAgents, editorChains])
+    return validateChain(parsedChain, editorAgents, editorChains, editorTools).issues
+  }, [type, parsedChain, editorAgents, editorChains, editorTools])
 
   const dockSide = useWorkspaceUiStore(s => s.dockSide)
   const panelCollapsed = useWorkspaceUiStore(s => s.panelCollapsed)
@@ -220,6 +221,7 @@ function WorkspaceContent() {
                   refetchAgents={refetchEditorData}
                   initialSeedPrompt={seedParam}
                   chains={editorChains}
+                  tools={editorTools}
                   onSaveStatus={setGraphSaveStatus}
                 />
               ) : (
@@ -252,6 +254,7 @@ function WorkspaceContent() {
                       refetchAgents={refetchEditorData}
                       initialSeedPrompt={seedParam}
                       chains={editorChains}
+                      tools={editorTools}
                       onSaveStatus={setGraphSaveStatus}
                     />
                   ) : (

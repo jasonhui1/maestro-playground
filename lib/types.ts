@@ -70,6 +70,35 @@ export interface AgentDef {
   filePath: string
   max_tokens?: number
   isFavorite?: boolean
+  tools?: string[]      // tool names referenced from workspace/tools/*.md
+  max_tool_turns?: number // cap per node execution; default DEFAULT_MAX_TOOL_TURNS
+}
+
+export interface ToolParamDef {
+  type: 'string' | 'number' | 'boolean'
+  description?: string
+  required?: boolean
+}
+
+export interface ToolDef {
+  slug: string
+  name: string
+  executor: string
+  params: Record<string, ToolParamDef>
+  config: Record<string, unknown>
+  activity?: string
+  description: string  // body of the .md file, model-facing
+  filePath: string
+}
+
+export interface ToolCallRecord {
+  turn: number          // 1-based tool turn (assistant message with tool_calls) this call belongs to
+  name: string
+  args: unknown         // parsed JSON args; the raw arguments string when malformed
+  result: string
+  latencyMs: number
+  isError: boolean
+  turnText?: string     // assistant text emitted alongside the calls; set on a turn's first record only
 }
 
 export interface SkillDef {
@@ -112,6 +141,8 @@ export interface AgentOutput {
   error?: string
   versionNumber?: number
   round?: number         // loop iteration (0-based), set for loop-body outputs
+  toolCalls?: ToolCallRecord[]  // in-node tool transcript; absent for tool-less agents
+  toolTurns?: number            // assistant messages that carried tool_calls
 }
 
 export interface RunMeta {

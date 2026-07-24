@@ -47,7 +47,7 @@ async function main() {
   assert.ok(!rw!.output.includes('not wired'), 'inner slot x was injected, not left unwired')
 
   // depth guard
-  await assert.rejects(() => runChainGraph(parent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [inner], 99), /too deep/i)
+  await assert.rejects(() => runChainGraph(parent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [inner], [], 99), /too deep/i)
 
   // subchain declares two inputs (topic, tone); only topic is wired by the host — the
   // subchain still runs (unwired optional inputs never block).

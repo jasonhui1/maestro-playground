@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } = body
 
-  const { agents, skills, chains } = loadWorkspace()
+  const { agents, skills, chains, tools } = loadWorkspace()
 
   const resolved = resolveRunChain(body, { agents, chains })
   if ('error' in resolved) return new Response(resolved.error, { status: resolved.status })
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (agent) currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt)
   }
 
-  const validation = validateChain(chain, agents, chains)
+  const validation = validateChain(chain, agents, chains, tools)
   if (!validation.valid) {
     return new Response(JSON.stringify({ error: 'Invalid chain', errors: validation.errors }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
           undefined,
           (branchOutputs as AgentOutput[]) ?? [],
           chains,
+          tools,
         )
 
         updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs: results })

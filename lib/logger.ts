@@ -1,8 +1,34 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { RunMeta, AgentOutput } from './types'
+import { RunMeta, AgentOutput, ToolCallRecord } from './types'
 import { getWorkspacePath } from './fs/workspace'
+
+// Renders the in-node transcript. The promise is that nothing happens the log
+// doesn't show, so every call is rendered whole: exact args, result verbatim
+// (never truncated — a summarized result would hide the very thing the reader
+// came for), latency, and any text the model emitted alongside its calls.
+//
+// Results are pasted verbatim and may themselves contain markdown headings, so
+// each turn is fenced off by a `---` rule and the output gets an explicit
+// `## Output` heading rather than relying on position.
+function renderToolLoop(toolCalls: ToolCallRecord[]): string {
+  const lines: string[] = ['## Tool Loop', '']
+
+  for (const call of toolCalls) {
+    const flag = call.isError ? ' — ERROR' : ''
+    lines.push(`### Turn ${call.turn} — ${call.name} (${call.latencyMs} ms)${flag}`, '')
+
+    if (call.turnText !== undefined) {
+      lines.push(`**model:** ${call.turnText}`, '')
+    }
+
+    lines.push('**args**', '', '```json', JSON.stringify(call.args, null, 2), '```', '')
+    lines.push('**result**', '', call.result, '', '---', '')
+  }
+
+  return lines.join('\n')
+}
 
 export function getRunDir(runId: string): string {
   const safeRunId = path.basename(runId)
@@ -36,6 +62,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     input: output.input,
     system_prompt: output.systemPrompt,
     thought: output.thought,
+    tool_turns: output.toolTurns,
   }
 
   // Remove undefined properties to prevent js-yaml from throwing
@@ -45,7 +72,13 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     }
   })
 
-  const fileContent = matter.stringify(output.output, frontmatter)
+  // Tool-less nodes keep the body they have always had: the output, alone, from
+  // line 1. The headings only appear once there is a transcript to separate.
+  const body = output.toolCalls?.length
+    ? `${renderToolLoop(output.toolCalls)}\n## Output\n\n${output.output}`
+    : output.output
+
+  const fileContent = matter.stringify(body, frontmatter)
   fs.writeFileSync(path.join(dir, filename), fileContent)
 }
 
