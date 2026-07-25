@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import { ToastContainer } from "@/components/ToastContainer";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { themeInitScript } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,13 +30,21 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
-        <Nav />
-        <main className="flex-1">
-          {children}
-        </main>
-        <ToastContainer />
+      <head>
+        {/* Runs before paint so the toggled theme never flashes the other
+            theme first; must stay in sync with lib/theme.ts's resolveInitialTheme. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100" suppressHydrationWarning>
+        <ThemeProvider>
+          <Nav />
+          <main className="flex-1">
+            {children}
+          </main>
+          <ToastContainer />
+        </ThemeProvider>
       </body>
     </html>
   );
