@@ -58,6 +58,44 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       .catch(err => console.error('Failed to fetch agents for graph:', err))
   }, [])
 
+  const g = run?.graph
+  const chainName = run?.chainName
+
+  const chainDef = useMemo(() => {
+    if (!g || !chainName) return null
+    return {
+      slug: chainName,
+      name: chainName,
+      description: '',
+      filePath: '',
+      nodes: g.nodes,
+      edges: g.edges
+    }
+  }, [g, chainName])
+
+  const overlay = useMemo(() => {
+    return run ? buildRunStateMap(run.agentOutputs) : {}
+  }, [run])
+
+  const buildData = useCallback((node: ChainNode): EditorNodeData => {
+    if (!chainDef) {
+      throw new Error('chainDef is missing')
+    }
+    const workspace = { chain: chainDef, agents, chains: [] }
+    return {
+      node,
+      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
+      outputs: kindOf(node.kind).outputs(node, workspace),
+      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
+      contextFiles: [],
+      run: overlay[node.id],
+      issues: [],
+      onChange: () => {},
+      chains: [],
+      readOnly: true,
+    }
+  }, [chainDef, agents, overlay])
+
   async function handleBranch(fromStep: number) {
     if (!run) return
     setIsBranching(true)
@@ -127,42 +165,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     )
   }
 
-  const hasGraph = !!run.graph
-  const g = run.graph
-  const chainDef = useMemo(() => {
-    if (!g) return null
-    return {
-      slug: run.chainName,
-      name: run.chainName,
-      description: '',
-      filePath: '',
-      nodes: g.nodes,
-      edges: g.edges
-    }
-  }, [g, run.chainName])
-
-  const overlay = useMemo(() => {
-    return run ? buildRunStateMap(run.agentOutputs) : {}
-  }, [run])
-
-  const buildData = useCallback((node: ChainNode): EditorNodeData => {
-    if (!chainDef) {
-      throw new Error('chainDef is missing')
-    }
-    const workspace = { chain: chainDef, agents, chains: [] }
-    return {
-      node,
-      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
-      outputs: kindOf(node.kind).outputs(node, workspace),
-      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
-      contextFiles: [],
-      run: overlay[node.id],
-      issues: [],
-      onChange: () => {},
-      chains: [],
-      readOnly: true,
-    }
-  }, [chainDef, agents, overlay])
+  const hasGraph = !!g
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
