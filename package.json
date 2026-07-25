@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:file": "vitest run"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

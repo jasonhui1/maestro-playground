@@ -160,6 +160,10 @@ Every file in `tests/` registers its assertions with vitest, so a single file is
 run through vitest rather than through `tsx` directly:
 
 ```bash
+npm run test:file tests/condition.test.ts   # alias for the npx form below
+```
+
+```bash
 # Run condition expression parser/evaluator tests
 npx vitest run tests/condition.test.ts
 
