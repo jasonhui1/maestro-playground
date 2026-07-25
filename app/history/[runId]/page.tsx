@@ -11,142 +11,34 @@ import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { kindOf } from '@/lib/nodeKinds'
 import { buildRunStateMap } from '@/lib/runHistoryState'
+import { branchRun } from '@/lib/branchRun'
 import RunNodePreview from '@/components/trace/RunNodePreview'
 
+type Fetched = { runId: string; run?: RunMeta; error?: string }
+
+// The page is only a fetch gate: it holds no view state, so RunDetail below can
+// assume a loaded run and derive everything from it without null guards.
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params)
-  const router = useRouter()
-  const [run, setRun] = useState<RunMeta | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isBranching, setIsBranching] = useState(false)
-  
-  const [compareMode, setCompareMode] = useState(false)
-  const [leftIdx, setLeftIdx] = useState<number>(0)
-  const [rightIdx, setRightIdx] = useState<number>(1)
-
-  const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
-  const [agents, setAgents] = useState<AgentDef[]>([])
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // One state cell tagged with the run it describes, so navigating to another run
+  // resets to loading in the same render instead of flashing the previous run.
+  const [fetched, setFetched] = useState<Fetched>({ runId })
+  if (fetched.runId !== runId) setFetched({ runId })
+  const { run, error } = fetched.runId === runId ? fetched : { run: undefined, error: undefined }
 
   useEffect(() => {
+    let cancelled = false
     fetch(`/api/runs/${runId}`)
       .then(res => {
         if (!res.ok) throw new Error('Run not found')
         return res.json()
       })
-      .then(data => {
-        setRun(data)
-        setLoading(false)
-        setViewMode(data.graph ? 'graph' : 'list')
-        if (data.agentOutputs.length > 1) {
-          setRightIdx(1)
-        } else {
-          setRightIdx(0)
-        }
-      })
-      .catch(err => {
-        setError(err.message)
-        setLoading(false)
-      })
+      .then(data => { if (!cancelled) setFetched({ runId, run: data }) })
+      .catch(err => { if (!cancelled) setFetched({ runId, error: err.message }) })
+    return () => { cancelled = true }
   }, [runId])
 
-  useEffect(() => {
-    fetch('/api/workspace')
-      .then(res => res.json())
-      .then(data => setAgents(data.agents || []))
-      .catch(err => console.error('Failed to fetch agents for graph:', err))
-  }, [])
-
-  const g = run?.graph
-  const chainName = run?.chainName
-
-  const chainDef = useMemo(() => {
-    if (!g || !chainName) return null
-    return {
-      slug: chainName,
-      name: chainName,
-      description: '',
-      filePath: '',
-      nodes: g.nodes,
-      edges: g.edges
-    }
-  }, [g, chainName])
-
-  const overlay = useMemo(() => {
-    return run ? buildRunStateMap(run.agentOutputs) : {}
-  }, [run])
-
-  const buildData = useCallback((node: ChainNode): EditorNodeData => {
-    if (!chainDef) {
-      throw new Error('chainDef is missing')
-    }
-    const workspace = { chain: chainDef, agents, chains: [] }
-    return {
-      node,
-      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
-      outputs: kindOf(node.kind).outputs(node, workspace),
-      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
-      contextFiles: [],
-      run: overlay[node.id],
-      issues: [],
-      onChange: () => {},
-      chains: [],
-      readOnly: true,
-    }
-  }, [chainDef, agents, overlay])
-
-  async function handleBranch(fromStep: number) {
-    if (!run) return
-    setIsBranching(true)
-    const seedPrompt = run.seedPrompt
-    const branchOutputs = run.agentOutputs.slice(0, fromStep)
-    const res = await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chainName: run.chainName,
-        seedPrompt,
-        branchedFromRunId: run.runId,
-        branchedFromStep: fromStep,
-        branchOutputs,
-      }),
-    })
-    
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let newRunId = ''
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      
-      const chunk = done 
-        ? decoder.decode() 
-        : decoder.decode(value, { stream: true })
-      
-      buffer += chunk
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        
-        try {
-          const event = JSON.parse(line.slice(6))
-          if (event.type === 'run_complete') newRunId = event.runId
-        } catch (e) {
-          console.error('Error parsing SSE event:', e)
-        }
-      }
-      
-      if (done) break
-    }
-    if (newRunId) router.push(`/history/${newRunId}`)
-    setIsBranching(false)
-  }
-
-  if (loading) {
+  if (!run && !error) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-zinc-400 gap-3">
         <div className="w-6 h-6 border-2 border-zinc-200 border-t-zinc-800 rounded-full animate-spin" />
@@ -165,7 +57,70 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
     )
   }
 
-  const hasGraph = !!g
+  // Remount on run change so the view state below re-derives from the new run.
+  return <RunDetail key={run.runId} run={run} />
+}
+
+function RunDetail({ run }: { run: RunMeta }) {
+  const router = useRouter()
+  const g = run.graph
+
+  const [agents, setAgents] = useState<AgentDef[]>([])
+  const [isBranching, setIsBranching] = useState(false)
+  const [compareMode, setCompareMode] = useState(false)
+  const [leftIdx, setLeftIdx] = useState(0)
+  const [rightIdx, setRightIdx] = useState(run.agentOutputs.length > 1 ? 1 : 0)
+  const [viewMode, setViewMode] = useState<'graph' | 'list'>(g ? 'graph' : 'list')
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/workspace')
+      .then(res => res.json())
+      .then(data => setAgents(data.agents || []))
+      .catch(err => console.error('Failed to fetch agents for graph:', err))
+  }, [])
+
+  // A read-only stand-in for the chain the run was executed from, so node kinds can
+  // resolve their slots. Empty when the run predates graph capture; buildData is only
+  // ever called by the canvas, which renders only when `g` exists.
+  const chainDef = useMemo(() => ({
+    slug: run.chainName,
+    name: run.chainName,
+    description: '',
+    filePath: '',
+    nodes: g?.nodes ?? [],
+    edges: g?.edges ?? [],
+  }), [g, run.chainName])
+
+  const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
+
+  const buildData = useCallback((node: ChainNode): EditorNodeData => {
+    const workspace = { chain: chainDef, agents, chains: [] }
+    return {
+      node,
+      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
+      outputs: kindOf(node.kind).outputs(node, workspace),
+      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
+      contextFiles: [],
+      run: overlay[node.id],
+      issues: [],
+      onChange: () => {},
+      chains: [],
+      readOnly: true,
+    }
+  }, [chainDef, agents, overlay])
+
+  async function handleBranch(fromStep: number) {
+    setIsBranching(true)
+    try {
+      const newRunId = await branchRun(run, fromStep)
+      if (newRunId) router.push(`/history/${newRunId}`)
+    } catch (err) {
+      console.error('Branch failed:', err)
+    } finally {
+      setIsBranching(false)
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
@@ -187,7 +142,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         </div>
 
         <div className="flex gap-3">
-          {!compareMode && hasGraph && (
+          {!compareMode && g && (
             <div className="flex rounded-xl border border-zinc-200 overflow-hidden">
               <button
                 onClick={() => setViewMode('graph')}
@@ -203,25 +158,25 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
               </button>
             </div>
           )}
-          <a 
-            href={`/api/runs/${runId}/export?format=markdown`}
+          <a
+            href={`/api/runs/${run.runId}/export?format=markdown`}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
           >
             <Download size={14} />
             EXPORT .MD
           </a>
-          <a 
-            href={`/api/runs/${runId}/export?format=json`}
+          <a
+            href={`/api/runs/${run.runId}/export?format=json`}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
           >
             <Download size={14} />
             EXPORT .JSON
           </a>
-          <button 
+          <button
             onClick={() => setCompareMode(!compareMode)}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              compareMode 
-                ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-200' 
+              compareMode
+                ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-200'
                 : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900'
             }`}
           >
@@ -241,7 +196,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           <div className="flex flex-wrap gap-6 items-center justify-center bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Left:</span>
-              <select 
+              <select
                 className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-100"
                 value={leftIdx}
                 onChange={(e) => setLeftIdx(parseInt(e.target.value))}
@@ -254,7 +209,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
             <div className="w-px h-4 bg-zinc-200 hidden md:block" />
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Right:</span>
-              <select 
+              <select
                 className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-100"
                 value={rightIdx}
                 onChange={(e) => setRightIdx(parseInt(e.target.value))}
@@ -266,14 +221,14 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
             </div>
           </div>
 
-          <DiffViewer 
+          <DiffViewer
             leftTitle={`${run.agentOutputs[leftIdx]?.agentName} (${run.agentOutputs[leftIdx]?.model})`}
             leftContent={run.agentOutputs[leftIdx]?.output || ''}
             rightTitle={`${run.agentOutputs[rightIdx]?.agentName} (${run.agentOutputs[rightIdx]?.model})`}
             rightContent={run.agentOutputs[rightIdx]?.output || ''}
           />
         </div>
-      ) : (viewMode === 'graph' && hasGraph && g) ? (
+      ) : (viewMode === 'graph' && g) ? (
         <div className="flex flex-col gap-6">
           <div className="w-full h-[520px] border border-zinc-200 rounded-2xl overflow-hidden">
             <ChainCanvas
@@ -325,16 +280,16 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
                       {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
                     </button>
                     <div className="w-full sm:w-48">
-                      <TokenCostBar 
-                        tokensIn={output.tokensIn} 
-                        tokensOut={output.tokensOut} 
-                        costUsd={output.costUsd} 
+                      <TokenCostBar
+                        tokensIn={output.tokensIn}
+                        tokensOut={output.tokensOut}
+                        costUsd={output.costUsd}
                       />
                     </div>
                   </div>
                 </div>
                 <div className="p-4">
-                  <AgentStreamOutput 
+                  <AgentStreamOutput
                     {...output}
                     isStreaming={false}
                   />
