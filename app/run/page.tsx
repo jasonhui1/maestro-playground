@@ -2,24 +2,10 @@
 import { useState, useEffect } from 'react'
 import { ChainSelector } from '@/components/ChainSelector'
 import { TemplateSelector } from '@/components/TemplateSelector'
-import { AgentStreamOutput } from '@/components/AgentStreamOutput'
-import { ChainDef, AgentOutput, TemplateDef } from '@/lib/types'
-
-interface AgentState {
-  runIndex: number
-  agentName: string
-  step: number
-  output: string
-  thought?: string
-  isStreaming: boolean
-  systemPrompt?: string
-  tokensIn?: number
-  tokensOut?: number
-  costUsd?: number
-  latencyMs?: number
-  status?: 'success' | 'error' | 'skipped'
-  error?: string
-}
+import { RunTrace } from '@/components/RunTrace'
+import { ChainDef, TemplateDef } from '@/lib/types'
+import { streamRun } from '@/lib/runStream'
+import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
 
 export default function RunPage() {
   const [chains, setChains] = useState<ChainDef[]>([])
@@ -27,9 +13,11 @@ export default function RunPage() {
   const [selectedChain, setSelectedChain] = useState('')
   const [seedPrompt, setSeedPrompt] = useState('')
   const [parallelCount, setParallelCount] = useState(1)
-  const [agentStates, setAgentStates] = useState<AgentState[]>([])
+  const [runState, setRunState] = useState<InstanceRunMap>({})
+  const [runOrder, setRunOrder] = useState<InstanceOrder>({})
   const [isRunning, setIsRunning] = useState(false)
   const [completedRuns, setCompletedRuns] = useState<string[]>([])
+  const [runError, setRunError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/workspace')
@@ -55,72 +43,28 @@ export default function RunPage() {
       body: JSON.stringify({ chainName: selectedChain, seedPrompt }),
     })
 
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      
-      const chunk = done 
-        ? decoder.decode() 
-        : decoder.decode(value, { stream: true })
-      
-      buffer += chunk
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        
-        let event
-        try {
-          event = JSON.parse(line.slice(6))
-        } catch (e) {
-          console.error('Error parsing SSE event:', e)
-          continue
-        }
-
-        if (event.type === 'agent_start') {
-          setAgentStates(prev => [...prev, {
-            runIndex,
-            agentName: event.agentName,
-            step: event.step,
-            output: '',
-            isStreaming: true,
-          }])
-        }
-        if (event.type === 'token') {
-          setAgentStates(prev => prev.map(a => {
-            if (a.runIndex === runIndex && a.agentName === event.agentName && a.step === event.step) {
-              if (event.tokenType === 'thought') {
-                return { ...a, thought: (a.thought || '') + event.token }
-              }
-              return { ...a, output: a.output + event.token }
-            }
-            return a
-          }))
-        }
-        if (event.type === 'agent_done') {
-          const o: AgentOutput = event.output
-          setAgentStates(prev => prev.map(a =>
-            a.runIndex === runIndex && a.agentName === event.agentName && a.step === event.step
-              ? { ...a, isStreaming: false, ...o }
-              : a
-          ))
-        }
-        if (event.type === 'run_complete') {
-          setCompletedRuns(prev => [...prev, event.runId])
-        }
-      }
-
-      if (done) break
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setRunError((body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`)
+      return
     }
+
+    const reader = res.body?.getReader()
+    if (!reader) return
+
+    await streamRun(reader, e => {
+      if (e.type === 'error') { setRunError(e.error); return }
+      if (e.type === 'run_complete') { setCompletedRuns(prev => [...prev, e.runId]); return }
+      setRunState(prev => applyInstanceEvent(prev, runIndex, e))
+      setRunOrder(prev => applyInstanceOrder(prev, runIndex, e))
+    })
   }
 
   async function handleRun() {
-    setAgentStates([])
+    setRunState({})
+    setRunOrder({})
     setCompletedRuns([])
+    setRunError(null)
     setIsRunning(true)
 
     try {
@@ -194,6 +138,9 @@ export default function RunPage() {
           <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-4">Run Status</h2>
           <div className="flex flex-col gap-2">
             {isRunning && <div className="text-sm text-blue-600 animate-pulse font-medium">Executing parallel runs...</div>}
+            {runError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">{runError}</div>
+            )}
             {completedRuns.length > 0 && (
               <div className="text-xs text-zinc-500 flex flex-col gap-1">
                 <span className="font-bold text-zinc-700">Completed Runs:</span>
@@ -218,15 +165,7 @@ export default function RunPage() {
                 <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Complete</span>
               )}
             </div>
-            <div className="flex flex-col gap-4">
-              {agentStates.filter(a => a.runIndex === runIndex).length === 0 ? (
-                <div className="text-sm text-zinc-300 italic py-8 text-center">Waiting for instance to start...</div>
-              ) : (
-                agentStates.filter(a => a.runIndex === runIndex).map(a => (
-                  <AgentStreamOutput key={`${a.runIndex}-${a.agentName}-${a.step}`} {...a} />
-                ))
-              )}
-            </div>
+            <RunTrace order={orderFor(runOrder, runIndex)} states={runState[runIndex] ?? {}} />
           </div>
         ))}
       </div>

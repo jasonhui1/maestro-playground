@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 // tests/run-model.test.ts
 import assert from 'node:assert'
-import { applyInstanceEvent, nodeStateFor, InstanceRunMap } from '../lib/runModel'
+import { applyInstanceEvent, nodeStateFor, InstanceRunMap, applyInstanceOrder, InstanceOrder, orderFor } from '../lib/runModel'
 import { AgentOutput } from '../lib/types'
 
 test('run-model', () => {
@@ -30,4 +30,29 @@ test('run-model', () => {
   // missing instance / node returns undefined, never throws
   assert.strictEqual(nodeStateFor(m, 9, 'a'), undefined)
   assert.strictEqual(nodeStateFor(m, 0, 'missing'), undefined)
+})
+
+test('run-model execution order', () => {
+  let o: InstanceOrder = {}
+
+  // first agent_start per node appends; a re-entered loop node does not duplicate
+  o = applyInstanceOrder(o, 0, { type: 'agent_start', nodeId: 'n1', agentName: 'draft', step: 0 })
+  o = applyInstanceOrder(o, 0, { type: 'agent_start', nodeId: 'n2', agentName: 'patch', step: 1 })
+  o = applyInstanceOrder(o, 0, { type: 'agent_start', nodeId: 'n2', agentName: 'patch', step: 2 })
+  o = applyInstanceOrder(o, 0, { type: 'agent_start', nodeId: 'n3', agentName: 'report', step: 3 })
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3'])
+
+  // instances order independently
+  o = applyInstanceOrder(o, 1, { type: 'agent_start', nodeId: 'n3', agentName: 'report', step: 0 })
+  assert.deepStrictEqual(orderFor(o, 1), ['n3'])
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3'])
+
+  // a node that only ever reports agent_done (skipped/control nodes) still gets a slot
+  o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'n4', agentName: 'gate', step: 4, output: {} as AgentOutput })
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
+
+  // non-node events and unknown instances are inert
+  o = applyInstanceOrder(o, 0, { type: 'run_complete', runId: 'r1' })
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
+  assert.deepStrictEqual(orderFor(o, 7), [])
 })

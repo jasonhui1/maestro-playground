@@ -20,6 +20,7 @@ export function buildRunStateMap(outputs: AgentOutput[]): RunStateMap {
       thought: o.thought ?? prev.thought,
       agentName: o.agentName,
       rounds,
+      result: o,
     }
   }
   return map

@@ -34,6 +34,20 @@ test('run-state', () => {
   assert.deepStrictEqual(l.p.rounds, [{ round: 0, output: 'v1' }, { round: 1, output: 'v2' }])
   assert.strictEqual(l.p.output, 'v2')
 
+  // agent_done keeps the raw payload so views can read metrics/systemPrompt/error (#33)
+  let r: RunStateMap = {}
+  r = applyRunEvent(r, { type: 'agent_start', nodeId: 'm', agentName: 'w', step: 0 })
+  assert.strictEqual(r.m.result, undefined)
+  r = applyRunEvent(r, { type: 'agent_done', nodeId: 'm', agentName: 'w', step: 0, output: out({ output: 'done' }) })
+  assert.strictEqual(r.m.result?.systemPrompt, '')
+  assert.strictEqual(r.m.result?.output, 'done')
+  // and survives later token events on the same node
+  r = applyRunEvent(r, { type: 'token', nodeId: 'm', token: '!', step: 0 })
+  assert.strictEqual(r.m.result?.output, 'done')
+  // but a re-entered loop node clears it, so views never pair a live round with the last round's payload
+  r = applyRunEvent(r, { type: 'agent_start', nodeId: 'm', agentName: 'w', step: 1 })
+  assert.strictEqual(r.m.result, undefined)
+
   // skipped status carried through
   let k: RunStateMap = {}
   k = applyRunEvent(k, { type: 'agent_done', nodeId: 'z', agentName: 'z', step: 5, output: out({ output: '', status: 'skipped' }) })

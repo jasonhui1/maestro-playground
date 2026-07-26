@@ -74,6 +74,8 @@ test('runHistoryState', () => {
   assert.strictEqual(map['n1'].thought, 'thinking')
   assert.strictEqual(map['n1'].agentName, 'Agent A')
   assert.deepStrictEqual(map['n1'].rounds, [])
+  // parity with applyRunEvent: the raw payload rides along for metric/prompt/error views (#33)
+  assert.strictEqual(map['n1'].result?.output, map['n1'].output)
 
   // n2 assertions
   assert.strictEqual(map['n2'].status, 'success')

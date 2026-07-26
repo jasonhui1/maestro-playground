@@ -13,3 +13,18 @@ export function applyInstanceEvent(map: InstanceRunMap, instance: number, e: Run
 export function nodeStateFor(map: InstanceRunMap, instance: number, nodeId: string): NodeRunState | undefined {
   return map[instance]?.[nodeId]
 }
+
+// RunStateMap is keyed by node id, so execution order is not recoverable from it.
+// Views that render a sequence track it alongside the fold (#33).
+export type InstanceOrder = Record<number, string[]>
+
+export function applyInstanceOrder(order: InstanceOrder, instance: number, e: RunEvent): InstanceOrder {
+  if (e.type !== 'agent_start' && e.type !== 'agent_done') return order
+  const prev = order[instance] ?? []
+  if (prev.includes(e.nodeId)) return order
+  return { ...order, [instance]: [...prev, e.nodeId] }
+}
+
+export function orderFor(order: InstanceOrder, instance: number): string[] {
+  return order[instance] ?? []
+}
