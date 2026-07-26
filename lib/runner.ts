@@ -4,6 +4,7 @@ import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
 import { injectSkills } from './prompt'
 import { runToolLoop, ToolLoopError, ChatCall, ChatCallResponse, WireMessage } from './tools/loop'
+import { assembleStreamedResponse, StreamChunk } from './tools/streamAssembly'
 import type { BoundTool } from './tools/registry'
 
 export const DEFAULT_MAX_TOOL_TURNS = 8
@@ -66,23 +67,37 @@ export function splitThought(text: string): { output: string; thought: string } 
   return { output, thought }
 }
 
-// Wires the real client into the loop's one seam. Non-streamed this slice (the
-// API returns complete assistant message objects, making the verbatim echo
-// trivially correct); streaming delta reconstruction is slice 2's job. The casts
-// are load-bearing: the SDK's types don't know the provider extras (`reasoning`,
-// `reasoning_details`, `extra_content`) that wire-truth requires we echo, and #18
-// verified they survive the client's serialization regardless.
+// Wires the real client into the loop's one seam. Streamed (#34): the chunk
+// sequence is reassembled into one settled response before it reaches the loop,
+// which still sees whole messages. `include_usage` is what makes a streamed turn
+// report tokens at all — without it every tool node costs a silent zero.
+// The casts are load-bearing: the SDK's types don't know the provider extras
+// (`reasoning`, `reasoning_details`, `extra_content`) that wire-truth requires we
+// echo, and #18 verified they survive the client's serialization regardless.
 function createChatCall(agent: AgentDef): ChatCall {
   return async (req) => {
-    const res = await withRetry(() => getClient().chat.completions.create({
-      model: agent.model,
-      max_tokens: agent.max_tokens ?? 32768,
-      messages: req.messages as unknown as OpenAI.Chat.ChatCompletionMessageParam[],
-      tools: req.tools as unknown as OpenAI.Chat.ChatCompletionTool[],
-      ...(req.tool_choice ? { tool_choice: req.tool_choice } : {}),
-      stream: false,
-    }))
-    return res as unknown as ChatCallResponse
+    // The retry spans opening AND draining the stream: a turn that dies mid-body
+    // is as transient as one that never opened, and the loop's contract is that
+    // one chatCall is one settled turn. Chunks from the dead attempt are dropped.
+    const chunks = await withRetry(async () => {
+      const stream = await getClient().chat.completions.create({
+        model: agent.model,
+        max_tokens: agent.max_tokens ?? 32768,
+        messages: req.messages as unknown as OpenAI.Chat.ChatCompletionMessageParam[],
+        tools: req.tools as unknown as OpenAI.Chat.ChatCompletionTool[],
+        ...(req.tool_choice ? { tool_choice: req.tool_choice } : {}),
+        stream: true,
+        stream_options: { include_usage: true },
+      })
+      const received: StreamChunk[] = []
+      for await (const chunk of stream) received.push(chunk as unknown as StreamChunk)
+      return received
+    })
+    const res = assembleStreamedResponse(chunks)
+    if (res.lossyFields.length > 0) {
+      console.warn(`[${agent.name}] streamed turn reconstructed lossily; kept first sighting of: ${res.lossyFields.join(', ')}`)
+    }
+    return res as ChatCallResponse
   }
 }
 

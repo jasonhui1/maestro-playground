@@ -16,9 +16,7 @@
 // The script detects which case it is in from the parsed message and asserts
 // accordingly, so a green run means something real on either provider.
 //
-// Provider is selected by DERISK_PROVIDER (default "google"):
-//   • google     → uses the app's AI_API_KEY / AI_BASE_URL / AI_MODEL_NAME
-//   • openrouter → uses OPENROUTER_API_KEY / OPENROUTER_BASE_URL / OPENROUTER_MODEL
+// Provider selection and client wiring live in ./provider.ts.
 //
 // Run (gemma/google — defaults from env.local):
 //   set -a && . ./env.local && set +a && npx tsx scripts/derisk/reasoning-roundtrip.ts
@@ -33,73 +31,10 @@
 
 import OpenAI from 'openai'
 import assert from 'node:assert'
-import fs from 'node:fs'
-import path from 'node:path'
-
-const IS_OPENROUTER = (process.env.DERISK_PROVIDER || 'google').trim().toLowerCase() === 'openrouter'
-
-// .trim() every env-derived value: a CRLF-terminated env file leaves a trailing
-// \r on each value. In the model name that \r reaches the JSON request body
-// untrimmed and Google hard-400s ("unexpected model name format"). Headers get
-// whitespace-trimmed by fetch, so the key/base-URL \r is silent — the model
-// name is the one that bites. (Empirically confirmed — see #18 notes.)
-const API_KEY = (IS_OPENROUTER ? process.env.OPENROUTER_API_KEY : process.env.AI_API_KEY)?.trim()
-// Also strip trailing slash(es): the openai client joins baseURL + '/chat/completions',
-// so a trailing slash yields '…/openai//chat/completions', which Google 404s.
-const BASE_URL = (
-  IS_OPENROUTER
-    ? process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'
-    : process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1'
-)
-  .trim()
-  .replace(/\/+$/, '')
-const MODEL = (
-  IS_OPENROUTER
-    ? process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5'
-    : process.env.DERISK_MODEL || process.env.AI_MODEL_NAME || 'gemma-4-31b-it'
-).trim()
-// Split artifacts per provider so a run of one track never clobbers the other's.
-const OUT_DIR = path.resolve('scripts/derisk/out', IS_OPENROUTER ? 'openrouter' : 'google')
-
-if (!API_KEY) {
-  const varName = IS_OPENROUTER ? 'OPENROUTER_API_KEY' : 'AI_API_KEY'
-  console.error(`${varName} is not set. \`set -a && . ./env.local && set +a\` first, or export it.`)
-  process.exit(1)
-}
-
-const client = new OpenAI({ baseURL: BASE_URL, apiKey: API_KEY })
-
-const tools: OpenAI.Chat.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'lore_lookup',
-      description:
-        'Look up an established fact about a named person or place in the campaign lore. Always use this before stating a fact about a named entity.',
-      parameters: {
-        type: 'object',
-        properties: {
-          entity: { type: 'string', description: 'The person or place to look up' },
-        },
-        required: ['entity'],
-      },
-    },
-  },
-]
-
-// OpenRouter's `reasoning` request param is not in the openai client's types;
-// passed through untyped. Google's shim rejects unknown top-level params, so we
-// only send it on OpenRouter — the one provider that acts on it.
-const reasoningBody = IS_OPENROUTER ? { reasoning: { max_tokens: 1024 } } : {}
-
-function save(name: string, data: unknown) {
-  fs.mkdirSync(OUT_DIR, { recursive: true })
-  fs.writeFileSync(path.join(OUT_DIR, name), JSON.stringify(data, null, 2))
-  console.log(`  saved ${path.join('scripts/derisk/out', name)}`)
-}
+import { client, IS_OPENROUTER, loreTools as tools, MODEL, PROVIDER_LABEL, reasoningBody, save } from './provider'
 
 async function main() {
-  console.log(`provider: ${IS_OPENROUTER ? 'OpenRouter' : 'Google/OpenAI-shim'}  model: ${MODEL}`)
+  console.log(`provider: ${PROVIDER_LABEL}  model: ${MODEL}`)
 
   // ---- Call 1: reasoning + one tool call -----------------------------------
   console.log(`[1/3] call 1 — reasoning ${IS_OPENROUTER ? 'on' : '(inline)'}, one tool`)

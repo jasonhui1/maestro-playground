@@ -3,11 +3,13 @@
 // are all testable with a scripted fake. runAgent wires the real client in.
 //
 // Wire-truth invariant: the message list is append-only, chronological, verbatim.
-// Assistant messages are appended as the exact objects the response carried —
-// never reconstructed field-by-field — so provider extras (`reasoning`,
-// `reasoning_details`, gemma's `extra_content.google.thought_signature`) ride
-// along untouched. Tools are declared on every call, including the forced final
-// (#18 finding: an undeclared tool provokes MALFORMED_FUNCTION_CALL dead-ends).
+// Assistant messages are appended as the exact objects the chatCall returned, so
+// provider extras (`reasoning`, `reasoning_details`, gemma's
+// `extra_content.google.thought_signature`) ride along untouched. Streaming
+// makes those objects reconstructions rather than responses — the narrowed rule
+// and what it cost lives with the reconstruction, in ./streamAssembly.ts (#34).
+// Tools are declared on every call, including the forced final (#18 finding: an
+// undeclared tool provokes MALFORMED_FUNCTION_CALL dead-ends).
 //
 // Transient-retry policy lives in the injected chatCall, not here: the real
 // wiring (runner.ts `withRetry`) retries 429 and 5xx only. Explicitly not 400s —
@@ -44,9 +46,9 @@ export interface ChatCallRequest {
   tool_choice?: 'none'
 }
 
-// Structural subset of the non-streamed chat.completions response (shape pinned
-// by scripts/derisk/reasoning-roundtrip.ts artifacts); the real client's return
-// value is assignable as-is.
+// Structural subset of the chat.completions response (shape pinned by
+// scripts/derisk artifacts); the non-streamed client return value is assignable
+// as-is, and streamAssembly rebuilds the same shape from chunks.
 export interface ChatCallResponse {
   choices: Array<{ message: AssistantWireMessage; finish_reason?: string | null }>
   usage?: { prompt_tokens: number; completion_tokens: number } | null

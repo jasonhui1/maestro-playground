@@ -1,0 +1,347 @@
+{
+  "provider": "google",
+  "model": "gemma-4-31b-it",
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "<thought>The user is asking for the owner of the \"Gilded Flagon",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030333,
+      "id": "vGZlasDKIPHexs0Pqu6j-Q0",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 96,
+        "total_tokens": 110
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "\" tavern.\nThe system instructions explicitly state that I must call `lore_lookup` before answering.\nI need",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030333,
+      "id": "vGZlasDKIPHexs0Pqu6j-Q0",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 96,
+        "total_tokens": 134
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": " to call `lore_lookup` with the entity \"Gilded Flagon\".",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030334,
+      "id": "vGZlasDKIPHexs0Pqu6j-Q0",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 96,
+        "total_tokens": 150
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "</thought>",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "extra_content": {
+                  "google": {
+                    "thought_signature": "EiYKJGUyNDgzMGE3LTVjZDYtNDJmZS05OThiLWVlNTM5ZTcyYjljMw=="
+                  }
+                },
+                "function": {
+                  "arguments": "{\"entity\":\"Gilded Flagon\"}",
+                  "name": "lore_lookup"
+                },
+                "id": "ly1n65ep",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030335,
+      "id": "vGZlasDKIPHexs0Pqu6j-Q0",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 19,
+        "prompt_tokens": 96,
+        "total_tokens": 169
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 1785030335,
+      "id": "vGZlasDKIPHexs0Pqu6j-Q0",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 19,
+        "prompt_tokens": 96,
+        "total_tokens": 169
+      }
+    }
+  ],
+  "parallelChunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "<thought>The user wants to look up information for two specific entities: \"Mar",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030341,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 114,
+        "total_tokens": 128
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "la Undertow\" and \"The Gilded Flagon\".\nThe instructions specify to call the `lore_lookup",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030342,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 114,
+        "total_tokens": 151
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "` tool for both entities in parallel in a single turn.\n\n1.  **Entity 1**: Marla Undertow",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030342,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 114,
+        "total_tokens": 176
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "\n2.  **Entity 2**: The Gilded Flagon\n3.  **Tool**: `lore_",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030343,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 114,
+        "total_tokens": 200
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "lookup`\n\nI need to generate two tool calls.",
+            "extra_content": {
+              "google": {
+                "thought": true
+              }
+            },
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030344,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 114,
+        "total_tokens": 211
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "</thought>",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "extra_content": {
+                  "google": {
+                    "thought_signature": "EiYKJGUyNDgzMGE3LTVjZDYtNDJmZS05OThiLWVlNTM5ZTcyYjljMw=="
+                  }
+                },
+                "function": {
+                  "arguments": "{\"entity\":\"Marla Undertow\"}",
+                  "name": "lore_lookup"
+                },
+                "id": "9pl3wy4u",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030344,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 19,
+        "prompt_tokens": 114,
+        "total_tokens": 230
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"entity\":\"The Gilded Flagon\"}",
+                  "name": "lore_lookup"
+                },
+                "id": "x5elmdap",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1785030345,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 39,
+        "prompt_tokens": 114,
+        "total_tokens": 250
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 1785030345,
+      "id": "xGZlatCMOLC4vdIP_eXRqAs",
+      "model": "gemma-4-31b-it",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 39,
+        "prompt_tokens": 114,
+        "total_tokens": 250
+      }
+    }
+  ]
+}
