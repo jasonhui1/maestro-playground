@@ -5,7 +5,8 @@ export type ToolLoopEvent =
   // Turn-level, not call-level: parallel calls announce once, and no args ride along.
   | { type: 'tool_pending'; turn: number }
   | { type: 'tool_call'; turn: number; name: string; args: unknown; activity?: string }
-  | { type: 'tool_result'; turn: number; name: string; latencyMs: number; isError: boolean }
+  // `result` rides along in full so a chip can expand mid-run (#36).
+  | { type: 'tool_result'; turn: number; name: string; result: string; latencyMs: number; isError: boolean }
 
 export type ToolEventSink = (event: ToolLoopEvent) => void
 

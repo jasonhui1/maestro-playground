@@ -2,8 +2,10 @@
 import { useState } from 'react'
 import { CheckCircle2, AlertCircle, Brain, MessageSquare } from 'lucide-react'
 import type { NodeRunState, RunStateMap } from '@/lib/runState'
+import { narrationOf } from '@/lib/toolNarration'
 import TokenCostBar from '@/components/TokenCostBar'
 import { CollapsibleDetail } from '@/components/ui/CollapsibleDetail'
+import { ToolLoopNarration } from '@/components/trace/ToolLoopNarration'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
 
 function StatusIcon({ status }: { status: NodeRunState['status'] }) {
@@ -22,9 +24,10 @@ function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRunState }
   const looped = state.rounds.length > 1
   // null round means "latest": a live loop shows the streaming buffer, not an archived round
   const viewingArchivedRound = looped && round !== null
+  const narration = narrationOf(state)
   const shown = viewingArchivedRound
     ? state.rounds.find(x => x.round === round)?.output ?? ''
-    : state.output
+    : narration.answer
 
   return (
     <div className="flex flex-col min-w-0 relative">
@@ -76,6 +79,9 @@ function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRunState }
           )}
         </div>
       )}
+
+      {/* like thought, the transcript is the latest round's — don't pair it with an archived one */}
+      {narration.isNarrating && !viewingArchivedRound && <ToolLoopNarration turns={narration.turns} />}
 
       <div className="p-4 text-sm text-zinc-700 whitespace-pre-wrap font-mono leading-relaxed flex-1 min-h-[8rem] overflow-x-auto">
         {r?.error && !viewingArchivedRound ? (

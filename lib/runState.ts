@@ -73,7 +73,7 @@ export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
     const at = prev.toolCalls.findIndex(c => c.turn === e.turn && c.name === e.name && c.status === 'running')
     if (at === -1) return state
     const toolCalls = [...prev.toolCalls]
-    toolCalls[at] = { ...toolCalls[at], latencyMs: e.latencyMs, isError: e.isError, status: 'done' }
+    toolCalls[at] = { ...toolCalls[at], result: e.result, latencyMs: e.latencyMs, isError: e.isError, status: 'done' }
     return { ...state, [e.nodeId]: { ...prev, toolCalls } }
   }
   if (e.type === 'agent_done') {
@@ -82,7 +82,7 @@ export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
     const rounds = e.output.round !== undefined
       ? [...prev.rounds, { round: e.output.round, output: e.output.output }]
       : prev.rounds
-    // The events omit result text; the payload has it, so it wins.
+    // The settled transcript wins: it carries turnText the events never send.
     const toolCalls = e.output.toolCalls ? settledToolCalls(e.output.toolCalls) : prev.toolCalls
     return { ...state, [e.nodeId]: { ...prev, status, output: e.output.output, agentName: e.output.agentName, rounds, result: e.output, toolCalls, pendingTurn: undefined } }
   }

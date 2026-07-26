@@ -198,7 +198,7 @@ export async function runToolLoop(
         }
       }
       const latencyMs = Date.now() - started
-      narrate?.onEvent?.({ type: 'tool_result', turn: toolTurns, name: call.function.name, latencyMs, isError })
+      narrate?.onEvent?.({ type: 'tool_result', turn: toolTurns, name: call.function.name, result: result!, latencyMs, isError })
       messages.push({ role: 'tool', tool_call_id: call.id, content: result! })
       toolCalls.push({
         turn: toolTurns,

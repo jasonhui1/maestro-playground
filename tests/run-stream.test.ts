@@ -38,7 +38,7 @@ test('run-stream', async () => {
   await streamRun(streamFromChunks([
     'data: {"type":"tool_pending","nodeId":"a","step":0,"kind":"agent","turn":1}\n\n',
     'data: {"type":"tool_call","nodeId":"a","step":0,"kind":"agent","turn":1,"name":"retrieve","args":{"query":"x"},"activity":"Searching"}\n\n',
-    'data: {"type":"tool_result","nodeId":"a","step":0,"kind":"agent","turn":1,"name":"retrieve","latencyMs":412,"isError":false}\n\n',
+    'data: {"type":"tool_result","nodeId":"a","step":0,"kind":"agent","turn":1,"name":"retrieve","result":"## Houses\\nAldric","latencyMs":412,"isError":false}\n\n',
   ]), e => toolEvents.push(e))
 
   assert.deepStrictEqual(toolEvents.map(e => e.type), ['tool_pending', 'tool_call', 'tool_result'])
@@ -49,4 +49,5 @@ test('run-stream', async () => {
   const resultFrame = toolEvents[2] as Extract<RunEvent, { type: 'tool_result' }>
   assert.strictEqual(resultFrame.latencyMs, 412)
   assert.strictEqual(resultFrame.isError, false)
+  assert.strictEqual(resultFrame.result, '## Houses\nAldric', 'the result body crosses the wire (#36)')
 })

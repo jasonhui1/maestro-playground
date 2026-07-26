@@ -36,7 +36,7 @@ test('a second turn opens a second group', () => {
   const s = fold([
     start,
     { type: 'tool_call', nodeId: 'n1', turn: 1, name: 'retrieve', args: {} },
-    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', latencyMs: 10, isError: false },
+    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', result: 'R', latencyMs: 10, isError: false },
     { type: 'tool_call', nodeId: 'n1', turn: 2, name: 'retrieve', args: {} },
   ])
   assert.deepStrictEqual(toolTurnsOf(s.n1).map(g => [g.turn, g.calls.length]), [[1, 1], [2, 1]])
@@ -62,18 +62,21 @@ test('results settle the matching call; errors are marked', () => {
     { type: 'tool_call', nodeId: 'n1', turn: 1, name: 'retrieve', args: {} },
     { type: 'tool_call', nodeId: 'n1', turn: 1, name: 'retrieve', args: {} },
     // parallel calls to the same tool settle in completion order, not call order
-    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', latencyMs: 5, isError: true },
-    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', latencyMs: 90, isError: false },
+    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', result: 'BOOM', latencyMs: 5, isError: true },
+    { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'retrieve', result: 'THE BODY', latencyMs: 90, isError: false },
   ])
   assert.deepStrictEqual(
     s.n1.toolCalls.map(c => [c.status, c.latencyMs, c.isError]),
     [['done', 5, true], ['done', 90, false]],
   )
+  // The body arrives with the result, not at agent_done: a reader who expands a
+  // chip mid-run sees the whole thing (#36).
+  assert.deepStrictEqual(s.n1.toolCalls.map(c => c.result), ['BOOM', 'THE BODY'])
   assert.strictEqual(toolTurnsOf(s.n1)[0].latencyMs, 95, 'group latency sums its calls')
 })
 
 test('a result with no matching open call is inert', () => {
-  const s = fold([start, { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'ghost', latencyMs: 1, isError: false }])
+  const s = fold([start, { type: 'tool_result', nodeId: 'n1', turn: 1, name: 'ghost', result: '', latencyMs: 1, isError: false }])
   assert.strictEqual(s.n1.toolCalls.length, 0)
 })
 

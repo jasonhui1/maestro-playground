@@ -10,7 +10,7 @@ export type RunEvent =
   | { type: 'agent_done'; nodeId: string; agentName: string; step: number; output: AgentOutput; kind?: NodeKind }
   | { type: 'tool_pending'; nodeId: string; step?: number; kind?: NodeKind; turn: number }
   | { type: 'tool_call'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; args: unknown; activity?: string }
-  | { type: 'tool_result'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; latencyMs: number; isError: boolean }
+  | { type: 'tool_result'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; result: string; latencyMs: number; isError: boolean }
   | { type: 'run_complete'; runId: string }
   | { type: 'error'; error: string }
 
