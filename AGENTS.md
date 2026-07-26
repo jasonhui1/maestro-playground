@@ -34,3 +34,6 @@ Default five canonical roles, label string = role name. Additional effort/type l
 ### Domain docs
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Coding Standand
+Read @CODING_STANDARDS.md
