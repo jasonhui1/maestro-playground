@@ -51,12 +51,18 @@ test('run-model execution order', () => {
   o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'n4', agentName: 'gate', step: 4, output: {} as AgentOutput })
   assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
 
-  // except loop-end, whose record is empty bookkeeping — the zone finished (#33)
-  o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'le', agentName: 'loop-end', step: 5, output: {} as AgentOutput })
+  // except loop-end, whose record is empty bookkeeping — the zone finished (#33).
+  // Filtered on the graph's own `kind`, not the executor's label string (#35):
+  // a reworded label must not bring the row back.
+  o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'le', agentName: 'zone wrapped up', step: 5, kind: 'loop-end', output: {} as AgentOutput })
   assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
+
+  // and a node merely *named* loop-end is not filtered — the string match is gone
+  o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'n5', agentName: 'loop-end', step: 6, kind: 'agent', output: {} as AgentOutput })
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4', 'n5'])
 
   // non-node events and unknown instances are inert
   o = applyInstanceOrder(o, 0, { type: 'run_complete', runId: 'r1' })
-  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4', 'n5'])
   assert.deepStrictEqual(orderFor(o, 7), [])
 })

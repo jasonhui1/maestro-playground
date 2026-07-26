@@ -21,7 +21,7 @@ export type InstanceOrder = Record<number, string[]>
 export function applyInstanceOrder(order: InstanceOrder, instance: number, e: RunEvent): InstanceOrder {
   if (e.type !== 'agent_start' && e.type !== 'agent_done') return order
   // loop-end reports an empty record purely to mark the zone done; it has nothing to show (#33)
-  if (e.agentName === 'loop-end') return order
+  if (e.kind === 'loop-end') return order
   const prev = order[instance] ?? []
   if (prev.includes(e.nodeId)) return order
   return { ...order, [instance]: [...prev, e.nodeId] }

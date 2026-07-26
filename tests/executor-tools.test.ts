@@ -3,6 +3,7 @@ import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { runAgent } from '../lib/runner'
 import type { BoundTool } from '../lib/tools/registry'
+import type { ToolLoopEvent } from '../lib/tools/events'
 import type { AgentDef, AgentOutput, ChainDef, ToolDef, ToolCallRecord } from '../lib/types'
 
 const noop = { onStart() {}, onToken() {}, onDone() {} }
@@ -144,6 +145,56 @@ async function main() {
 
     assert.strictEqual(seen.length, 1, 'the inner agent node ran')
     assert.strictEqual(seen[0].boundTools.length, 1, 'tools were threaded through the subchain recursion')
+  }
+
+  // 6. The scheduler stamps the node id onto whatever the loop narrates, and the
+  //    three-member callback literals above still satisfy RunCallbacks (#35).
+  {
+    const agents = [agentDef({ tools: ['retrieve'] })]
+    const stamped: Array<{ nodeId: string; type: string; turn: number }> = []
+    const runFn = (async (
+      _a: AgentDef, _sp: string, _um: string,
+      onToken?: (t: string, ty?: string, turn?: number) => void,
+      _hist?: unknown, _bt?: unknown, _cc?: unknown,
+      onToolEvent?: (e: ToolLoopEvent) => void,
+    ): Promise<AgentOutput> => {
+      onToolEvent?.({ type: 'tool_pending', turn: 1 })
+      onToolEvent?.({ type: 'tool_call', turn: 1, name: 'retrieve', args: {} })
+      onToken?.('narration', 'output', 1)
+      return {
+        agentName: 'writer', systemPrompt: '', input: '', output: 'X',
+        tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,
+        model: 'm', timestamp: '', status: 'success',
+      }
+    }) as unknown as typeof runAgent
+
+    let tokenTurn: number | undefined
+    await runChainGraph(
+      chain, agents, [], 'SEED', '/ws',
+      {
+        onStart() {}, onDone() {},
+        onToken(_id, _t, _ty, turn) { tokenTurn = turn },
+        onToolEvent(nodeId, e) { stamped.push({ nodeId, type: e.type, turn: e.turn }) },
+      },
+      runFn, [], [], [retrieveTool],
+    )
+
+    assert.deepStrictEqual(stamped, [
+      { nodeId: 'writer', type: 'tool_pending', turn: 1 },
+      { nodeId: 'writer', type: 'tool_call', turn: 1 },
+    ])
+    assert.strictEqual(tokenTurn, 1, 'the turn survives the executor hop')
+  }
+
+  // 7. A tool-less agent emits no tool events at all.
+  {
+    const agents = [agentDef()]
+    const { runFn } = spyRun('PLAIN')
+    await runChainGraph(
+      chain, agents, [], 'SEED', '/ws',
+      { ...noop, onToolEvent() { assert.fail('a tool-less agent narrated a tool event') } },
+      runFn, [], [], [retrieveTool],
+    )
   }
 }
 

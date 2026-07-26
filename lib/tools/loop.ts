@@ -19,6 +19,7 @@
 // settled model turn.
 import { ToolCallRecord } from '../types'
 import { JsonSchema } from './spec'
+import type { ToolNarration } from './events'
 import type { BoundTool } from './registry'
 
 export interface WireToolCall {
@@ -54,10 +55,21 @@ export interface ChatCallResponse {
   usage?: { prompt_tokens: number; completion_tokens: number } | null
 }
 
-export type ChatCall = (req: ChatCallRequest) => Promise<ChatCallResponse>
+// Stream facts the adapter reports upward while a turn is in flight. Deliberately
+// turn-less: the loop owns turn numbering and stamps these on the way out (#35).
+// A non-streaming chatCall simply never calls them.
+export interface ChatCallHooks {
+  onToolCallStart?: () => void
+  onToken?: (token: string, type: 'thought' | 'output') => void
+}
+
+export type ChatCall = (req: ChatCallRequest, hooks?: ChatCallHooks) => Promise<ChatCallResponse>
 
 export interface ToolLoopResult {
   finalText: string
+  // Every turn's `reasoning`, for providers that use it instead of <thought> tags.
+  // Display only; `reasoning_details` stays the replay representation (#35).
+  reasoning: string
   messages: WireMessage[]
   toolCalls: ToolCallRecord[]
   toolTurns: number
@@ -87,6 +99,7 @@ export async function runToolLoop(
   boundTools: BoundTool[],
   initialMessages: WireMessage[],
   caps: { maxToolTurns: number },
+  narrate?: ToolNarration,
 ): Promise<ToolLoopResult> {
   const messages = [...initialMessages]
   const toolCalls: ToolCallRecord[] = []
@@ -98,6 +111,7 @@ export async function runToolLoop(
   let toolTurns = 0
   let tokensIn = 0
   let tokensOut = 0
+  let reasoning = ''
 
   const fail = (msg: string, cause?: unknown): never => {
     throw new ToolLoopError(msg, toolCalls, messages, tokensIn, tokensOut, cause)
@@ -105,9 +119,18 @@ export async function runToolLoop(
 
   while (true) {
     const forced = toolTurns >= caps.maxToolTurns
+    // `toolTurns` only increments once a turn is known to have made calls, so the
+    // turn now in flight is the next one.
+    const inFlight = toolTurns + 1
     let res: ChatCallResponse
     try {
-      res = await chatCall({ messages, tools: toolsPayload, ...(forced ? { tool_choice: 'none' as const } : {}) })
+      res = await chatCall(
+        { messages, tools: toolsPayload, ...(forced ? { tool_choice: 'none' as const } : {}) },
+        {
+          onToolCallStart: () => narrate?.onEvent?.({ type: 'tool_pending', turn: inFlight }),
+          onToken: (token, type) => narrate?.onToken?.(token, type, inFlight),
+        },
+      )
     } catch (err) {
       return fail(`chat call failed mid-loop: ${err instanceof Error ? err.message : String(err)}`, err)
     }
@@ -119,6 +142,10 @@ export async function runToolLoop(
     if (!choice?.message) return fail('chat call returned no message')
     const msg = choice.message
     messages.push(msg)
+    // Accumulated across turns, not read off the last one: a node that reasons
+    // during its tool turns and answers without reasoning would otherwise stream
+    // a full thought panel live and persist an empty one (#35).
+    if (typeof msg.reasoning === 'string') reasoning += msg.reasoning
 
     const calls = msg.tool_calls ?? []
     if (forced || calls.length === 0) {
@@ -135,7 +162,7 @@ export async function runToolLoop(
       if (forced && calls.length > 0 && finalText.trim() === '') {
         return fail(`forced final turn (tool_choice "none") returned tool_calls and no text`)
       }
-      return { finalText, messages, toolCalls, toolTurns, tokensIn, tokensOut }
+      return { finalText, reasoning, messages, toolCalls, toolTurns, tokensIn, tokensOut }
     }
 
     toolTurns++
@@ -152,8 +179,12 @@ export async function runToolLoop(
         isError = true
         result = `Error: malformed JSON in tool arguments: ${call.function.arguments}`
       }
+      const tool = byName.get(call.function.name)
+      narrate?.onEvent?.({
+        type: 'tool_call', turn: toolTurns, name: call.function.name, args,
+        ...(tool?.def.activity ? { activity: tool.def.activity } : {}),
+      })
       if (!isError) {
-        const tool = byName.get(call.function.name)
         if (!tool) {
           isError = true
           result = `Error: unknown tool "${call.function.name}" — only the declared tools are available.`
@@ -166,13 +197,15 @@ export async function runToolLoop(
           }
         }
       }
+      const latencyMs = Date.now() - started
+      narrate?.onEvent?.({ type: 'tool_result', turn: toolTurns, name: call.function.name, latencyMs, isError })
       messages.push({ role: 'tool', tool_call_id: call.id, content: result! })
       toolCalls.push({
         turn: toolTurns,
         name: call.function.name,
         args,
         result: result!,
-        latencyMs: Date.now() - started,
+        latencyMs,
         isError,
         ...(i === 0 && turnText !== undefined ? { turnText } : {}),
       })

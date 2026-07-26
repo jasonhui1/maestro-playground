@@ -1,8 +1,8 @@
 # Streamed tool turns — what the wire actually did (#34)
 
-**Status:** evidence record, not a ratified decision. The contract amendment in
-§2 is **proposed and awaiting confirmation**; nothing here has been folded into
-`2026-07-11-tools-design-map.md`.
+**Status:** evidence record. The contract amendment in §2 was **confirmed
+2026-07-26** and is folded into `2026-07-11-tools-design-map.md` as the
+streaming caveat under "Context assembly = object-level wire-truth".
 
 Produced by `scripts/derisk/streamed-tool-echo.ts`, run live against both
 configured providers on 2026-07-26. Raw artifacts land in

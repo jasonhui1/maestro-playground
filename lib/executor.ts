@@ -10,11 +10,14 @@ import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { slugify, extractSection } from './graph'
 import { kindOf, agentSlugOf } from './nodeKinds'
+import type { ToolLoopEvent } from './tools/events'
 
 export interface RunCallbacks {
   onStart: (nodeId: string, agentName: string) => void
-  onToken: (nodeId: string, token: string, type?: 'thought' | 'output') => void
+  onToken: (nodeId: string, token: string, type?: 'thought' | 'output', turn?: number) => void
   onDone: (nodeId: string, output: AgentOutput) => void
+  // Optional so existing three-member literals still satisfy this (#35).
+  onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
 }
 
 function makeContextReader(workspacePath: string) {
@@ -92,7 +95,12 @@ export async function runChainGraph(
     // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
     // took one API call or nine is entirely below this line.
     const boundTools = bindAgentTools(agent, tools, workspacePath)
-    const output = await runFn(agent, systemPrompt, 'Follow your instructions.', (t, ty) => callbacks.onToken(node.id, t, ty), undefined, boundTools)
+    const output = await runFn(
+      agent, systemPrompt, 'Follow your instructions.',
+      (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
+      undefined, boundTools, undefined,
+      callbacks.onToolEvent ? e => callbacks.onToolEvent!(node.id, e) : undefined,
+    )
     output.nodeId = node.id
     if (round !== undefined) output.round = round
     nodeOutputs.set(node.id, output); results.push(output); callbacks.onDone(node.id, output)

@@ -3,7 +3,8 @@ import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
 import { injectSkills } from './prompt'
-import { runToolLoop, ToolLoopError, ChatCall, ChatCallResponse, WireMessage } from './tools/loop'
+import { runToolLoop, ToolLoopError, ChatCall, ChatCallHooks, ChatCallResponse, WireMessage } from './tools/loop'
+import type { ToolEventSink, ToolNarration } from './tools/events'
 import { assembleStreamedResponse, StreamChunk } from './tools/streamAssembly'
 import type { BoundTool } from './tools/registry'
 
@@ -47,24 +48,91 @@ export async function withRetry<T>(
   }
 }
 
-// The streaming path extracts <thought> incrementally as deltas arrive; the tool
-// loop gets whole messages, so it splits after the fact. Same semantics, including
-// the sticky one: an unterminated <thought> swallows the rest of the text.
-export function splitThought(text: string): { output: string; thought: string } {
+export interface ThoughtSplitter {
+  push(delta: string): void
+  // Releases text held back as a possible partial tag. Callers that stop feeding
+  // must call this or that text is lost.
+  flush(): void
+  result(): { output: string; thought: string }
+}
+
+// The one implementation of the <thought> rule — fed a delta at a time by the
+// streaming paths, whole by splitThought. An unterminated tag swallows the rest.
+export function createThoughtSplitter(
+  onToken?: (token: string, type: 'thought' | 'output') => void,
+): ThoughtSplitter {
   let output = ''
   let thought = ''
-  let rest = text
-  for (;;) {
-    const start = rest.indexOf('<thought>')
-    if (start === -1) { output += rest; break }
-    output += rest.slice(0, start)
-    rest = rest.slice(start + '<thought>'.length)
-    const end = rest.indexOf('</thought>')
-    if (end === -1) { thought += rest; break }
-    thought += rest.slice(0, end)
-    rest = rest.slice(end + '</thought>'.length)
+  let isThinking = false
+  let buffer = ''
+
+  const emit = (text: string) => {
+    if (!text) return
+    if (isThinking) { thought += text; onToken?.(text, 'thought') }
+    else { output += text; onToken?.(text, 'output') }
   }
-  return { output, thought }
+
+  return {
+    push(delta) {
+      if (!delta) return
+      buffer += delta
+      for (;;) {
+        const tag = isThinking ? '</thought>' : '<thought>'
+        const at = buffer.indexOf(tag)
+        if (at === -1) break
+        emit(buffer.slice(0, at))
+        isThinking = !isThinking
+        buffer = buffer.slice(at + tag.length)
+      }
+      // Hold back a trailing prefix of the tag we are hunting: it may complete
+      // on the next delta.
+      const tag = isThinking ? '</thought>' : '<thought>'
+      let held = 0
+      for (let i = tag.length - 1; i > 0; i--) {
+        if (buffer.endsWith(tag.slice(0, i))) { held = i; break }
+      }
+      emit(buffer.slice(0, buffer.length - held))
+      buffer = buffer.slice(buffer.length - held)
+    },
+    flush() {
+      emit(buffer)
+      buffer = ''
+    },
+    result: () => ({ output, thought }),
+  }
+}
+
+export function splitThought(text: string): { output: string; thought: string } {
+  const s = createThoughtSplitter()
+  s.push(text)
+  s.flush()
+  return s.result()
+}
+
+// Turns a chunk sequence into stream facts for the loop's hooks. Kept out of
+// assembleStreamedResponse so the assembler stays pure and replay-testable (#34).
+export function createStreamNarrator(hooks?: ChatCallHooks) {
+  const splitter = createThoughtSplitter(hooks?.onToken)
+  let reasoning = ''
+  let announced = false
+  return {
+    push(chunk: StreamChunk) {
+      const delta = chunk.choices?.[0]?.delta
+      if (!delta) return
+      if (!announced && (delta.tool_calls?.length ?? 0) > 0) {
+        announced = true
+        hooks?.onToolCallStart?.()
+      }
+      splitter.push(delta.content ?? '')
+      // A native reasoning field bypasses the splitter — it holds no tags (#35).
+      if (typeof delta.reasoning === 'string' && delta.reasoning) {
+        reasoning += delta.reasoning
+        hooks?.onToken?.(delta.reasoning, 'thought')
+      }
+    },
+    flush() { splitter.flush() },
+    result: () => ({ ...splitter.result(), reasoning }),
+  }
 }
 
 // Wires the real client into the loop's one seam. Streamed (#34): the chunk
@@ -74,25 +142,42 @@ export function splitThought(text: string): { output: string; thought: string } 
 // The casts are load-bearing: the SDK's types don't know the provider extras
 // (`reasoning`, `reasoning_details`, `extra_content`) that wire-truth requires we
 // echo, and #18 verified they survive the client's serialization regardless.
+// The retry spans opening AND draining: a turn that dies mid-body is as transient
+// as one that never opened, and the loop's contract is one chatCall = one settled
+// turn. Only the first attempt narrates — a retry would replay text the client has
+// already seen and announce the same turn's tool call twice (#35).
+export async function streamOneTurn(
+  open: () => Promise<AsyncIterable<unknown>>,
+  hooks?: ChatCallHooks,
+  retry?: Parameters<typeof withRetry>[1],
+): Promise<StreamChunk[]> {
+  const narrator = createStreamNarrator(hooks)
+  let attempt = 0
+  return withRetry(async () => {
+    const narrating = attempt++ === 0
+    const stream = await open()
+    const received: StreamChunk[] = []
+    for await (const chunk of stream) {
+      const typed = chunk as StreamChunk
+      received.push(typed)
+      if (narrating) narrator.push(typed)
+    }
+    if (narrating) narrator.flush()
+    return received
+  }, retry)
+}
+
 function createChatCall(agent: AgentDef): ChatCall {
-  return async (req) => {
-    // The retry spans opening AND draining the stream: a turn that dies mid-body
-    // is as transient as one that never opened, and the loop's contract is that
-    // one chatCall is one settled turn. Chunks from the dead attempt are dropped.
-    const chunks = await withRetry(async () => {
-      const stream = await getClient().chat.completions.create({
-        model: agent.model,
-        max_tokens: agent.max_tokens ?? 32768,
-        messages: req.messages as unknown as OpenAI.Chat.ChatCompletionMessageParam[],
-        tools: req.tools as unknown as OpenAI.Chat.ChatCompletionTool[],
-        ...(req.tool_choice ? { tool_choice: req.tool_choice } : {}),
-        stream: true,
-        stream_options: { include_usage: true },
-      })
-      const received: StreamChunk[] = []
-      for await (const chunk of stream) received.push(chunk as unknown as StreamChunk)
-      return received
-    })
+  return async (req, hooks) => {
+    const chunks = await streamOneTurn(() => getClient().chat.completions.create({
+      model: agent.model,
+      max_tokens: agent.max_tokens ?? 32768,
+      messages: req.messages as unknown as OpenAI.Chat.ChatCompletionMessageParam[],
+      tools: req.tools as unknown as OpenAI.Chat.ChatCompletionTool[],
+      ...(req.tool_choice ? { tool_choice: req.tool_choice } : {}),
+      stream: true,
+      stream_options: { include_usage: true },
+    }), hooks)
     const res = assembleStreamedResponse(chunks)
     if (res.lossyFields.length > 0) {
       console.warn(`[${agent.name}] streamed turn reconstructed lossily; kept first sighting of: ${res.lossyFields.join(', ')}`)
@@ -108,6 +193,7 @@ async function runAgentWithTools(
   boundTools: BoundTool[],
   history: ChatMessage[] | undefined,
   chatCall: ChatCall,
+  narrate?: ToolNarration,
 ): Promise<AgentOutput> {
   const start = Date.now()
   const initial: WireMessage[] = history && history.length > 0
@@ -127,12 +213,12 @@ async function runAgentWithTools(
   try {
     const res = await runToolLoop(chatCall, boundTools, initial, {
       maxToolTurns: agent.max_tool_turns ?? DEFAULT_MAX_TOOL_TURNS,
-    })
+    }, narrate)
     const { output, thought } = splitThought(res.finalText)
     return {
       ...base,
       output,
-      thought,
+      thought: thought || res.reasoning,
       tokensIn: res.tokensIn,
       tokensOut: res.tokensOut,
       costUsd: calcCost(agent.model, res.tokensIn, res.tokensOut),
@@ -169,27 +255,24 @@ export async function runAgent(
   agent: AgentDef,
   resolvedSystemPrompt: string,
   userMessage: string,
-  onToken?: (token: string, type?: 'thought' | 'output') => void,
+  onToken?: (token: string, type?: 'thought' | 'output', turn?: number) => void,
   history?: ChatMessage[],
   boundTools?: BoundTool[],
   chatCall?: ChatCall,   // test seam; production wires createChatCall(agent)
+  onToolEvent?: ToolEventSink,   // #39
 ): Promise<AgentOutput> {
   if (boundTools && boundTools.length > 0) {
     return runAgentWithTools(
       agent, resolvedSystemPrompt, userMessage, boundTools, history,
       chatCall ?? createChatCall(agent),
+      { onEvent: onToolEvent, onToken },
     )
   }
 
   const start = Date.now()
-  let output = ''
-  let thought = ''
-  let isThinking = false
+  const narrator = createStreamNarrator({ onToken })
   let tokensIn = 0
   let tokensOut = 0
-
-  // Buffer to catch tags that are split across chunks
-  let buffer = ''
 
   try {
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = history && history.length > 0
@@ -208,88 +291,21 @@ export async function runAgent(
     })
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || ''
-      if (content) {
-        buffer += content
-
-        let changed = true
-        while (changed) {
-          changed = false
-          if (!isThinking) {
-            const thoughtStart = buffer.indexOf('<thought>')
-            if (thoughtStart !== -1) {
-              const preThought = buffer.slice(0, thoughtStart)
-              if (preThought) {
-                output += preThought
-                onToken?.(preThought, 'output')
-              }
-              isThinking = true
-              buffer = buffer.slice(thoughtStart + '<thought>'.length)
-              changed = true
-            }
-          } else {
-            const thoughtEnd = buffer.indexOf('</thought>')
-            if (thoughtEnd !== -1) {
-              const preEnd = buffer.slice(0, thoughtEnd)
-              if (preEnd) {
-                thought += preEnd
-                onToken?.(preEnd, 'thought')
-              }
-              isThinking = false
-              buffer = buffer.slice(thoughtEnd + '</thought>'.length)
-              changed = true
-            }
-          }
-        }
-
-        // Handle partial tags at the end of the buffer
-        const currentTag = isThinking ? '</thought>' : '<thought>'
-        let partialMatchIndex = -1
-        
-        for (let i = 1; i < currentTag.length; i++) {
-          if (buffer.endsWith(currentTag.slice(0, i))) {
-            partialMatchIndex = buffer.length - i
-            break
-          }
-        }
-
-        if (partialMatchIndex !== -1) {
-          const readyText = buffer.slice(0, partialMatchIndex)
-          if (readyText) {
-            if (isThinking) {
-              thought += readyText
-              onToken?.(readyText, 'thought')
-            } else {
-              output += readyText
-              onToken?.(readyText, 'output')
-            }
-          }
-          buffer = buffer.slice(partialMatchIndex)
-        } else {
-          if (buffer.length > 0) {
-            if (isThinking) {
-              thought += buffer
-              onToken?.(buffer, 'thought')
-            } else {
-              output += buffer
-              onToken?.(buffer, 'output')
-            }
-            buffer = ''
-          }
-        }
-      }
+      narrator.push(chunk as unknown as StreamChunk)
       if (chunk.usage) {
         tokensIn = chunk.usage.prompt_tokens
         tokensOut = chunk.usage.completion_tokens
       }
     }
+    narrator.flush()
+    const { output, thought, reasoning } = narrator.result()
 
     return {
       agentName: agent.name,
       input: userMessage,
       systemPrompt: resolvedSystemPrompt,
       output,
-      thought,
+      thought: thought || reasoning,
       tokensIn,
       tokensOut,
       costUsd: calcCost(agent.model, tokensIn, tokensOut),

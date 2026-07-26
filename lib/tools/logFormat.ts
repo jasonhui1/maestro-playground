@@ -4,9 +4,11 @@
 // browser bundle (see lib/tools/spec.ts for the same split).
 import { ToolCallRecord } from '../types'
 
-export interface ToolTurnGroup {
+// Generic so the live reducer's in-flight calls, which carry an extra status,
+// group through this function rather than a second implementation (#35).
+export interface ToolTurnGroup<T extends ToolCallRecord = ToolCallRecord> {
   turn: number
-  calls: ToolCallRecord[]
+  calls: T[]
   latencyMs: number      // summed across the group's calls
   turnText?: string      // read from the group's first record only
 }
@@ -16,8 +18,8 @@ export interface ToolTurnGroup {
 // records are contiguous in `toolCalls` — true today because the tool loop
 // appends records in execution order; a caller feeding reordered records
 // would split one turn into two groups.
-export function groupToolCallsByTurn(toolCalls: ToolCallRecord[]): ToolTurnGroup[] {
-  const groups: ToolTurnGroup[] = []
+export function groupToolCallsByTurn<T extends ToolCallRecord>(toolCalls: T[]): ToolTurnGroup<T>[] {
+  const groups: ToolTurnGroup<T>[] = []
 
   for (const call of toolCalls) {
     const last = groups[groups.length - 1]

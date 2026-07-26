@@ -1,7 +1,6 @@
 import type { AgentOutput } from './types'
 import type { RunStateMap, NodeRunState } from './runState'
-
-const empty = (): NodeRunState => ({ status: 'idle', output: '', thought: '', rounds: [] })
+import { emptyNodeState as empty, settledToolCalls } from './runState'
 
 // Fold a completed run's agentOutputs into the same RunStateMap the live editor run uses,
 // keyed by nodeId. Mirrors lib/runState.applyRunEvent's agent_done case (accumulates rounds).
@@ -21,6 +20,7 @@ export function buildRunStateMap(outputs: AgentOutput[]): RunStateMap {
       agentName: o.agentName,
       rounds,
       result: o,
+      toolCalls: o.toolCalls ? settledToolCalls(o.toolCalls) : prev.toolCalls,
     }
   }
   return map

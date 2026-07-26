@@ -32,4 +32,21 @@ test('run-stream', async () => {
   }
 
   await run()
+
+  // the three tool frames the route emits during a tool-using run (#35)
+  const toolEvents: RunEvent[] = []
+  await streamRun(streamFromChunks([
+    'data: {"type":"tool_pending","nodeId":"a","step":0,"kind":"agent","turn":1}\n\n',
+    'data: {"type":"tool_call","nodeId":"a","step":0,"kind":"agent","turn":1,"name":"retrieve","args":{"query":"x"},"activity":"Searching"}\n\n',
+    'data: {"type":"tool_result","nodeId":"a","step":0,"kind":"agent","turn":1,"name":"retrieve","latencyMs":412,"isError":false}\n\n',
+  ]), e => toolEvents.push(e))
+
+  assert.deepStrictEqual(toolEvents.map(e => e.type), ['tool_pending', 'tool_call', 'tool_result'])
+  const callFrame = toolEvents[1] as Extract<RunEvent, { type: 'tool_call' }>
+  assert.strictEqual(callFrame.activity, 'Searching')
+  assert.strictEqual(callFrame.turn, 1)
+  assert.strictEqual(callFrame.kind, 'agent')
+  const resultFrame = toolEvents[2] as Extract<RunEvent, { type: 'tool_result' }>
+  assert.strictEqual(resultFrame.latencyMs, 412)
+  assert.strictEqual(resultFrame.isError, false)
 })

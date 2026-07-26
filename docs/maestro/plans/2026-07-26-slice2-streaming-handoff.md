@@ -97,7 +97,7 @@ Measured on the two configured providers (2026-07-26):
 - **deepseek emits `content: ""` alongside reasoning**, so a tool-only turn has
   an empty-string content where the non-streamed shape has `null`.
 
-## 6. Known gap, unticketed — matters most to #36
+## 6. Known gap — RESOLVED 2026-07-26: folded into #35
 
 **deepseek's reasoning never reaches the thought panel.** Nothing in the
 workspace prompts for `<thought>`; gemma emits it natively inside `content`,
@@ -110,17 +110,19 @@ the next turn (that is what #34 protected). Only display drops it.
 
 The design map already called this shot — *"`<thought>` parsing becomes one of
 two presentation sources (native reasoning fields when present, else tags)"* —
-and the second source was never built. Not in #34, #35, #36 or #37. #36 is
-"the run panel narrates the loop", which is where a blank thought panel will be
-most obviously wrong, so decide there whether to ticket it.
+and the second source was never built. It is now #35's scope: small enough to
+fold in (~12 lines across the adapter, the loop's result, and the tool-less
+stream loop) and additive on the hooks seam #35 builds anyway. Both halves ship
+together — streaming the deltas without also sourcing the settled `thought`
+fills the panel during the run and blanks it at `agent_done`.
 
-## 7. Open decision inherited from #34
+The same gap exists on the tool-less path, which reads only `delta.content`.
+
+## 7. Open decision inherited from #34 — CONFIRMED 2026-07-26
 
 The concatenation set was widened from the two strings #34's ticket named to
-four, on live evidence. Written up in
-`2026-07-26-streamed-tool-turns-findings.md` §2 and **not yet folded into the
-design map** — it is proposed, awaiting confirmation. If it is confirmed, the
-design map's "Context assembly = object-level wire-truth" bullet needs the
-streaming caveat added; if it is rejected, `REASONING_PAYLOAD` in
-`streamAssembly.ts` shrinks back and reasoning gets dropped rather than
-truncated.
+four. Confirmed on the fixture evidence: deepseek splits one turn's reasoning
+across 13 `reasoning` deltas with zero content deltas, so first-sighting-wins
+would echo 1/13 of it back to the provider. Folded into the design map as the
+streaming caveat under "Context assembly = object-level wire-truth";
+`2026-07-26-streamed-tool-turns-findings.md` §2 is no longer provisional.

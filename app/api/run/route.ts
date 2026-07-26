@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
       let step = 0
       const stepOf = new Map<string, number>()
       const nameOf = new Map<string, string>()
+      // The graph is fixed, so kind is knowable here rather than threaded
+      // through the executor's eleven emit sites (#35).
+      const kindById = new Map(theChain.nodes.map(n => [n.id, n.kind]))
 
       try {
         const results = await runChainGraph(
@@ -72,17 +75,20 @@ export async function POST(req: NextRequest) {
               const s = step++
               stepOf.set(nodeId, s)
               nameOf.set(nodeId, agent)
-              send({ type: 'agent_start', agentName: agent, nodeId, step: s })
+              send({ type: 'agent_start', agentName: agent, nodeId, step: s, kind: kindById.get(nodeId) })
             },
-            onToken: (nodeId, token, tokenType) => {
-              send({ type: 'token', agentName: nameOf.get(nodeId), nodeId, token, tokenType, step: stepOf.get(nodeId) })
+            onToken: (nodeId, token, tokenType, turn) => {
+              send({ type: 'token', agentName: nameOf.get(nodeId), nodeId, token, tokenType, step: stepOf.get(nodeId), kind: kindById.get(nodeId), turn })
             },
             onDone: (nodeId, output) => {
               let s = stepOf.get(nodeId)
               if (s === undefined) { s = step++; stepOf.set(nodeId, s); nameOf.set(nodeId, output.agentName) }
               if (currentVersion > 0) output.versionNumber = currentVersion
               writeAgentLog(runId, s, output)
-              send({ type: 'agent_done', agentName: output.agentName, nodeId, step: s, output })
+              send({ type: 'agent_done', agentName: output.agentName, nodeId, step: s, output, kind: kindById.get(nodeId) })
+            },
+            onToolEvent: (nodeId, event) => {
+              send({ ...event, nodeId, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
             },
           },
           undefined,
