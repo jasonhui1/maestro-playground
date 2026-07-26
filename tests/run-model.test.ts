@@ -51,6 +51,10 @@ test('run-model execution order', () => {
   o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'n4', agentName: 'gate', step: 4, output: {} as AgentOutput })
   assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
 
+  // except loop-end, whose record is empty bookkeeping — the zone finished (#33)
+  o = applyInstanceOrder(o, 0, { type: 'agent_done', nodeId: 'le', agentName: 'loop-end', step: 5, output: {} as AgentOutput })
+  assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
+
   // non-node events and unknown instances are inert
   o = applyInstanceOrder(o, 0, { type: 'run_complete', runId: 'r1' })
   assert.deepStrictEqual(orderFor(o, 0), ['n1', 'n2', 'n3', 'n4'])
