@@ -5,7 +5,8 @@ import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef } from '.
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
-import { resolveNodePrompt, socketValue } from './resolveNode'
+import { resolveNodePrompt, readSocket } from './resolveNode'
+import { SectionWarning, sameSectionWarning } from './sectionWarning'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { slugify, extractSection } from './graph'
@@ -18,6 +19,8 @@ export interface RunCallbacks {
   onDone: (nodeId: string, output: AgentOutput) => void
   // Optional so existing three-member literals still satisfy this (#35).
   onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
+  // Carries both endpoints, so it takes no separate nodeId (#37).
+  onWarning?: (warning: SectionWarning) => void
 }
 
 function makeContextReader(workspacePath: string) {
@@ -78,19 +81,36 @@ export async function runChainGraph(
       .filter(s => !s.optional || wired.has(s.name))
       .map(s => s.name)
   }
+  // Deduped against the producing output, not the run: several readers of one bad
+  // output warn once, but a later loop round is a new output and warns again (#37).
+  const reportWarning = (w: SectionWarning) => {
+    const producer = nodeOutputs.get(w.fromNode)
+    if (producer?.warnings?.some(x => sameSectionWarning(x, w))) return
+    if (producer) producer.warnings = [...(producer.warnings ?? []), w]
+    callbacks.onWarning?.(w)
+  }
+
+  const edgeValue = (e: typeof chain.edges[number]): string => {
+    const src = nodeById.get(e.fromNode)
+    if (!src) return ''
+    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext)
+    if (read.missingSection) {
+      reportWarning({ fromNode: e.fromNode, section: read.missingSection, toNode: e.toNode, toSocket: e.toSocket })
+    }
+    return read.value
+  }
+
   const slotValue = (nodeId: string, slot: string): string => {
     const idx = liveEdgeForSlot(nodeId, slot)
-    if (idx === undefined) return ''
-    const e = chain.edges[idx]
-    const src = nodeById.get(e.fromNode)
-    return src ? socketValue(src, e.fromSocket, nodeOutputs, seedPrompt, readContext) : ''
+    return idx === undefined ? '' : edgeValue(chain.edges[idx])
   }
   const inValue = (nodeId: string): string => slotValue(nodeId, 'in')
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
-    const body = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
-    const systemPrompt = injectSkills(agent, skills, body)
+    const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
+    resolved.warnings.forEach(reportWarning)
+    const systemPrompt = injectSkills(agent, skills, resolved.prompt)
     // Binding is all the scheduler knows about tools: it hands the runner a list
     // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
     // took one API call or nine is entirely below this line.
@@ -126,10 +146,6 @@ export async function runChainGraph(
     }
   }
 
-  const edgeVal = (e: typeof chain.edges[number]): string => {
-    const src = nodeById.get(e.fromNode)
-    return src ? socketValue(src, e.fromSocket, nodeOutputs, seedPrompt, readContext) : ''
-  }
   const setStateSockets = (nodeId: string, state: Map<string, string>) => {
     for (const [name, val] of state) {
       const rec = controlOutput(`${nodeId}::${name}`, nodeId, val, 'success')
@@ -155,7 +171,7 @@ export async function runChainGraph(
     const state = new Map<string, string>()
     for (const name of zone.stateNames) {
       const idx = incoming(zone.startId).find(i => chain.edges[i].toSocket === name)
-      state.set(name, idx !== undefined ? edgeVal(chain.edges[idx]) : '')
+      state.set(name, idx !== undefined ? edgeValue(chain.edges[idx]) : '')
     }
     const order = bodyOrder(zone)
     let finalState = state
@@ -178,7 +194,7 @@ export async function runChainGraph(
       const newState = new Map<string, string>()
       for (const name of zone.stateNames) {
         const idx = incoming(zone.endId).find(i => chain.edges[i].toSocket === name)
-        newState.set(name, idx !== undefined ? edgeVal(chain.edges[idx]) : (state.get(name) || ''))
+        newState.set(name, idx !== undefined ? edgeValue(chain.edges[idx]) : (state.get(name) || ''))
       }
       finalState = newState
       if (evalCondition(zone.until, nodeOutputs)) break

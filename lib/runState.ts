@@ -1,6 +1,8 @@
 import { RunEvent } from './runStream'
 import { AgentOutput, ToolCallRecord } from './types'
 import { groupToolCallsByTurn, ToolTurnGroup } from './tools/logFormat'
+import { sameSectionWarning } from './sectionWarning'
+import type { SectionWarning } from './sectionWarning'
 
 // A ToolCallRecord before it finishes: `result`/`latencyMs` stay empty until
 // tool_result lands, so the live list feeds groupToolCallsByTurn unchanged.
@@ -19,12 +21,13 @@ export interface NodeRunState {
   toolCalls: LiveToolCall[]
   pendingTurn?: number              // turn whose arguments are still composing
   turnText: Record<number, string>  // per-turn narration, kept out of `output`
+  warnings: SectionWarning[]        // sections downstream edges asked this output for and did not find (#37)
 }
 
 export type RunStateMap = Record<string, NodeRunState>
 
 export const emptyNodeState = (): NodeRunState =>
-  ({ status: 'idle', output: '', thought: '', rounds: [], toolCalls: [], turnText: {} })
+  ({ status: 'idle', output: '', thought: '', rounds: [], toolCalls: [], turnText: {}, warnings: [] })
 
 // A finished transcript, as the live list holds it. Shared with the log-replay
 // fold in ./runHistoryState.ts so the two cannot drift.
@@ -41,7 +44,7 @@ const empty = emptyNodeState
 export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
   if (e.type === 'agent_start') {
     const prev = state[e.nodeId] ?? empty()
-    return { ...state, [e.nodeId]: { ...prev, status: 'running', output: '', thought: '', agentName: e.agentName, result: undefined, toolCalls: [], pendingTurn: undefined, turnText: {} } }
+    return { ...state, [e.nodeId]: { ...prev, status: 'running', output: '', thought: '', agentName: e.agentName, result: undefined, toolCalls: [], pendingTurn: undefined, turnText: {}, warnings: [] } }
   }
   if (e.type === 'token') {
     const prev = state[e.nodeId] ?? empty()
@@ -76,6 +79,11 @@ export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
     toolCalls[at] = { ...toolCalls[at], result: e.result, latencyMs: e.latencyMs, isError: e.isError, status: 'done' }
     return { ...state, [e.nodeId]: { ...prev, toolCalls } }
   }
+  if (e.type === 'section_missing') {
+    const prev = state[e.nodeId] ?? empty()
+    if (prev.warnings.some(x => sameSectionWarning(x, e.warning))) return state
+    return { ...state, [e.nodeId]: { ...prev, warnings: [...prev.warnings, e.warning] } }
+  }
   if (e.type === 'agent_done') {
     const prev = state[e.nodeId] ?? empty()
     const status = (e.output.status as NodeRunState['status']) ?? 'success'
@@ -84,7 +92,9 @@ export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
       : prev.rounds
     // The settled transcript wins: it carries turnText the events never send.
     const toolCalls = e.output.toolCalls ? settledToolCalls(e.output.toolCalls) : prev.toolCalls
-    return { ...state, [e.nodeId]: { ...prev, status, output: e.output.output, agentName: e.output.agentName, rounds, result: e.output, toolCalls, pendingTurn: undefined } }
+    // section_missing always lands after this node's agent_done (#37).
+    const warnings = e.output.warnings ?? prev.warnings
+    return { ...state, [e.nodeId]: { ...prev, status, output: e.output.output, agentName: e.output.agentName, rounds, result: e.output, toolCalls, pendingTurn: undefined, warnings } }
   }
   return state
 }

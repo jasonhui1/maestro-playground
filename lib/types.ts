@@ -1,3 +1,5 @@
+import type { SectionWarning } from './sectionWarning'
+
 export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report'
 
 export interface ChainPort {
@@ -143,6 +145,7 @@ export interface AgentOutput {
   round?: number         // loop iteration (0-based), set for loop-body outputs
   toolCalls?: ToolCallRecord[]  // in-node tool transcript; absent for tool-less agents
   toolTurns?: number            // assistant messages that carried tool_calls
+  warnings?: SectionWarning[]   // sections downstream edges asked this output for and did not find (#37)
 }
 
 export interface RunMeta {

@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { socketValue } from '../lib/resolveNode'
+import { readSocket } from '../lib/resolveNode'
 import { ChainNode, AgentOutput } from '../lib/types'
 
 test('resolve-control', () => {
@@ -20,10 +20,10 @@ test('resolve-control', () => {
   const gate: ChainNode = { id: 'g', kind: 'gate' }
   const branch: ChainNode = { id: 'r', kind: 'branch' }
 
-  assert.strictEqual(socketValue(seed, 'output', outs, 'SEED', read), 'SEED')
-  assert.strictEqual(socketValue(ctx, 'output', outs, 'SEED', read), 'CTX:lore')
-  assert.strictEqual(socketValue(agent, 'output', outs, 'SEED', read), 'AGENT BODY\n## Summary\nSHORT')
-  assert.strictEqual(socketValue(agent, 'summary', outs, 'SEED', read), 'SHORT')
-  assert.strictEqual(socketValue(gate, 'output', outs, 'SEED', read), 'PASSED VALUE')
-  assert.strictEqual(socketValue(branch, 'urgent', outs, 'SEED', read), 'ROUTED VALUE') // socket ignored
+  assert.strictEqual(readSocket(seed, 'output', outs, 'SEED', read).value, 'SEED')
+  assert.strictEqual(readSocket(ctx, 'output', outs, 'SEED', read).value, 'CTX:lore')
+  assert.strictEqual(readSocket(agent, 'output', outs, 'SEED', read).value, 'AGENT BODY\n## Summary\nSHORT')
+  assert.strictEqual(readSocket(agent, 'summary', outs, 'SEED', read).value, 'SHORT')
+  assert.strictEqual(readSocket(gate, 'output', outs, 'SEED', read).value, 'PASSED VALUE')
+  assert.strictEqual(readSocket(branch, 'urgent', outs, 'SEED', read).value, 'ROUTED VALUE') // socket ignored
 })

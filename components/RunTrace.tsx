@@ -1,11 +1,12 @@
 'use client'
 import { useState } from 'react'
-import { CheckCircle2, AlertCircle, Brain, MessageSquare } from 'lucide-react'
+import { CheckCircle2, AlertCircle, AlertTriangle, Brain, MessageSquare } from 'lucide-react'
 import type { NodeRunState, RunStateMap } from '@/lib/runState'
 import { narrationOf } from '@/lib/toolNarration'
 import TokenCostBar from '@/components/TokenCostBar'
 import { CollapsibleDetail } from '@/components/ui/CollapsibleDetail'
 import { ToolLoopNarration } from '@/components/trace/ToolLoopNarration'
+import { SectionWarnings } from '@/components/trace/SectionWarnings'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
 
 function StatusIcon({ status }: { status: NodeRunState['status'] }) {
@@ -53,6 +54,8 @@ function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRunState }
           )}
         </div>
       </div>
+
+      <SectionWarnings warnings={state.warnings} />
 
       {looped && (
         <div className="flex flex-wrap gap-1 px-4 py-2 border-b border-zinc-100">
@@ -150,6 +153,9 @@ export function RunTrace({ order, states }: { order: string[]; states: RunStateM
               <span className="text-[10px] font-mono text-zinc-300 w-4 shrink-0">{i + 1}</span>
               <StatusIcon status={s.status} />
               <span className="flex-1 text-xs font-medium text-zinc-700 truncate">{s.agentName ?? id}</span>
+              {s.warnings.length > 0 && (
+                <AlertTriangle size={11} className="text-amber-500 shrink-0" aria-label="convention warning" />
+              )}
               {s.rounds.length > 1 && (
                 <span className="text-[9px] font-bold text-amber-600 shrink-0">×{s.rounds.length}</span>
               )}

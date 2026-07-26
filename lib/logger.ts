@@ -4,6 +4,8 @@ import matter from 'gray-matter'
 import { RunMeta, AgentOutput, ToolCallRecord } from './types'
 import { getWorkspacePath } from './fs/workspace'
 import { groupToolCallsByTurn } from './tools/logFormat'
+import { sectionWarningText } from './sectionWarning'
+import type { SectionWarning } from './sectionWarning'
 
 // Wraps `text` in a fence long enough that no backtick run inside `text` can
 // terminate it early — the result is pasted verbatim, so the fence adapts to
@@ -49,6 +51,10 @@ function renderToolLoop(toolCalls: ToolCallRecord[]): string {
   return lines.join('\n')
 }
 
+function renderWarnings(warnings: SectionWarning[]): string {
+  return ['## Warnings', '', ...warnings.map(w => `- ${sectionWarningText(w)}`), ''].join('\n')
+}
+
 export function getRunDir(runId: string): string {
   const safeRunId = path.basename(runId)
   return path.join(getWorkspacePath(), 'logs', safeRunId)
@@ -91,10 +97,14 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     }
   })
 
-  // Tool-less nodes keep the body they have always had: the output, alone, from
-  // line 1. The headings only appear once there is a transcript to separate.
-  const body = output.toolCalls?.length
-    ? `${renderToolLoop(output.toolCalls)}\n## Output\n\n${output.output}`
+  // A plain node keeps the body it has always had: the output, alone, from line 1.
+  // The headings only appear once there is something to separate it from.
+  const preamble = [
+    ...(output.toolCalls?.length ? [renderToolLoop(output.toolCalls)] : []),
+    ...(output.warnings?.length ? [renderWarnings(output.warnings)] : []),
+  ]
+  const body = preamble.length
+    ? `${preamble.join('\n')}\n## Output\n\n${output.output}`
     : output.output
 
   const fileContent = matter.stringify(body, frontmatter)

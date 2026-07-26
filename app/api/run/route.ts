@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
       let step = 0
       const stepOf = new Map<string, number>()
       const nameOf = new Map<string, string>()
+      // A warning is found downstream, after its node's log is already on disk —
+      // so the log is rewritten from the same record the executor amended (#37).
+      const loggedOf = new Map<string, { step: number; output: AgentOutput }>()
       // The graph is fixed, so kind is knowable here rather than threaded
       // through the executor's eleven emit sites (#35).
       const kindById = new Map(theChain.nodes.map(n => [n.id, n.kind]))
@@ -85,10 +88,17 @@ export async function POST(req: NextRequest) {
               if (s === undefined) { s = step++; stepOf.set(nodeId, s); nameOf.set(nodeId, output.agentName) }
               if (currentVersion > 0) output.versionNumber = currentVersion
               writeAgentLog(runId, s, output)
+              loggedOf.set(nodeId, { step: s, output })
               send({ type: 'agent_done', agentName: output.agentName, nodeId, step: s, output, kind: kindById.get(nodeId) })
             },
             onToolEvent: (nodeId, event) => {
               send({ ...event, nodeId, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
+            },
+            onWarning: warning => {
+              const nodeId = warning.fromNode
+              send({ type: 'section_missing', nodeId, warning, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
+              const logged = loggedOf.get(nodeId)
+              if (logged) writeAgentLog(runId, logged.step, logged.output)
             },
           },
           undefined,

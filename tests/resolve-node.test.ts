@@ -34,23 +34,23 @@ test('resolve-node', () => {
   // seed source
   const wbNode = chain.nodes.find(n => n.id === 'wb') as ChainNode
   assert.strictEqual(
-    resolveNodePrompt(wbNode, chain, agent('world-builder', 'Seed: {input}'), nodeOutputs, 'MY SEED', readContext),
+    resolveNodePrompt(wbNode, chain, agent('world-builder', 'Seed: {input}'), nodeOutputs, 'MY SEED', readContext).prompt,
     'Seed: MY SEED'
   )
   // agent .summary source + context source
   const cdNode = chain.nodes.find(n => n.id === 'cd') as ChainNode
   assert.strictEqual(
-    resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: {world}\nLore: {lore}'), nodeOutputs, 'MY SEED', readContext),
+    resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: {world}\nLore: {lore}'), nodeOutputs, 'MY SEED', readContext).prompt,
     'World: short world\nLore: LORE TEXT'
   )
   // agent .summary source + context source with spaces in brackets
   assert.strictEqual(
-    resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: { world }\nLore: {   lore   }'), nodeOutputs, 'MY SEED', readContext),
+    resolveNodePrompt(cdNode, chain, agent('character-designer', 'World: { world }\nLore: {   lore   }'), nodeOutputs, 'MY SEED', readContext).prompt,
     'World: short world\nLore: LORE TEXT'
   )
   // unwired slot
   assert.strictEqual(
-    resolveNodePrompt(cdNode, chain, agent('character-designer', 'X: {missing}'), nodeOutputs, 'MY SEED', readContext),
+    resolveNodePrompt(cdNode, chain, agent('character-designer', 'X: {missing}'), nodeOutputs, 'MY SEED', readContext).prompt,
     'X: [missing: not wired]'
   )
 })

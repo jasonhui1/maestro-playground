@@ -1,4 +1,5 @@
 import { AgentOutput, ChainNode } from './types'
+import type { SectionWarning } from './sectionWarning'
 
 // Optional: a replayed branch output can carry a synthetic nodeId absent from
 // the graph, so its kind is unknowable (#35).
@@ -11,6 +12,8 @@ export type RunEvent =
   | { type: 'tool_pending'; nodeId: string; step?: number; kind?: NodeKind; turn: number }
   | { type: 'tool_call'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; args: unknown; activity?: string }
   | { type: 'tool_result'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; result: string; latencyMs: number; isError: boolean }
+  // nodeId is the producer: the warning lands on the output that lacked the section (#37).
+  | { type: 'section_missing'; nodeId: string; step?: number; kind?: NodeKind; warning: SectionWarning }
   | { type: 'run_complete'; runId: string }
   | { type: 'error'; error: string }
 

@@ -21,6 +21,7 @@ export function buildRunStateMap(outputs: AgentOutput[]): RunStateMap {
       rounds,
       result: o,
       toolCalls: o.toolCalls ? settledToolCalls(o.toolCalls) : prev.toolCalls,
+      warnings: o.warnings ?? prev.warnings,
     }
   }
   return map
