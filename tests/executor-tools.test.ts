@@ -3,7 +3,6 @@ import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { runAgent } from '../lib/runner'
 import type { BoundTool } from '../lib/tools/registry'
-import type { ToolLoopEvent } from '../lib/tools/events'
 import type { AgentDef, AgentOutput, ChainDef, ToolDef, ToolCallRecord } from '../lib/types'
 
 const noop = { onStart() {}, onToken() {}, onDone() {} }
@@ -28,17 +27,15 @@ function agentDef(over: Partial<AgentDef> = {}): AgentDef {
 // Records what the scheduler handed the runner, then answers like a tool-using node.
 function spyRun(output: string, toolCalls?: ToolCallRecord[]) {
   const seen: Array<{ agent: string; boundTools: BoundTool[] }> = []
-  const runFn = (async (
-    agent: AgentDef, _sp: string, _um: string, _ot: unknown, _hist: unknown, boundTools?: BoundTool[],
-  ): Promise<AgentOutput> => {
-    seen.push({ agent: agent.slug, boundTools: boundTools ?? [] })
+  const runFn: typeof runAgent = async (agent, _sp, _um, options) => {
+    seen.push({ agent: agent.slug, boundTools: options?.boundTools ?? [] })
     return {
       agentName: agent.name, systemPrompt: '', input: '', output,
       tokensIn: 1, tokensOut: 1, costUsd: 0, latencyMs: 0,
       model: agent.model, timestamp: new Date().toISOString(), status: 'success',
       ...(toolCalls ? { toolCalls, toolTurns: 1 } : {}),
     }
-  }) as unknown as typeof runAgent
+  }
   return { runFn, seen }
 }
 
@@ -112,7 +109,7 @@ async function main() {
       toolCalls: [record], toolTurns: 1,
     }
     let called = 0
-    const runFn = (async () => { called++; throw new Error('should not run') }) as unknown as typeof runAgent
+    const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
       chain, agents, [], 'SEED', '/ws', noop, runFn, [replayed], [], [retrieveTool],
@@ -152,21 +149,16 @@ async function main() {
   {
     const agents = [agentDef({ tools: ['retrieve'] })]
     const stamped: Array<{ nodeId: string; type: string; turn: number }> = []
-    const runFn = (async (
-      _a: AgentDef, _sp: string, _um: string,
-      onToken?: (t: string, ty?: string, turn?: number) => void,
-      _hist?: unknown, _bt?: unknown, _cc?: unknown,
-      onToolEvent?: (e: ToolLoopEvent) => void,
-    ): Promise<AgentOutput> => {
-      onToolEvent?.({ type: 'tool_pending', turn: 1 })
-      onToolEvent?.({ type: 'tool_call', turn: 1, name: 'retrieve', args: {} })
-      onToken?.('narration', 'output', 1)
+    const runFn: typeof runAgent = async (_a, _sp, _um, options) => {
+      options?.onToolEvent?.({ type: 'tool_pending', turn: 1 })
+      options?.onToolEvent?.({ type: 'tool_call', turn: 1, name: 'retrieve', args: {} })
+      options?.onToken?.('narration', 'output', 1)
       return {
         agentName: 'writer', systemPrompt: '', input: '', output: 'X',
         tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,
         model: 'm', timestamp: '', status: 'success',
       }
-    }) as unknown as typeof runAgent
+    }
 
     let tokenTurn: number | undefined
     await runChainGraph(

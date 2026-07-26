@@ -12,7 +12,7 @@ test('report-executor', async () => {
       edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: 'r', toSocket: 'in' }],
     }
     let called = 0
-    const runFn = (async () => { called++; throw new Error('should not run') }) as unknown as typeof runAgent
+    const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
       chain, [], [], 'HELLO WORLD', process.cwd(),

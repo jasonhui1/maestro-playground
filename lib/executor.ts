@@ -117,9 +117,11 @@ export async function runChainGraph(
     const boundTools = bindAgentTools(agent, tools, workspacePath)
     const output = await runFn(
       agent, systemPrompt, 'Follow your instructions.',
-      (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
-      undefined, boundTools, undefined,
-      callbacks.onToolEvent ? e => callbacks.onToolEvent!(node.id, e) : undefined,
+      {
+        onToken: (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
+        boundTools,
+        onToolEvent: callbacks.onToolEvent ? e => callbacks.onToolEvent!(node.id, e) : undefined,
+      },
     )
     output.nodeId = node.id
     if (round !== undefined) output.round = round

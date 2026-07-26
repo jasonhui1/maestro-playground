@@ -91,8 +91,10 @@ export async function POST(req: NextRequest) {
             agentDef,
             systemPrompt,
             lastUserMessage,
-            (token, tokenType) => send({ type: 'token', token, tokenType }),
-            fullHistory
+            {
+              onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
+              history: fullHistory,
+            }
           )
 
           // Persist the output

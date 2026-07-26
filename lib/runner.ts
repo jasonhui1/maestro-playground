@@ -191,10 +191,10 @@ async function runAgentWithTools(
   resolvedSystemPrompt: string,
   userMessage: string,
   boundTools: BoundTool[],
-  history: ChatMessage[] | undefined,
   chatCall: ChatCall,
-  narrate?: ToolNarration,
+  options: { history?: ChatMessage[]; narrate?: ToolNarration } = {},
 ): Promise<AgentOutput> {
+  const { history, narrate } = options
   const start = Date.now()
   const initial: WireMessage[] = history && history.length > 0
     ? history.map(m => ({ role: m.role, content: m.content }) as WireMessage)
@@ -251,21 +251,26 @@ async function runAgentWithTools(
   }
 }
 
+export interface RunAgentOptions {
+  onToken?: (token: string, type?: 'thought' | 'output', turn?: number) => void
+  history?: ChatMessage[]
+  boundTools?: BoundTool[]
+  chatCall?: ChatCall   // test seam; production wires createChatCall(agent)
+  onToolEvent?: ToolEventSink
+}
+
 export async function runAgent(
   agent: AgentDef,
   resolvedSystemPrompt: string,
   userMessage: string,
-  onToken?: (token: string, type?: 'thought' | 'output', turn?: number) => void,
-  history?: ChatMessage[],
-  boundTools?: BoundTool[],
-  chatCall?: ChatCall,   // test seam; production wires createChatCall(agent)
-  onToolEvent?: ToolEventSink,   // #39
+  options: RunAgentOptions = {},
 ): Promise<AgentOutput> {
+  const { onToken, history, boundTools, chatCall, onToolEvent } = options
   if (boundTools && boundTools.length > 0) {
     return runAgentWithTools(
-      agent, resolvedSystemPrompt, userMessage, boundTools, history,
+      agent, resolvedSystemPrompt, userMessage, boundTools,
       chatCall ?? createChatCall(agent),
-      { onEvent: onToolEvent, onToken },
+      { history, narrate: { onEvent: onToolEvent, onToken } },
     )
   }
 

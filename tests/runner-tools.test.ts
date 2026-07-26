@@ -128,8 +128,8 @@ async function main() {
       () => response(assistant({ content: '<thought>grounded now</thought>Mirna owns it.' }), [300, 40]),
     ])
     const out = await runAgent(
-      agentDef(), 'be brief', 'Follow your instructions.', undefined, undefined,
-      [bound(() => 'Owned by Mirna Copperhand.')], chatCall,
+      agentDef(), 'be brief', 'Follow your instructions.',
+      { boundTools: [bound(() => 'Owned by Mirna Copperhand.')], chatCall },
     )
 
     assert.strictEqual(out.status, 'success')
@@ -157,8 +157,8 @@ async function main() {
       () => { throw new Error('502 bad gateway') },
     ])
     const out = await runAgent(
-      agentDef(), 'be brief', 'go', undefined, undefined,
-      [bound(() => 'a result')], chatCall,
+      agentDef(), 'be brief', 'go',
+      { boundTools: [bound(() => 'a result')], chatCall },
     )
 
     assert.strictEqual(out.status, 'error')
@@ -178,8 +178,8 @@ async function main() {
       () => response(assistant({ content: 'Answered without it.' })),
     ])
     const out = await runAgent(
-      agentDef(), 'be brief', 'go', undefined, undefined,
-      [bound(() => { throw new Error('folder missing') })], chatCall,
+      agentDef(), 'be brief', 'go',
+      { boundTools: [bound(() => { throw new Error('folder missing') })], chatCall },
     )
 
     assert.strictEqual(out.status, 'success', 'a failed tool does not fail the node')
@@ -195,8 +195,8 @@ async function main() {
       () => response(assistant({ content: 'Final.' })),
     ])
     const out = await runAgent(
-      agentDef({ max_tool_turns: 1 }), 'be brief', 'go', undefined, undefined,
-      [bound(() => 'r')], chatCall,
+      agentDef({ max_tool_turns: 1 }), 'be brief', 'go',
+      { boundTools: [bound(() => 'r')], chatCall },
     )
 
     assert.strictEqual(out.status, 'success')

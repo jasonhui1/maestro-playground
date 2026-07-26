@@ -99,12 +99,12 @@ function agentsFor(): AgentDef[] {
   ]
 }
 
-function runFnOf(bodyByAgent: Record<string, string>) {
-  return (async (agent: AgentDef): Promise<AgentOutput> => ({
+function runFnOf(bodyByAgent: Record<string, string>): typeof runAgent {
+  return async (agent) => ({
     agentName: agent.name, systemPrompt: '', input: '', output: bodyByAgent[agent.slug] ?? '',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: agent.model,
     timestamp: new Date().toISOString(), status: 'success',
-  })) as unknown as typeof runAgent
+  })
 }
 
 async function runWith(chain: ChainDef, wbOutput: string) {
