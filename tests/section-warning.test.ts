@@ -28,9 +28,10 @@ test('readSocket signals only a wired section that the output does not carry', (
 
   assert.deepStrictEqual(readSocket(agent, 'summary', outs, 'SEED', read), { value: 'SHORT' })
   assert.deepStrictEqual(readSocket(agent, 'changes', outs, 'SEED', read), { value: '', missingSection: 'changes' })
-  // the heading is there and the convention was honoured; an empty body is not a miss
+  // the heading is there and the convention was honoured; an empty body is not a
+  // miss (no warning) but is flagged so the prompt substitution can mark it (below)
   const empty = new Map<string, AgentOutput>([['a', out('a', '## Summary\n\n## Changes\nX')]])
-  assert.deepStrictEqual(readSocket(agent, 'summary', empty, 'SEED', read), { value: '' })
+  assert.deepStrictEqual(readSocket(agent, 'summary', empty, 'SEED', read), { value: '', emptySection: 'summary' })
   // the whole output is never a section, however empty it is
   assert.deepStrictEqual(readSocket(agent, 'output', outs, 'SEED', read), { value: 'BODY\n## Summary\nSHORT' })
   assert.deepStrictEqual(readSocket(gate, 'anything', outs, 'SEED', read), { value: 'PASSED' })
@@ -63,6 +64,27 @@ test('resolveNodePrompt names producer, consuming slot and expected section', ()
   const r2 = resolveNodePrompt(chain.nodes[1], chain, agent, ok, 'SEED', read)
   assert.strictEqual(r2.prompt, 'World: SALT FLATS')
   assert.deepStrictEqual(r2.warnings, [])
+})
+
+test('a present-but-empty section renders a bracket marker, not a warning', () => {
+  const chain: ChainDef = {
+    slug: 'c', name: 'c', description: '', filePath: '',
+    nodes: [
+      { id: 'wb', kind: 'agent', agent: 'world-builder' },
+      { id: 'cd', kind: 'agent', agent: 'character-designer' },
+    ],
+    edges: [{ fromNode: 'wb', fromSocket: 'summary', toNode: 'cd', toSocket: 'world' }],
+  }
+  const agent: AgentDef = {
+    slug: 'character-designer', name: 'character-designer', model: 'm', description: '',
+    skills: [], context: [], input_from: 'user', output_format: 'markdown' as const,
+    outputs: [{ name: 'output' }], inputs: [], systemPrompt: 'World: {world}', filePath: '',
+  }
+  const outs = new Map<string, AgentOutput>([['wb', out('wb', '## Summary\n\n## Changes\nX')]])
+
+  const r = resolveNodePrompt(chain.nodes[1], chain, agent, outs, 'SEED', read)
+  assert.strictEqual(r.prompt, 'World: [world: "summary" section empty]')
+  assert.deepStrictEqual(r.warnings, [])
 })
 
 test('sectionWarningText names all four parts, and invents no heading spelling', () => {

@@ -6,7 +6,8 @@ import type { SectionWarning } from './sectionWarning'
 // Pure — reporting the miss is the caller's job (#37).
 export interface SocketRead {
   value: string
-  missingSection?: string
+  missingSection?: string  // heading absent: a convention violation, warned on
+  emptySection?: string    // heading present, body blank: honoured the convention, not warned on
 }
 
 // Resolves the value carried on a source node's socket.
@@ -40,10 +41,10 @@ export function readSocket(
   if (!o) return { value: '' }
   if (slugify(socket) === 'output') return { value: o.output }
   const value = extractSection(o.output, socket)
-  // An empty value is only a miss when the heading itself is absent — a heading
-  // present with an empty body extracts to '' too, and did honour the convention.
-  const missing = value === '' && !extractSections(o.output).includes(slugify(socket))
-  return missing ? { value, missingSection: socket } : { value }
+  if (value !== '') return { value }
+  return extractSections(o.output).includes(slugify(socket))
+    ? { value, emptySection: socket }
+    : { value, missingSection: socket }
 }
 
 export interface ResolvedPrompt {
@@ -75,6 +76,8 @@ export function resolveNodePrompt(
         value = read.value
         if (read.missingSection) {
           warnings.push({ fromNode: edge.fromNode, section: read.missingSection, toNode: node.id, toSocket: slot })
+        } else if (read.emptySection) {
+          value = `[${slot}: "${read.emptySection}" section empty]`
         }
       }
     }
