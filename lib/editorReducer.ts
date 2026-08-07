@@ -3,6 +3,7 @@ import {
   connectEdge, deleteNode as opDeleteNode, deleteEdge as opDeleteEdge,
   makeLoopZone, copySubgraph, pasteSubgraph, reservedIds, Subgraph,
 } from './editorOps'
+import { kindOf } from './nodeKinds'
 
 export interface EditorState {
   nodes: ChainNode[]
@@ -35,8 +36,11 @@ export function applyEditorAction(state: EditorState, action: EditorAction): Edi
       return { ...state, nodes: [...state.nodes, action.node] }
     case 'addLoopZone':
       return { ...state, nodes: [...state.nodes, ...makeLoopZone(reservedIds(state.nodes), action.pos)] }
-    case 'connect':
-      return { ...state, edges: connectEdge(state.edges, action.edge) }
+    case 'connect': {
+      const dst = state.nodes.find(n => n.id === action.edge.toNode)
+      const allowMulti = dst ? kindOf(dst.kind).multiInput === true : false
+      return { ...state, edges: connectEdge(state.edges, action.edge, allowMulti) }
+    }
     case 'deleteNode': {
       const { nodes, edges } = opDeleteNode(state.nodes, state.edges, action.id)
       return { ...state, nodes, edges, selectedIds: state.selectedIds.filter(x => x !== action.id) }

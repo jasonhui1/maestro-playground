@@ -114,6 +114,16 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
         warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
       }
     }
+    if (n.kind === 'join') {
+      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
+        warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
+      }
+      // A zone runs as one atomic unit and its body executes only agent/decider nodes,
+      // so a zoned join would never run and never record. Reject rather than vanish.
+      if (n.zone) {
+        add(`Node "${n.id}": a join cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
+      }
+    }
   }
 
   const incoming = new Map<string, number>()
@@ -131,8 +141,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       }
     }
     if (acceptsInputs(dst) && !kindOf(dst.kind).inputs(dst, workspace).map(s => s.name).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
-    const key = `${e.toNode}.${e.toSocket}`
-    incoming.set(key, (incoming.get(key) || 0) + 1)
+    if (!kindOf(dst.kind).multiInput) {
+      const key = `${e.toNode}.${e.toSocket}`
+      incoming.set(key, (incoming.get(key) || 0) + 1)
+    }
   }
   for (const [key, count] of incoming) {
     if (count > 1) {

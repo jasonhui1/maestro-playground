@@ -29,6 +29,8 @@ export interface NodeKindDescriptor {
   kind: ChainNodeKind
   /** Whether this kind can ever expose input sockets, independent of any one node's current data. */
   acceptsInputs: boolean
+  /** Whether this kind's input sockets each accept N incoming edges (join only; every other slot takes one). */
+  multiInput?: boolean
   inputs(node: ChainNode, workspace: WorkspaceLookup): InputSocket[]
   outputs(node: ChainNode, workspace: WorkspaceLookup): string[]
   fields: FieldDescriptor[]
@@ -147,6 +149,15 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     },
     fields: [{ key: 'subchain', codec: 'string' }],
     palette: { label: 'Subchain', category: 'Composite' },
+  },
+  join: {
+    kind: 'join',
+    acceptsInputs: true,
+    multiInput: true,
+    inputs: () => [{ name: 'in' }],
+    outputs: () => ['output'],
+    fields: [],
+    palette: { label: 'Join', category: 'Control flow' },
   },
   report: {
     kind: 'report',

@@ -57,7 +57,13 @@ export async function runChainGraph(
   const readContext = makeContextReader(workspacePath)
 
   const nodeOutputs = new Map<string, AgentOutput>()
-  const results: AgentOutput[] = []
+
+  const buckets = new Map<string, AgentOutput[]>()
+  const emit = (anchorId: string, rec: AgentOutput) => {
+    const arr = buckets.get(anchorId) ?? []
+    arr.push(rec)
+    buckets.set(anchorId, arr)
+  }
 
   // edge liveness, keyed by edge index
   const live = new Set<number>()
@@ -100,13 +106,21 @@ export async function runChainGraph(
     return read.value
   }
 
+  // A join's section heading, so the synthesizer downstream can tell contributors apart.
+  const joinLabel = (e: typeof chain.edges[number]): string => {
+    const src = nodeById.get(e.fromNode)
+    const slug = src ? agentSlugOf(src) : undefined
+    const base = (slug ? agentBySlug.get(slug)?.name : undefined) ?? slug ?? e.fromNode
+    return slugify(e.fromSocket) === 'output' ? base : `${base} (${e.fromSocket})`
+  }
+
   const slotValue = (nodeId: string, slot: string): string => {
     const idx = liveEdgeForSlot(nodeId, slot)
     return idx === undefined ? '' : edgeValue(chain.edges[idx])
   }
   const inValue = (nodeId: string): string => slotValue(nodeId, 'in')
 
-  const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number): Promise<AgentOutput> => {
+  const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
     const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
     resolved.warnings.forEach(reportWarning)
@@ -125,14 +139,13 @@ export async function runChainGraph(
     )
     output.nodeId = node.id
     if (round !== undefined) output.round = round
-    nodeOutputs.set(node.id, output); results.push(output); callbacks.onDone(node.id, output)
+    nodeOutputs.set(node.id, output); emit(anchorId, output); callbacks.onDone(node.id, output)
     return output
   }
 
   // --- zones ---
   interface Zone { id: string; startId: string; endId: string; bodyIds: string[]; stateNames: string[]; until: string; maxIterations: number }
   const zonesByStart = new Map<string, Zone>()
-  const handledByZone = new Set<string>()
   {
     const byZone = new Map<string, ChainNode[]>()
     for (const n of chain.nodes) if (n.zone) { const a = byZone.get(n.zone) ?? []; a.push(n); byZone.set(n.zone, a) }
@@ -148,11 +161,11 @@ export async function runChainGraph(
     }
   }
 
-  const setStateSockets = (nodeId: string, state: Map<string, string>) => {
+  const setStateSockets = (nodeId: string, state: Map<string, string>, anchorId: string = nodeId) => {
     for (const [name, val] of state) {
       const rec = controlOutput(`${nodeId}::${name}`, nodeId, val, 'success')
       nodeOutputs.set(`${nodeId}::${slugify(name)}`, rec)
-      results.push(rec)
+      emit(anchorId, rec)
     }
   }
   const bodyOrder = (zone: Zone): string[] => {
@@ -167,7 +180,6 @@ export async function runChainGraph(
   }
 
   const runZone = async (zone: Zone) => {
-    handledByZone.add(zone.startId); handledByZone.add(zone.endId); zone.bodyIds.forEach(id => handledByZone.add(id))
     const incoming = (id: string) => incomingByNode.get(id) || []
     // initial state
     const state = new Map<string, string>()
@@ -178,7 +190,7 @@ export async function runChainGraph(
     const order = bodyOrder(zone)
     let finalState = state
     for (let round = 0; round < zone.maxIterations; round++) {
-      setStateSockets(zone.startId, state)
+      setStateSockets(zone.startId, state, zone.startId)
       for (const id of order) {
         const bn = nodeById.get(id)!
         if (bn.kind === 'agent' || bn.kind === 'decider') {
@@ -188,7 +200,7 @@ export async function runChainGraph(
             if (replayed) {
               nodeOutputs.set(bn.id, replayed)
             } else {
-              await runAgentNode(bn, a, round)
+              await runAgentNode(bn, a, round, zone.startId)
             }
           }
         }
@@ -202,54 +214,47 @@ export async function runChainGraph(
       if (evalCondition(zone.until, nodeOutputs)) break
       state.clear(); for (const [k, v] of newState) state.set(k, v)
     }
-    setStateSockets(zone.endId, finalState)
+    setStateSockets(zone.endId, finalState, zone.startId)
     const rec = controlOutput(zone.endId, 'loop-end', '', 'success')
-    nodeOutputs.set(zone.endId, rec); results.push(rec); callbacks.onDone(zone.endId, rec)
+    nodeOutputs.set(zone.endId, rec); emit(zone.startId, rec); callbacks.onDone(zone.endId, rec)
     markOut(zone.endId, () => true)
   }
 
   // replay branched outputs (their out-edges are live)
   for (const o of startOutputs) {
     if (o.nodeId) { nodeOutputs.set(o.nodeId, o); markOut(o.nodeId, () => true) }
-    results.push(o); callbacks.onDone(o.nodeId || '', o)
+    emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
   }
 
-  for (const nodeId of topoOrder(chain)) {
-    if (handledByZone.has(nodeId)) continue
-    const startZone = zonesByStart.get(nodeId)
-    if (startZone) {
-      if (nodeOutputs.has(startZone.endId)) {
-        handledByZone.add(startZone.startId)
-        handledByZone.add(startZone.endId)
-        startZone.bodyIds.forEach(id => handledByZone.add(id))
-        markOut(startZone.endId, () => true)
-        continue
-      }
-      const inc = incomingByNode.get(nodeId) || []
-      const anyLive = inc.length === 0 || inc.some(i => live.has(i))
-      if (anyLive) { await runZone(startZone); continue }
-      // zone is unreachable (blocked upstream): record members skipped
-      for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
-        handledByZone.add(id)
-        const subNode = nodeById.get(id)
-        const label = subNode ? (agentSlugOf(subNode) || subNode.kind) : 'node'
-        const rec = controlOutput(id, label, '', 'skipped')
-        nodeOutputs.set(id, rec); results.push(rec); callbacks.onDone(id, rec)
-      }
-      continue
+  const processZoneUnit = async (startZone: Zone): Promise<void> => {
+    if (nodeOutputs.has(startZone.endId)) {
+      markOut(startZone.endId, () => true)
+      return
     }
+    const inc = incomingByNode.get(startZone.startId) || []
+    const anyLive = inc.length === 0 || inc.some(i => live.has(i))
+    if (anyLive) { await runZone(startZone); return }
+    // zone is unreachable (blocked upstream): record members skipped
+    for (const id of [startZone.startId, ...startZone.bodyIds, startZone.endId]) {
+      const subNode = nodeById.get(id)
+      const label = subNode ? (agentSlugOf(subNode) || subNode.kind) : 'node'
+      const rec = controlOutput(id, label, '', 'skipped')
+      nodeOutputs.set(id, rec); emit(startZone.startId, rec); callbacks.onDone(id, rec)
+    }
+  }
 
+  const processMainNode = async (nodeId: string): Promise<void> => {
     const node = nodeById.get(nodeId)
-    if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); continue }
+    if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
 
-    if (node.kind === 'seed' || node.kind === 'context') { markOut(nodeId, () => true); continue }
+    if (node.kind === 'seed' || node.kind === 'context') { markOut(nodeId, () => true); return }
 
     const slots = usedSlots(node)
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
     if (!available) {
       const rec = controlOutput(nodeId, agentSlugOf(node) || node.kind, '', 'skipped')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
-      continue // out-edges remain dead
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
+      return // out-edges remain dead
     }
 
     if (node.kind === 'agent' || node.kind === 'decider') {
@@ -261,22 +266,28 @@ export async function runChainGraph(
     } else if (node.kind === 'gate') {
       const pass = evalCondition(node.condition || '', nodeOutputs)
       const rec = controlOutput(nodeId, `gate: ${pass ? 'PASS' : 'BLOCK'}`, pass ? inValue(nodeId) : '', 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (pass) markOut(nodeId, () => true)
     } else if (node.kind === 'branch') {
       const active = (node.cases || []).find(c => evalCondition(c.condition, nodeOutputs))?.label ?? node.default
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
     } else if (node.kind === 'report') {
       const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
-      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
+      markOut(nodeId, () => true)
+    } else if (node.kind === 'join') {
+      const blocks = (incomingByNode.get(nodeId) || []).filter(i => live.has(i))
+        .map(i => `## ${joinLabel(chain.edges[i])}\n${edgeValue(chain.edges[i])}`)
+      const rec = controlOutput(nodeId, 'join', blocks.join('\n\n'), 'success')
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       markOut(nodeId, () => true)
     } else if (node.kind === 'subchain') {
       const ref = chains.find(c => c.slug === node.subchain)
       if (!ref) {
         const rec = controlOutput(nodeId, `subchain: ${node.subchain ?? '?'} (missing)`, '', 'error')
-        nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+        nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       } else {
         callbacks.onStart(nodeId, ref.name)
         // inject each *wired* declared input value into the matching inner seed
@@ -298,9 +309,9 @@ export async function runChainGraph(
           const val = r ? (slugify(p.socket ?? 'output') === 'output' ? r.output : extractSection(r.output, p.socket!)) : ''
           outMap.set(p.name, val)
         }
-        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records + pushes to results
+        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records
         const statusRec = controlOutput(nodeId, ref.name, '', 'success')
-        nodeOutputs.set(nodeId, statusRec); results.push(statusRec); callbacks.onDone(nodeId, statusRec)
+        nodeOutputs.set(nodeId, statusRec); emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
       }
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
@@ -314,5 +325,51 @@ export async function runChainGraph(
       void _exhaustive
     }
   }
+
+  // A zone with no registered start/end pair stays a set of plain nodes.
+  const unitOf = (nodeId: string): string => {
+    const n = nodeById.get(nodeId)
+    if (!n?.zone) return nodeId
+    for (const [startId, z] of zonesByStart) if (z.id === n.zone) return startId
+    return nodeId
+  }
+  const allUnits = new Set(chain.nodes.map(n => unitOf(n.id)))
+  const unitDeps = new Map<string, Set<string>>([...allUnits].map(u => [u, new Set<string>()]))
+  for (const e of chain.edges) {
+    const from = unitOf(e.fromNode), to = unitOf(e.toNode)
+    if (from !== to) unitDeps.get(to)?.add(from)
+  }
+
+  const topoRank = new Map(topoOrder(chain).map((id, i) => [id, i]))
+  const doneUnits = new Set<string>()
+  const MAX_CONCURRENCY = Number(process.env.CHAIN_MAX_CONCURRENCY) || 4
+
+  const processUnit = async (unitId: string): Promise<void> => {
+    const zone = zonesByStart.get(unitId)
+    if (zone) await processZoneUnit(zone)
+    else await processMainNode(unitId)
+  }
+
+  while (doneUnits.size < allUnits.size) {
+    const ready = [...allUnits]
+      .filter(u => !doneUnits.has(u) && [...unitDeps.get(u)!].every(d => doneUnits.has(d)))
+      .sort((a, b) => (topoRank.get(a) ?? 0) - (topoRank.get(b) ?? 0))
+    if (ready.length === 0) break // a DAG always has a ready unit; guards a malformed graph
+    for (let i = 0; i < ready.length; i += MAX_CONCURRENCY) {
+      // allSettled, not all: one node erroring must not abandon its wave-mates.
+      await Promise.allSettled(ready.slice(i, i + MAX_CONCURRENCY).map(processUnit))
+    }
+    for (const u of ready) doneUnits.add(u)
+  }
+
+  const results: AgentOutput[] = []
+  const flushed = new Set<string>()
+  for (const id of topoOrder(chain)) {
+    if (flushed.has(id)) continue
+    flushed.add(id)
+    const bucket = buckets.get(id)
+    if (bucket) results.push(...bucket)
+  }
+  for (const [id, bucket] of buckets) if (!flushed.has(id)) results.push(...bucket)
   return results
 }
