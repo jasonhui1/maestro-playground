@@ -1,6 +1,6 @@
 import type { SectionWarning } from './sectionWarning'
 
-export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report'
+export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
@@ -36,6 +36,7 @@ export type ChainNode =
   | (ChainNodeBase & { kind: 'loop-end'; until?: string; maxIterations?: number })
   | (ChainNodeBase & { kind: 'subchain'; subchain?: string })
   | (ChainNodeBase & { kind: 'report' })
+  | (ChainNodeBase & { kind: 'join' })
 
 export interface ChainEdge {
   fromNode: string

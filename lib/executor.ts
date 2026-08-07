@@ -100,6 +100,14 @@ export async function runChainGraph(
     return read.value
   }
 
+  // A join's section heading, so the synthesizer downstream can tell contributors apart.
+  const joinLabel = (e: typeof chain.edges[number]): string => {
+    const src = nodeById.get(e.fromNode)
+    const slug = src ? agentSlugOf(src) : undefined
+    const base = (slug ? agentBySlug.get(slug)?.name : undefined) ?? slug ?? e.fromNode
+    return slugify(e.fromSocket) === 'output' ? base : `${base} (${e.fromSocket})`
+  }
+
   const slotValue = (nodeId: string, slot: string): string => {
     const idx = liveEdgeForSlot(nodeId, slot)
     return idx === undefined ? '' : edgeValue(chain.edges[idx])
@@ -270,6 +278,12 @@ export async function runChainGraph(
       if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
     } else if (node.kind === 'report') {
       const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
+      nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
+      markOut(nodeId, () => true)
+    } else if (node.kind === 'join') {
+      const blocks = (incomingByNode.get(nodeId) || []).filter(i => live.has(i))
+        .map(i => `## ${joinLabel(chain.edges[i])}\n${edgeValue(chain.edges[i])}`)
+      const rec = controlOutput(nodeId, 'join', blocks.join('\n\n'), 'success')
       nodeOutputs.set(nodeId, rec); results.push(rec); callbacks.onDone(nodeId, rec)
       markOut(nodeId, () => true)
     } else if (node.kind === 'subchain') {
