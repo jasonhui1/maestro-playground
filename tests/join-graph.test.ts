@@ -60,6 +60,22 @@ test('a non-join slot still rejects a 2nd edge', () => {
     'a normal slot still rejects a 2nd edge')
 })
 
+test('a join inside a loop zone is rejected', () => {
+  const zoned: ChainDef = {
+    slug: 'c3', name: 'c3', description: '', filePath: '',
+    nodes: [
+      { id: 'ls', kind: 'loop-start', zone: 'z', state: [] },
+      { id: 'n1', kind: 'agent', agent: 'w1', zone: 'z' },
+      { id: 'j', kind: 'join', zone: 'z' },
+      { id: 'le', kind: 'loop-end', zone: 'z', until: 'always', maxIterations: 2 },
+    ],
+    edges: [{ fromNode: 'n1', fromSocket: 'output', toNode: 'j', toSocket: 'in' }],
+  }
+  const res = validateChain(zoned, agents)
+  assert.ok(!res.valid && res.errors.some(e => /join.*loop zone/i.test(e)),
+    'a zoned join errors rather than silently never running')
+})
+
 test('an unwired join warns', () => {
   const lonely: ChainDef = {
     slug: 'c2', name: 'c2', description: '', filePath: '',

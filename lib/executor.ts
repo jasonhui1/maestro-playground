@@ -58,9 +58,6 @@ export async function runChainGraph(
 
   const nodeOutputs = new Map<string, AgentOutput>()
 
-  // Execution order no longer matches result order once waves run concurrently, so
-  // records are filed under an anchor node and flushed in topoOrder at the end. A
-  // zone's records all anchor to its loop-start, keeping the zone contiguous.
   const buckets = new Map<string, AgentOutput[]>()
   const emit = (anchorId: string, rec: AgentOutput) => {
     const arr = buckets.get(anchorId) ?? []
@@ -312,7 +309,7 @@ export async function runChainGraph(
           const val = r ? (slugify(p.socket ?? 'output') === 'output' ? r.output : extractSection(r.output, p.socket!)) : ''
           outMap.set(p.name, val)
         }
-        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records + pushes to results
+        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records
         const statusRec = controlOutput(nodeId, ref.name, '', 'success')
         nodeOutputs.set(nodeId, statusRec); emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
@@ -329,9 +326,7 @@ export async function runChainGraph(
     }
   }
 
-  // A unit is the schedulable atom: a plain node, or a whole loop-zone run as one
-  // sequential black box anchored at its loop-start. A zone with no registered
-  // start/end pair stays a set of plain nodes, as before.
+  // A zone with no registered start/end pair stays a set of plain nodes.
   const unitOf = (nodeId: string): string => {
     const n = nodeById.get(nodeId)
     if (!n?.zone) return nodeId
@@ -356,8 +351,6 @@ export async function runChainGraph(
   }
 
   while (doneUnits.size < allUnits.size) {
-    // Everything in a wave is mutually independent by construction, so their writes
-    // to nodeOutputs/live touch disjoint keys and need no locking.
     const ready = [...allUnits]
       .filter(u => !doneUnits.has(u) && [...unitDeps.get(u)!].every(d => doneUnits.has(d)))
       .sort((a, b) => (topoRank.get(a) ?? 0) - (topoRank.get(b) ?? 0))
@@ -372,6 +365,7 @@ export async function runChainGraph(
   const results: AgentOutput[] = []
   const flushed = new Set<string>()
   for (const id of topoOrder(chain)) {
+    if (flushed.has(id)) continue
     flushed.add(id)
     const bucket = buckets.get(id)
     if (bucket) results.push(...bucket)

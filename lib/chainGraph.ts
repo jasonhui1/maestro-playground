@@ -118,6 +118,11 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
         warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
       }
+      // A zone runs as one atomic unit and its body executes only agent/decider nodes,
+      // so a zoned join would never run and never record. Reject rather than vanish.
+      if (n.zone) {
+        add(`Node "${n.id}": a join cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
+      }
     }
   }
 

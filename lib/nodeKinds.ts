@@ -29,10 +29,7 @@ export interface NodeKindDescriptor {
   kind: ChainNodeKind
   /** Whether this kind can ever expose input sockets, independent of any one node's current data. */
   acceptsInputs: boolean
-  /**
-   * Whether this kind's input sockets each accept N incoming edges. The one-edge-per-slot
-   * rule holds everywhere else, so lineage stays readable; join is the sole exemption (#1).
-   */
+  /** Whether this kind's input sockets each accept N incoming edges (join only; every other slot takes one). */
   multiInput?: boolean
   inputs(node: ChainNode, workspace: WorkspaceLookup): InputSocket[]
   outputs(node: ChainNode, workspace: WorkspaceLookup): string[]
