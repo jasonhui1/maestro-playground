@@ -1,6 +1,6 @@
 // hooks/store/useRunStore.ts
 import { create } from 'zustand'
-import { InstanceRunMap, applyInstanceEvent } from '../../lib/runModel'
+import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder } from '../../lib/runModel'
 import { streamRun } from '../../lib/runStream'
 
 export interface RunTarget {
@@ -17,6 +17,8 @@ export function clearRunTarget(key: string) { targets.delete(key) }
 
 export interface FileRunState {
   runState: InstanceRunMap
+  // execution order is not recoverable from the node-keyed map, so views that render a sequence track it (#33)
+  runOrder: InstanceOrder
   instanceCount: number
   currentInstance: number
   running: boolean
@@ -26,7 +28,7 @@ export interface FileRunState {
 }
 
 const defaults = (): FileRunState => ({
-  runState: {}, instanceCount: 0, currentInstance: 0, running: false, error: null, seedPrompt: '', parallel: 1,
+  runState: {}, runOrder: {}, instanceCount: 0, currentInstance: 0, running: false, error: null, seedPrompt: '', parallel: 1,
 })
 
 interface RunStore {
@@ -47,7 +49,7 @@ export const useRunStore = create<RunStore>((set, get) => {
     setSeed: (key, seed) => patch(key, { seedPrompt: seed }),
     setParallel: (key, n) => patch(key, { parallel: Math.max(1, Math.min(10, n || 1)) }),
     setCurrentInstance: (key, i) => patch(key, { currentInstance: i }),
-    reset: (key) => patch(key, { runState: {}, instanceCount: 0, currentInstance: 0, error: null }),
+    reset: (key) => patch(key, { runState: {}, runOrder: {}, instanceCount: 0, currentInstance: 0, error: null }),
 
     run: async (key, opts) => {
       const target = targets.get(key)
@@ -57,7 +59,7 @@ export const useRunStore = create<RunStore>((set, get) => {
       const buildBody = opts?.bodyOverride ?? target.buildBody
       const seed = cur.seedPrompt
 
-      patch(key, { runState: {}, instanceCount: n, currentInstance: 0, running: true, error: null })
+      patch(key, { runState: {}, runOrder: {}, instanceCount: n, currentInstance: 0, running: true, error: null })
 
       const runOne = async (i: number) => {
         try {
@@ -77,7 +79,7 @@ export const useRunStore = create<RunStore>((set, get) => {
             if (e.type === 'error') { patch(key, { error: e.error }); return }
             set((s) => {
               const f = s.byFile[key] ?? defaults()
-              return { byFile: { ...s.byFile, [key]: { ...f, runState: applyInstanceEvent(f.runState, i, e) } } }
+              return { byFile: { ...s.byFile, [key]: { ...f, runState: applyInstanceEvent(f.runState, i, e), runOrder: applyInstanceOrder(f.runOrder, i, e) } } }
             })
           })
         } catch (err) {

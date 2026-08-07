@@ -2,6 +2,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { useRunStore, setRunTarget, fileRun } from '../hooks/store/useRunStore'
+import { orderFor } from '../lib/runModel'
 
 function sse(frames: object[]): Response {
   const body = new ReadableStream<Uint8Array>({
@@ -52,6 +53,29 @@ test('run-store — parallel instances route independently', async () => {
   // reset clears results
   useRunStore.getState().reset(KEY)
   assert.deepStrictEqual(fileRun(KEY).runState, {})
+})
+
+test('run-store — tracks execution order per instance, minus loop-end', async () => {
+  // the editor's output rail renders this order; loop-end marks a zone done and has nothing to show (#38)
+  global.fetch = async () =>
+    sse([
+      { type: 'agent_start', nodeId: 'a', agentName: 'w', step: 0 },
+      { type: 'agent_done', nodeId: 'a', agentName: 'w', step: 0, output: done('a') },
+      { type: 'agent_start', nodeId: 'end', agentName: 'w', step: 1, kind: 'loop-end' },
+      { type: 'agent_done', nodeId: 'end', agentName: 'w', step: 1, kind: 'loop-end', output: done('') },
+      { type: 'agent_start', nodeId: 'b', agentName: 'w', step: 2 },
+      { type: 'agent_done', nodeId: 'b', agentName: 'w', step: 2, output: done('b') },
+    ])
+
+  const key = 'chain:ordered'
+  setRunTarget(key, { type: 'chain', slug: 'ordered', buildBody: () => ({}) })
+  useRunStore.getState().setParallel(key, 1)
+  await useRunStore.getState().run(key)
+
+  assert.deepStrictEqual(orderFor(fileRun(key).runOrder, 0), ['a', 'b'])
+
+  useRunStore.getState().reset(key)
+  assert.deepStrictEqual(fileRun(key).runOrder, {})
 })
 
 test('run-store — a non-ok response sets error and clears running', async () => {
