@@ -1,5 +1,4 @@
 import yaml from 'js-yaml'
-import path from 'path'
 
 export interface ValidationResult {
   valid: boolean
@@ -13,6 +12,25 @@ export function validateYaml(raw: string): ValidationResult {
   } catch (err: any) {
     return { valid: false, error: err.message }
   }
+}
+
+// Inheritance is one level: workspace/defaults.md is the only parent an agent has,
+// and it is never named in the agent file (ADR-0010).
+const FORBIDDEN_AGENT_FIELDS = ['parent', 'extends']
+
+export function forbiddenAgentFields(data: Record<string, unknown>): string[] {
+  return FORBIDDEN_AGENT_FIELDS.filter(f => f in data)
+}
+
+/** The one wording for a rejected inheritance field — the save, the run gate and the drawer share it. */
+export function forbiddenAgentFieldMessage(fields: string[]): string {
+  return `an agent file may not state ${fields.join(' or ')} — it inherits from workspace/defaults.md only (ADR-0010)`
+}
+
+export function validateAgentFrontmatter(data: Record<string, unknown>): ValidationResult {
+  const stated = forbiddenAgentFields(data)
+  if (stated.length === 0) return { valid: true }
+  return { valid: false, error: forbiddenAgentFieldMessage(stated) }
 }
 
 export function validateContext(filename: string, content: string): ValidationResult {

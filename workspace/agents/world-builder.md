@@ -1,15 +1,10 @@
 ---
 name: world-builder
-model: anthropic/claude-3.5-sonnet
-description: 'Builds rich, consistent world lore from a seed prompt'
+description: Builds rich, consistent world lore from a seed prompt
 skills:
   - base-protocol
   - storybuilding-variance
 context: []
-input_from: user
-output_format: markdown
-outputs:
-  - summary
 max_tokens: 16384
 ---
 

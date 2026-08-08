@@ -1,12 +1,11 @@
 ---
 name: dungeon-master
-model: anthropic/claude-3.5-sonnet
 description: Designs a scene or dungeon encounter rooted in the story
 skills:
   - base-protocol
 context: []
 input_from: event-writer
-output_format: markdown
+outputs: []
 ---
 
 You are a dungeon master designing an encounter that emerges from the story so far.

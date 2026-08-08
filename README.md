@@ -21,6 +21,7 @@ Maestro operates on a flat, intuitive directory layout inside the `workspace/` f
 
 ```text
 workspace/
+├── defaults.md   # Shared agent frontmatter; an agent file states only what differs
 ├── agents/       # Agent prompts (.md with YAML metadata)
 ├── skills/       # Behavioral/craft prompts injected into agents
 ├── context/      # Static data/lore (.md files referenced in prompts)
@@ -40,6 +41,8 @@ Agents are defined as markdown templates. The YAML frontmatter specifies:
 * `skills`: Reusable prompt snippets to inject (e.g., `base-protocol`).
 * `inputs`: (Optional) Metadata listing input socket names and descriptions.
 * `outputs`: Declared output sockets (e.g., `summary` to extract a specific markdown section). The main text output socket (`output`) is always implicitly present.
+
+Any field the file omits comes from `workspace/defaults.md`. The merge is override, per field — an agent file `skills` list takes the place of the default list rather than adding to it — and inheritance is one level, so an agent file may not name a `parent` or `extends`. The drawer's **Resolved agent** block shows the merged result and names the file each field came from. See [ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md).
 
 ### 2. Skills (`workspace/skills/`)
 Skills are reusable prompt fragments injected dynamically into agent system prompts. They belong to two categories:

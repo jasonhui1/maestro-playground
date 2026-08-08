@@ -1,14 +1,10 @@
 ---
 name: event-writer
-model: anthropic/claude-3.5-sonnet
 description: Writes a chain of escalating events from small to world-shaking
 skills:
   - base-protocol
 context: []
 input_from: character-designer
-output_format: markdown
-outputs:
-  - summary
 ---
 
 You are a narrative architect plotting a chain of escalating events.

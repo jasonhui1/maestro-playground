@@ -60,6 +60,19 @@ A loop-start/loop-end pair and the body nodes between them; iterates until the `
 
 The place that names an agent and supplies its per-instance values: an `agent` node in a chain file. One agent file may have many call sites. The agent file holds what every call site shares. The call site holds what one node changes. _Avoid_: instance, invocation, usage.
 
+## Defaults file
+
+`workspace/defaults.md` — the shared agent frontmatter. An agent file states only
+the fields that differ, and the two merge by override, per field ([ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md)).
+Inheritance is one level: the defaults file has no parent, and an agent file may
+not name one. Its body is not a prompt. A missing defaults file is not an error.
+
+## Resolved agent
+
+The agent file merged over the defaults file. This, not the raw agent file, is what
+the rest of the app sees — the workspace lookup carries it, so an agent node's output
+sockets are right even when `outputs` comes from defaults. _Avoid_: effective agent.
+
 ## Override vs extend
 
 The two merge modes. Both answer one question: what happens when a later source states a field that an earlier source already states?

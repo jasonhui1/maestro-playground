@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveEntityPath, isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { parseAgent } from '@/lib/fs/parseAgent'
+import { resolveEntityPath, isValidEntityType, EntityType, loadAgent } from '@/lib/fs/workspace'
 import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
 import { saveWorkspaceEntity, deleteWorkspaceEntity } from '@/lib/fs/save'
-import { validateYaml } from '@/lib/fs/validate'
+import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
 import fs from 'fs'
 import yaml from 'js-yaml'
 
@@ -29,7 +28,7 @@ export async function GET(
     }
 
     let data
-    if (type === 'agent') data = parseAgent(filePath)
+    if (type === 'agent') data = loadAgent(filePath)
     else if (type === 'skill') data = parseSkill(filePath)
     else if (type === 'chain') data = parseChain(filePath)
     else if (type === 'template') data = parseTemplate(filePath)
@@ -70,6 +69,11 @@ export async function PUT(
     
     if (!validation.valid) {
       return NextResponse.json(validation, { status: 400 })
+    }
+
+    if (type === 'agent') {
+      const agentCheck = validateAgentFrontmatter(data)
+      if (!agentCheck.valid) return NextResponse.json(agentCheck, { status: 400 })
     }
 
     const result = saveWorkspaceEntity({

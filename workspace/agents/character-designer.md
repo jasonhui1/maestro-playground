@@ -1,14 +1,10 @@
 ---
 name: character-designer
-model: anthropic/claude-3.5-sonnet
 description: Creates compelling characters grounded in the established world
 skills:
   - base-protocol
 context: []
 input_from: world-builder
-output_format: markdown
-outputs:
-  - summary
 ---
 
 You are a character designer working within an established world.

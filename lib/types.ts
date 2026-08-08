@@ -58,6 +58,21 @@ export interface OutputSocketDef {
   description?: string
 }
 
+// Every frontmatter field the resolved agent carries, in the order a reader meets them.
+export const AGENT_FIELDS = [
+  'name', 'model', 'description', 'skills', 'context', 'tools',
+  'input_from', 'output_format', 'outputs', 'inputs', 'max_tokens', 'max_tool_turns',
+] as const satisfies readonly (keyof AgentDef)[]
+
+export type AgentField = typeof AGENT_FIELDS[number]
+export type FieldSource = 'file' | 'defaults' | 'built-in' | 'env'
+
+/** Where each resolved field came from, and any inheritance field the file may not state (ADR-0010). */
+export interface AgentResolution {
+  sources: Record<AgentField, FieldSource>
+  forbidden: string[]
+}
+
 export interface AgentDef {
   slug: string
   name: string
@@ -76,6 +91,7 @@ export interface AgentDef {
   isFavorite?: boolean
   tools?: string[]      // tool names referenced from workspace/tools/*.md
   max_tool_turns?: number // cap per node execution; default DEFAULT_MAX_TOOL_TURNS
+  resolution?: AgentResolution // set by the loaders; absent on a def built in memory
 }
 
 export interface ToolParamDef {

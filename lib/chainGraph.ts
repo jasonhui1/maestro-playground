@@ -2,6 +2,7 @@ import { ChainDef, ChainNode, AgentDef, ToolDef, ValidationResult } from './type
 import { slugify } from './graph'
 import { kindOf, allKinds } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
+import { forbiddenAgentFieldMessage } from './fs/validate'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -82,6 +83,10 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     if (n.kind === 'agent' || n.kind === 'decider') {
       if (!n.agent || !agentBySlug.has(n.agent)) add(`Node "${n.id}": agent "${n.agent ?? ''}" not found`, { nodeId: n.id })
       const nodeAgent = n.agent ? agentBySlug.get(n.agent) : undefined
+      const forbidden = nodeAgent?.resolution?.forbidden ?? []
+      if (forbidden.length) {
+        add(`Node "${n.id}": agent "${nodeAgent!.slug}" — ${forbiddenAgentFieldMessage(forbidden)}`, { nodeId: n.id })
+      }
       for (const toolRef of nodeAgent?.tools ?? []) {
         if (typeof toolRef !== 'string') {
           add(`Node "${n.id}": agent "${nodeAgent!.slug}" has a non-string tools entry (inline tool config lands in Slice 5)`, { nodeId: n.id })

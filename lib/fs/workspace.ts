@@ -1,4 +1,5 @@
-import { loadAllAgents } from './parseAgent'
+import { loadAllAgents, parseAgent } from './parseAgent'
+import { loadAgentDefaults } from './defaults'
 import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
@@ -59,6 +60,11 @@ export function resolveEntityPath(type: string, slug: string) {
   }
   
   return targetPath
+}
+
+/** One agent, resolved against the workspace defaults file — never the raw agent file (ADR-0010). */
+export function loadAgent(filePath: string) {
+  return parseAgent(filePath, undefined, loadAgentDefaults(getWorkspacePath()))
 }
 
 export function loadWorkspace() {
