@@ -9,7 +9,7 @@ import { resolveNodePrompt, readSocket } from './resolveNode'
 import { SectionWarning, sameSectionWarning } from './sectionWarning'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
-import { slugify, extractSection } from './graph'
+import { slugify } from './graph'
 import { kindOf, agentSlugOf } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
@@ -295,23 +295,38 @@ export async function runChainGraph(
         const innerStart: AgentOutput[] = (ref.inputs ?? [])
           .filter(p => liveEdgeForSlot(nodeId, p.name) !== undefined)
           .map(p => controlOutput(p.node, p.name, slotValue(nodeId, p.name), 'success'))
+        // Every warning raised in here predates this node's own record, so none of
+        // them can report until that record exists (#40).
+        const deferredWarnings: SectionWarning[] = []
         const innerResults = await runChainGraph(
           ref, agents, skills, seedPrompt, workspacePath,
-          { onStart: () => {}, onToken: () => {}, onDone: () => {} },
+          {
+            onStart: () => {}, onToken: () => {}, onDone: () => {},
+            onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
+          },
           runFn, innerStart, chains, tools, depth + 1,
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()
         for (const r of innerResults) if (r.nodeId) byNode.set(r.nodeId, r)
+        const innerById = new Map(ref.nodes.map(n => [n.id, n]))
         const outMap = new Map<string, string>()
         for (const p of ref.outputs ?? []) {
-          const r = byNode.get(p.node)
-          const val = r ? (slugify(p.socket ?? 'output') === 'output' ? r.output : extractSection(r.output, p.socket!)) : ''
-          outMap.set(p.name, val)
+          const inner = innerById.get(p.node)
+          if (!inner) { outMap.set(p.name, ''); continue }
+          const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext)
+          // A skipped inner node produced no answer, so its missing heading is not a
+          // convention violation — only a real answer can violate one (#40).
+          if (read.missingSection && byNode.get(p.node)?.status === 'success') {
+            deferredWarnings.push({ fromNode: nodeId, viaNode: p.node, section: read.missingSection, toNode: nodeId, toSocket: p.name })
+          }
+          outMap.set(p.name, read.value)
         }
         setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records
         const statusRec = controlOutput(nodeId, ref.name, '', 'success')
-        nodeOutputs.set(nodeId, statusRec); emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
+        nodeOutputs.set(nodeId, statusRec)
+        deferredWarnings.forEach(reportWarning)
+        emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
       }
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {

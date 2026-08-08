@@ -30,6 +30,8 @@ The `{ chain, agents, chains }` bundle of already-loaded workspace files passed 
 
 A runtime notice that an edge wired to a named output section found no such heading in the producing node's output, so the downstream input resolved to empty (issue #37). Attaches to the **producing** node — its run panel entry and its log — and never fails the run. Distinct from a validation issue: a validation issue is knowable before a run, from files; a section warning is only knowable from a model's actual answer.
 
+A `subchain` node carries warnings on behalf of the nodes inside it (issue #40), because no inner node has a run panel entry of its own. Both a failed declared output port and a violation between two inner nodes re-anchor on the subchain node; `viaNode` keeps the real producer's id, so the text can name it without inventing a row for it. Nesting re-anchors at each boundary, so the outermost subchain node carries it.
+
 ## Multi-input
 
 An input socket that accepts N incoming edges instead of one. Per-kind fact (`multiInput` on the descriptor), not per-input — unlike an optional input. Only `join` sets it; every other slot in the graph keeps the one-edge rule, which is what keeps lineage readable.
