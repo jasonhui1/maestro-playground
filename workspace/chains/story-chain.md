@@ -31,6 +31,26 @@ nodes:
       - 1145.1458701850183
       - 47.50228478782419
     agent: dungeon-master
+  - id: join-1
+    kind: join
+    pos:
+      - 2
+      - 136
+  - id: subchain-1
+    kind: subchain
+    pos:
+      - 247.48981367525715
+      - 164.21275547917952
+  - id: gate-1
+    kind: gate
+    pos:
+      - 80.93569728310197
+      - 224.09738159770723
+  - id: branch-1
+    kind: branch
+    pos:
+      - 437.43636214496206
+      - 127.72056143820174
 edges:
   - from: seed
     to: wb.input
