@@ -48,6 +48,14 @@ export function agentSlugOf(node: ChainNode): string | undefined {
   return node.kind === 'agent' || node.kind === 'decider' ? node.agent : undefined
 }
 
+// `skills!` overrides, `skills+` extends, neither leaves it unchanged (ADR-0010).
+export function resolveNodeSkills(node: ChainNode, agentSkills: string[]): string[] {
+  if (node.kind !== 'agent' && node.kind !== 'decider') return agentSkills
+  if (node['skills!'] !== undefined) return node['skills!']
+  if (node['skills+'] !== undefined) return [...agentSkills, ...node['skills+']]
+  return agentSkills
+}
+
 function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
@@ -83,7 +91,11 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     inputs: agentInputs,
     outputs: agentOutputs,
-    fields: [{ key: 'agent', codec: 'string' }],
+    fields: [
+      { key: 'agent', codec: 'string' },
+      { key: 'skills!', codec: 'stringList' },
+      { key: 'skills+', codec: 'stringList' },
+    ],
     palette: { label: 'Agent', category: 'Agents' },
   },
   decider: {
@@ -91,7 +103,11 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     inputs: agentInputs,
     outputs: agentOutputs,
-    fields: [{ key: 'agent', codec: 'string' }],
+    fields: [
+      { key: 'agent', codec: 'string' },
+      { key: 'skills!', codec: 'stringList' },
+      { key: 'skills+', codec: 'stringList' },
+    ],
     palette: { label: 'Decider', category: 'Agents' },
   },
   gate: {

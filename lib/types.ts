@@ -28,8 +28,8 @@ export interface ChainNodeBase {
 export type ChainNode =
   | (ChainNodeBase & { kind: 'seed' })
   | (ChainNodeBase & { kind: 'context'; file?: string })
-  | (ChainNodeBase & { kind: 'agent'; agent?: string })
-  | (ChainNodeBase & { kind: 'decider'; agent?: string })
+  | (ChainNodeBase & { kind: 'agent'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
+  | (ChainNodeBase & { kind: 'decider'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'gate'; condition?: string })
   | (ChainNodeBase & { kind: 'branch'; cases?: BranchCase[]; default?: string })
   | (ChainNodeBase & { kind: 'loop-start'; state?: string[] })

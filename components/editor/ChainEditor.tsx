@@ -10,7 +10,7 @@ import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReduc
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
-import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort, ToolDef } from '@/lib/types'
+import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort, ToolDef, SkillDef } from '@/lib/types'
 import type { RunStateMap } from '@/lib/runState'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -42,7 +42,7 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, tools, onSaveStatus }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, tools, skills, onSaveStatus }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
@@ -51,6 +51,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   initialSeedPrompt?: string
   chains: ChainDef[]
   tools?: ToolDef[]
+  skills?: SkillDef[]
   onSaveStatus?: (status: SaveStatus) => void
 }) {
   const historced = useMemo(() => withHistory(applyEditorAction, (a: EditorAction) => !NON_HISTORIC.has(a.type)), [])
@@ -123,7 +124,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }, [meta, nodes, edges, iface, setContent])
 
   const chain: ChainDef = useMemo(() => ({ ...initialChain, nodes, edges }), [initialChain, nodes, edges])
-  const validation = useMemo(() => validateChain(chain, agents, chains, tools), [chain, agents, chains, tools])
+  const validation = useMemo(() => validateChain(chain, agents, chains, tools, skills), [chain, agents, chains, tools, skills])
 
   const issuesByNode = useMemo(() => {
     const m = new Map<string, string[]>()

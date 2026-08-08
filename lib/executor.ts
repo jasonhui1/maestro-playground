@@ -11,7 +11,7 @@ import { SectionWarning, sameSectionWarning } from './sectionWarning'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { slugify } from './graph'
-import { kindOf, agentSlugOf } from './nodeKinds'
+import { kindOf, agentSlugOf, resolveNodeSkills } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
 export interface RunCallbacks {
@@ -125,7 +125,9 @@ export async function runChainGraph(
     callbacks.onStart(node.id, agent.name)
     const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
     resolved.warnings.forEach(reportWarning)
-    const systemPrompt = injectSkills(agent, skills, resolved.prompt)
+    // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
+    // two nodes naming the same agent may still produce two different system prompts.
+    const systemPrompt = injectSkills({ ...agent, skills: resolveNodeSkills(node, agent.skills) }, skills, resolved.prompt)
     // Binding is all the scheduler knows about tools: it hands the runner a list
     // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
     // took one API call or nine is entirely below this line.

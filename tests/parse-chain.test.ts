@@ -30,6 +30,8 @@ edges:
     until: undefined,
     maxIterations: undefined,
     subchain: undefined,
+    'skills!': undefined,
+    'skills+': undefined,
   })
   assert.deepStrictEqual(c.edges[0], { fromNode: 'seed', fromSocket: 'output', toNode: 'wb', toSocket: 'input' })
 

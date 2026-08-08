@@ -1,4 +1,4 @@
-import { ChainDef, ChainNode, AgentDef, ToolDef, ValidationResult } from './types'
+import { ChainDef, ChainNode, AgentDef, ToolDef, SkillDef, ValidationResult } from './types'
 import { slugify } from './graph'
 import { kindOf, allKinds } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
@@ -28,7 +28,7 @@ export function topoOrder(chain: ChainDef): string[] {
 
 import { ValidationIssue } from './types'
 
-export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = [], tools: ToolDef[] = []): ValidationResult {
+export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = [], tools: ToolDef[] = [], skills: SkillDef[] = []): ValidationResult {
   const errors: string[] = []
   const issues: ValidationIssue[] = []
   const add = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => {
@@ -86,6 +86,13 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       const forbidden = nodeAgent?.resolution?.forbidden ?? []
       if (forbidden.length) {
         add(`Node "${n.id}": agent "${nodeAgent!.slug}" — ${forbiddenAgentFieldMessage(forbidden)}`, { nodeId: n.id })
+      }
+      const skillNames = new Set(skills.map(s => s.name))
+      const markerSkills = [...(n['skills!'] ?? []), ...(n['skills+'] ?? [])]
+      for (const skillRef of markerSkills) {
+        if (!skillNames.has(skillRef)) {
+          add(`Node "${n.id}": references unknown skill "${skillRef}"`, { nodeId: n.id })
+        }
       }
       for (const toolRef of nodeAgent?.tools ?? []) {
         if (typeof toolRef !== 'string') {
