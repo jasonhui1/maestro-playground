@@ -55,3 +55,19 @@ The scheduling strategy: repeatedly run every currently-ready unit at once, wait
 ## Zone
 
 A loop-start/loop-end pair and the body nodes between them; iterates until the `until` condition or `maxIterations`. The canvas draws it as a `zoneFrame` bounding box — which is a visual, not a node kind.
+
+## Call site
+
+The place that names an agent and supplies its per-instance values: an `agent` node in a chain file. One agent file may have many call sites. The agent file holds what every call site shares. The call site holds what one node changes. _Avoid_: instance, invocation, usage.
+
+## Override vs extend
+
+The two merge modes. Both answer one question: what happens when a later source states a field that an earlier source already states?
+
+**Override** — the later value takes the place of the earlier value. The earlier value is gone. **Extend** — the later value adds to the earlier value. The earlier value stays.
+
+Neither word states a position. `extend` does not mean "at the end"; the prompt extends at a named slot in the middle of the body. _Avoid_: replace, append, merge, patch, layer.
+
+Two sources use these modes. A defaults file and an agent file merge by override, per field ([ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md)). An agent file and a call site merge by the mode a marker states: `skills!` overrides the agent file list, `skills+` extends it.
+
+**The prompt supports extend only.** A call site fills a slot in the body. A call site may not send a whole new body. A chain that needs a whole new body needs a second agent file instead — otherwise the agent file names an empty shape, and a reader of the agent file learns nothing about the run.
