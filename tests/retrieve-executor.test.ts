@@ -56,3 +56,15 @@ It rains a lot in the harbor district.
     assert.throws(() => retrieveExecutor({ query: 'x' }, { folders: ['../../etc'] }, wp), /outside the workspace/)
   }
 })
+
+test('retrieve-executor: nested context files are searched, and keep their sub-folder in the provenance', () => {
+  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'retrieve-nested-ws-'))
+  fs.mkdirSync(path.join(wp, 'context', 'lore'), { recursive: true })
+  fs.writeFileSync(path.join(wp, 'context', 'lore', 'tavern.md'), `## The Gilded Flagon
+Owned by Mirna Copperhand.
+`)
+
+  const result = retrieveExecutor({ query: 'Gilded Flagon' }, {}, wp)
+  assert.match(result, /### context\/lore\/tavern\.md › The Gilded Flagon/)
+  assert.match(result, /Mirna Copperhand/)
+})

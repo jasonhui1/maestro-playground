@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
 import { AgentOutput } from './types'
+import { findBySlug } from './fs/discover'
 
 function extractSummary(markdown: string): string {
   // Matches # Summary, ## Summary, ### Summary etc. case-insensitive
@@ -40,8 +41,8 @@ export function resolveRefs(
     }
 
     // {file-name} → contents of workspace/context/file-name.md
-    const contextPath = path.join(workspacePath, 'context', `${k}.md`)
-    if (fs.existsSync(contextPath)) {
+    const contextPath = findBySlug(path.join(workspacePath, 'context'), k)
+    if (contextPath) {
       const raw = fs.readFileSync(contextPath, 'utf-8')
       const { content } = matter(raw)
       return content.trim()

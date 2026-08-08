@@ -2,6 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { AgentDef, OutputSocketDef, InputSocketDef } from '../types'
+import { discoverFiles } from './discover'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -58,8 +59,8 @@ export function normalizeInputs(raw: unknown): InputSocketDef[] {
   return list
 }
 
-export function parseAgent(filePath: string): AgentDef {
-  const raw = fs.readFileSync(filePath, 'utf-8')
+export function parseAgent(filePath: string, rawContent?: string): AgentDef {
+  const raw = rawContent ?? fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
   const slug = path.basename(filePath, '.md')
   
@@ -82,14 +83,12 @@ export function parseAgent(filePath: string): AgentDef {
     max_tool_turns: typeof data.max_tool_turns === 'number' ? data.max_tool_turns : undefined,
     systemPrompt: content.trim(),
     filePath,
+    rawContent: raw,
     isFavorite: false,
   }
 }
 
 export function loadAllAgents(workspacePath: string): AgentDef[] {
-  const agentsDir = path.join(workspacePath, 'agents')
-  if (!fs.existsSync(agentsDir)) return []
-  return fs.readdirSync(agentsDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => parseAgent(path.join(agentsDir, f)))
+  return discoverFiles(path.join(workspacePath, 'agents'))
+    .map(f => parseAgent(f.filePath, f.raw))
 }

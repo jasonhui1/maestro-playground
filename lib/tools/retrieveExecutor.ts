@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { walkMarkdown } from '../fs/discover'
 
 interface Section {
   heading: string
@@ -63,8 +64,11 @@ export function retrieveExecutor(params: Record<string, unknown>, config: Record
     if (!isInside(realWsRoot, fs.realpathSync(dir))) {
       throw new Error(`Retrieve: folder "${folder}" resolves outside the workspace`)
     }
-    for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md'))) {
-      const markdown = fs.readFileSync(path.join(dir, file), 'utf-8')
+    for (const filePath of walkMarkdown(dir)) {
+      // Provenance stays relative to the named folder, so a nested file reads as
+      // "context/lore/tavern.md" rather than losing its sub-folder.
+      const file = path.relative(dir, filePath).split(path.sep).join('/')
+      const markdown = fs.readFileSync(filePath, 'utf-8')
       for (const section of splitSections(markdown)) {
         const score = terms.length ? scoreSection(section, terms) : 0
         if (score > 0) scored.push({ folder, file, heading: section.heading, body: section.body, score })

@@ -2,6 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { ToolDef, ToolParamDef } from '../types'
+import { discoverFiles } from './discover'
 
 const VALID_PARAM_TYPES = new Set(['string', 'number', 'boolean'])
 
@@ -32,8 +33,8 @@ function normalizeConfig(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}
 }
 
-export function parseTool(filePath: string): ToolDef {
-  const raw = fs.readFileSync(filePath, 'utf-8')
+export function parseTool(filePath: string, rawContent?: string): ToolDef {
+  const raw = rawContent ?? fs.readFileSync(filePath, 'utf-8')
   const slug = path.basename(filePath, '.md')
   let data: Record<string, unknown>
   let content: string
@@ -52,13 +53,11 @@ export function parseTool(filePath: string): ToolDef {
     activity: typeof data.activity === 'string' ? data.activity : undefined,
     description: content.trim(),
     filePath,
+    rawContent: raw,
   }
 }
 
 export function loadAllTools(workspacePath: string): ToolDef[] {
-  const toolsDir = path.join(workspacePath, 'tools')
-  if (!fs.existsSync(toolsDir)) return []
-  return fs.readdirSync(toolsDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => parseTool(path.join(toolsDir, f)))
+  return discoverFiles(path.join(workspacePath, 'tools'))
+    .map(f => parseTool(f.filePath, f.raw))
 }

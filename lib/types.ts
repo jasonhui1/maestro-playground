@@ -71,6 +71,7 @@ export interface AgentDef {
   inputs: InputSocketDef[]
   systemPrompt: string  // body of the .md file
   filePath: string
+  rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
   max_tokens?: number
   isFavorite?: boolean
   tools?: string[]      // tool names referenced from workspace/tools/*.md
@@ -92,6 +93,7 @@ export interface ToolDef {
   activity?: string
   description: string  // body of the .md file, model-facing
   filePath: string
+  rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
 }
 
 export interface ToolCallRecord {
@@ -112,6 +114,7 @@ export interface SkillDef {
   description: string
   content: string       // body of the .md file
   filePath: string
+  rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
   isFavorite?: boolean
 }
 
@@ -122,6 +125,7 @@ export interface ChainDef {
   nodes: ChainNode[]
   edges: ChainEdge[]
   filePath: string
+  rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
   isFavorite?: boolean
   inputs?: ChainPort[]
   outputs?: ChainPort[]
@@ -170,6 +174,7 @@ export interface TemplateDef {
   chain: string
   seedPrompt: string
   filePath: string
+  rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
   isFavorite?: boolean
 }
 

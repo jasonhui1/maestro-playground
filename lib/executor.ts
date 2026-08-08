@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
 import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef } from './types'
+import { findBySlug } from './fs/discover'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
@@ -25,8 +26,8 @@ export interface RunCallbacks {
 
 function makeContextReader(workspacePath: string) {
   return (file: string): string => {
-    const p = path.join(workspacePath, 'context', `${file}.md`)
-    if (!fs.existsSync(p)) return `[context ${file} not found]`
+    const p = findBySlug(path.join(workspacePath, 'context'), file)
+    if (!p) return `[context ${file} not found]`
     const { content } = matter(fs.readFileSync(p, 'utf-8'))
     return content.trim()
   }

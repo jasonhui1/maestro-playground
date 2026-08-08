@@ -3,10 +3,10 @@ import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
+import { discoverFiles, findBySlug } from './discover'
 import path from 'path'
 import fs from 'fs'
 
-const WORKSPACE = process.env.WORKSPACE_PATH ?? './workspace'
 
 export const ENTITY_TYPES = {
   agent: 'agents',
@@ -23,7 +23,9 @@ export function isValidEntityType(type: string): type is EntityType {
 }
 
 export function getWorkspacePath() {
-  return path.resolve(WORKSPACE)
+  // Read per call, not once at import: the workspace root must stay overridable
+  // after this module is loaded.
+  return path.resolve(process.env.WORKSPACE_PATH ?? './workspace')
 }
 
 export function sanitizeSlug(slug: string) {
@@ -45,8 +47,12 @@ export function resolveEntityPath(type: string, slug: string) {
 
   const safeSlug = sanitizeSlug(slug)
   const filename = safeSlug.toLowerCase().endsWith('.md') ? safeSlug : `${safeSlug}.md`
-  const targetPath = path.join(wp, subDir, filename)
-  
+  // A slug addresses a file wherever it sits, so an existing file resolves to its own
+  // path — rebuilding one from the slug would write a root twin of a file in a
+  // sub-folder, and that twin then fails the load as a duplicate (ADR-0012).
+  const existing = findBySlug(absoluteSubDir, path.basename(filename, '.md'))
+  const targetPath = existing ?? path.join(wp, subDir, filename)
+
   // Security check: Ensure the resolved path is still within the workspace subdirectory
   if (!targetPath.startsWith(absoluteSubDir)) {
     throw new Error('Security violation: Directory traversal detected')
@@ -58,16 +64,12 @@ export function resolveEntityPath(type: string, slug: string) {
 export function loadWorkspace() {
   const wp = getWorkspacePath()
   
-  const contextDir = path.join(wp, 'context')
-  const context = fs.existsSync(contextDir) 
-    ? fs.readdirSync(contextDir)
-        .filter(f => f.endsWith('.md'))
-        .map(f => ({
-          slug: path.basename(f, '.md'),
-          name: path.basename(f, '.md'),
-          filePath: path.join(contextDir, f)
-        }))
-    : []
+  const context = discoverFiles(path.join(wp, 'context')).map(f => ({
+    slug: f.slug,
+    name: f.slug,
+    filePath: f.filePath,
+    rawContent: f.raw,
+  }))
 
   return {
     agents: loadAllAgents(wp),

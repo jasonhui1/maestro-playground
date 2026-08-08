@@ -2,9 +2,10 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { TemplateDef } from '../types'
+import { discoverFiles } from './discover'
 
-export function parseTemplate(filePath: string): TemplateDef {
-  const raw = fs.readFileSync(filePath, 'utf-8')
+export function parseTemplate(filePath: string, rawContent?: string): TemplateDef {
+  const raw = rawContent ?? fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
   const slug = path.basename(filePath, '.md')
   
@@ -15,14 +16,12 @@ export function parseTemplate(filePath: string): TemplateDef {
     chain: data.chain ?? '',
     seedPrompt: content.trim(),
     filePath,
+    rawContent: raw,
     isFavorite: false,
   }
 }
 
 export function loadAllTemplates(workspacePath: string): TemplateDef[] {
-  const templatesDir = path.join(workspacePath, 'templates')
-  if (!fs.existsSync(templatesDir)) return []
-  return fs.readdirSync(templatesDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => parseTemplate(path.join(templatesDir, f)))
+  return discoverFiles(path.join(workspacePath, 'templates'))
+    .map(f => parseTemplate(f.filePath, f.raw))
 }
