@@ -61,11 +61,22 @@ workspace does not start with an ambiguous name.
 - `.versions` keys stay slugs, so [ADR-0011](0011-a-run-pins-every-file-it-touched.md)
   is unaffected by a move. A moved file keeps its version history.
 - Nothing forces a folder. A flat workspace stays valid.
+- An empty folder is invisible to discovery, which walks `*.md` files and
+  never reports a bare directory. The palette needs a UI-only directory
+  reader to render one; no marker file is written to make an empty folder
+  discoverable. Accepted cost: git does not track empty directories, so an
+  empty folder is local-only until it holds a file.
+- A move is free — the slug does not change, so no chain edits and
+  `.versions` history is preserved. A **rename is not**: it changes the slug,
+  which is the reference, so every referencing file must be rewritten.
 
-## Open
+## Later decisions
 
-- **Folder-qualified references.** A reference of the form `panel/optimist`
-  would allow two files with the same leaf name. It also re-introduces a path
-  in the reference, and a move would then break a chain. Not decided.
-- **Whether the palette and the editor show the folder tree**, or a flat list.
-  Not decided.
+- **Folder-qualified references: no.** A reference stays a bare slug; a
+  folder never appears in one. `panel/optimist` was rejected because it
+  re-introduces a path into the reference, and a move would then break a
+  chain — the opposite of this ADR's point. The cost is accepted: one flat
+  namespace per type, so two files under `agents/` may not share a leaf name.
+- **The palette shows the folder tree, not a flat list.** Filesystem-first
+  (vision.md) means the workspace is edited directly on disk, so the UI must
+  render whatever nesting it finds, to arbitrary depth.
