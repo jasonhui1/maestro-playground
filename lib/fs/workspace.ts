@@ -29,12 +29,24 @@ export function sanitizeSlug(slug: string) {
   return path.basename(slug).replace(/[^\w.-]/g, '')
 }
 
-export function resolveEntityPath(type: string, slug: string) {
+// A folder is a location, never an identity, so it gets its own sanitiser instead of
+// riding through sanitizeSlug — smuggling it through the slug would break ADR-0012's
+// bare-slug reference rule.
+export function sanitizeFolder(folder?: string) {
+  if (!folder) return ''
+  return folder
+    .split('/')
+    .map(segment => segment.replace(/[^\w.-]/g, ''))
+    .filter(segment => segment && segment !== '.' && segment !== '..')
+    .join('/')
+}
+
+export function resolveEntityPath(type: string, slug: string, folder?: string) {
   const wp = getWorkspacePath()
   if (!isValidEntityType(type)) {
     throw new Error(`Invalid entity type: ${type}`)
   }
-  
+
   const subDir = ENTITY_TYPES[type]
   const absoluteSubDir = path.join(wp, subDir)
   if (!fs.existsSync(absoluteSubDir)) {
@@ -47,13 +59,15 @@ export function resolveEntityPath(type: string, slug: string) {
   // path — rebuilding one from the slug would write a root twin of a file in a
   // sub-folder, and that twin then fails the load as a duplicate (ADR-0012).
   const existing = findBySlug(absoluteSubDir, path.basename(filename, '.md'))
-  const targetPath = existing ?? path.join(wp, subDir, filename)
+  const targetPath = existing ?? path.join(wp, subDir, sanitizeFolder(folder), filename)
 
-  // Security check: Ensure the resolved path is still within the workspace subdirectory
+  // Belt-and-suspenders: sanitizeFolder already strips every '..' segment, so this
+  // should be unreachable, but a resolved path outside the type dir is unsafe enough
+  // to guard against directly rather than trust that invariant alone.
   if (!targetPath.startsWith(absoluteSubDir)) {
     throw new Error('Security violation: Directory traversal detected')
   }
-  
+
   return targetPath
 }
 

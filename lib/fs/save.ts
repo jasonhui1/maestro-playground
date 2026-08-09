@@ -11,9 +11,10 @@ export interface SaveEntityRequest {
   slug: string
   data: Record<string, any>
   content: string
+  folder?: string
 }
 
-export function saveWorkspaceEntity({ type, slug, data, content }: SaveEntityRequest) {
+export function saveWorkspaceEntity({ type, slug, data, content, folder }: SaveEntityRequest) {
   const cleanSlug = sanitizeSlug(slug)
 
   // Validate frontmatter data if it's provided as a string
@@ -25,14 +26,14 @@ export function saveWorkspaceEntity({ type, slug, data, content }: SaveEntityReq
   }
 
   // resolveEntityPath handles sanitization and security checks
-  const filePath = resolveEntityPath(type, cleanSlug)
+  const filePath = resolveEntityPath(type, cleanSlug, folder)
   const fileContent = matter.stringify(content, data)
 
   fs.writeFileSync(filePath, fileContent, 'utf-8')
   return { filePath, slug: cleanSlug }
 }
 
-export function createWorkspaceEntity({ type, name, slug }: CreationParams) {
+export function createWorkspaceEntity({ type, name, slug, folder }: CreationParams) {
   const cleanSlug = sanitizeSlug(slug)
   let template: any
 
@@ -63,7 +64,8 @@ export function createWorkspaceEntity({ type, name, slug }: CreationParams) {
     type,
     slug: cleanSlug,
     data,
-    content: body
+    content: body,
+    folder,
   })
 }
 

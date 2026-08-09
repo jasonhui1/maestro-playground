@@ -201,6 +201,7 @@ export interface CreationParams {
   type: 'agent' | 'skill' | 'chain' | 'template' | 'context'
   name: string
   slug: string
+  folder?: string
 }
 
 export interface ValidationIssue {

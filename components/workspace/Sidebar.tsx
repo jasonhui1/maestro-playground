@@ -45,7 +45,9 @@ export default function Sidebar() {
   const [modalType, setModalType] = useState<EntityType>('agent');
   const [newName, setNewName] = useState('');
   const [fromTemplate, setFromTemplate] = useState<string>('');
+  const [targetFolder, setTargetFolder] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ type: EntityType, slug: string, name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -104,6 +106,7 @@ export default function Sidebar() {
     if (!newName.trim()) return;
 
     setIsCreating(true);
+    setCreateError(null);
     try {
       const res = await fetch('/api/workspace', {
         method: 'POST',
@@ -112,11 +115,18 @@ export default function Sidebar() {
           type: modalType,
           name: newName,
           ...(modalType === 'chain' && fromTemplate ? { fromTemplate } : {}),
+          ...(targetFolder ? { folder: targetFolder } : {}),
         }),
       });
 
       if (!res.ok) {
         const err = await res.json();
+        // A name clash is a form validation, not an operation failure — shown inline,
+        // not as a toast, so the modal stays open for the user to pick another name.
+        if (res.status === 409) {
+          setCreateError(err.error || 'That name is already taken');
+          return;
+        }
         throw new Error(err.error || 'Failed to create entity');
       }
 
@@ -133,6 +143,7 @@ export default function Sidebar() {
       setIsModalOpen(false);
       setNewName('');
       setFromTemplate('');
+      setTargetFolder('');
       handleSelect(modalType, result.slug, result.seedPrompt);
     } catch (err: any) {
       addToast(err.message, 'error');
@@ -291,6 +302,7 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 setModalType(activeCategory);
+                setTargetFolder('');
                 setIsModalOpen(true);
               }}
               className="text-zinc-400 hover:text-zinc-600 transition-colors"
@@ -329,6 +341,12 @@ export default function Sidebar() {
             onToggleFolder={toggleFolder}
             onToggleFavorite={(e, item) => toggleFavorite(e, item.entityType, item.slug)}
             onDelete={(e, item) => confirmDelete(e, item.entityType as EntityType, item.slug, item.name)}
+            onCreateInFolder={(e, folderPath) => {
+              e.stopPropagation();
+              setModalType(activeCategory);
+              setTargetFolder(folderPath);
+              setIsModalOpen(true);
+            }}
             emptyLabel={`No ${activeCategory}s found`}
           />
         </nav>
@@ -350,11 +368,17 @@ export default function Sidebar() {
                   autoFocus
                   type="text"
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    setCreateError(null);
+                  }}
                   placeholder={`Enter ${modalType} name...`}
                   className="w-full px-3 py-2 border border-zinc-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
                   disabled={isCreating}
                 />
+                {createError && (
+                  <p className="mt-1 text-sm text-red-600">{createError}</p>
+                )}
               </div>
               {modalType === 'chain' && data.templates.length > 0 && (
                 <div className="mb-4">
@@ -381,6 +405,8 @@ export default function Sidebar() {
                     setIsModalOpen(false);
                     setNewName('');
                     setFromTemplate('');
+                    setTargetFolder('');
+                    setCreateError(null);
                   }}
                   className="px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors"
                   disabled={isCreating}

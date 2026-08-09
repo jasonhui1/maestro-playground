@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, ChevronRight, Folder, FolderOpen, Star, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Plus, Star, Trash2 } from 'lucide-react';
 import type { Row, TreeItem } from '@/lib/fileTree';
 import { FAVORITES_PATH } from '@/lib/fileTree';
 
@@ -12,6 +12,7 @@ interface FileListProps {
   onToggleFolder: (key: string, expanded: boolean) => void;
   onToggleFavorite: (e: React.MouseEvent, item: TreeItem) => void;
   onDelete: (e: React.MouseEvent, item: TreeItem) => void;
+  onCreateInFolder: (e: React.MouseEvent, folderPath: string) => void;
   emptyLabel: string;
 }
 
@@ -36,6 +37,7 @@ export default function FileList({
   onToggleFolder,
   onToggleFavorite,
   onDelete,
+  onCreateInFolder,
   emptyLabel,
 }: FileListProps) {
   const isActive = (item: TreeItem) => activeType === item.entityType && activeSlug === item.slug;
@@ -48,11 +50,11 @@ export default function FileList({
     <ul className="space-y-0.5">
       {rows.map((row) =>
         row.kind === 'folder' ? (
-          <li key={row.key} className="relative">
+          <li key={row.key} className="group relative">
             <button
               onClick={() => onToggleFolder(row.key, row.expanded)}
               aria-expanded={row.expanded}
-              className="w-full text-left px-2 py-1.5 text-sm rounded-md flex items-center gap-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors"
+              className="w-full text-left px-2 py-1.5 text-sm rounded-md flex items-center gap-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors pr-8"
               style={{ paddingLeft: 8 + row.depth * INDENT }}
             >
               <Guide depth={row.depth} />
@@ -66,6 +68,15 @@ export default function FileList({
               )}
               <span className="truncate font-medium">{row.label}</span>
             </button>
+            {row.path !== FAVORITES_PATH && (
+              <button
+                onClick={(e) => onCreateInFolder(e, row.path)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-600 transition-opacity"
+                title="New file in this folder"
+              >
+                <Plus size={14} />
+              </button>
+            )}
           </li>
         ) : (
           <li key={row.key} className="group relative">

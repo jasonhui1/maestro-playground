@@ -123,6 +123,39 @@ test('saving a nested file writes to that file; a new file defaults to the type 
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'optimist.md')), 'no root twin was created')
 })
 
+test('resolveEntityPath honours an explicit folder for a genuinely new file', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
+
+  const { resolveEntityPath } = await load()
+  assert.strictEqual(
+    resolveEntityPath('agent', 'newcomer', 'panel'),
+    path.join(wp, 'agents', 'panel', 'newcomer.md'),
+  )
+})
+
+test('resolveEntityPath still resolves to the existing file when a folder is also given', async () => {
+  const wp = newWorkspace()
+  const nested = write(wp, 'agents/panel/optimist.md', agent('Optimist'))
+
+  const { resolveEntityPath } = await load()
+  // the slug already exists elsewhere — the existing file wins over the requested folder,
+  // preserving "duplicate leaf name anywhere under the type" as a hard load failure (ADR-0012)
+  assert.strictEqual(resolveEntityPath('agent', 'optimist', 'other'), nested)
+})
+
+test('a folder value cannot escape the type directory', async () => {
+  const wp = newWorkspace()
+
+  const { resolveEntityPath } = await load()
+  const absoluteSubDir = path.join(wp, 'agents')
+  assert.strictEqual(
+    resolveEntityPath('agent', 'newcomer', '../../etc'),
+    path.join(absoluteSubDir, 'etc', 'newcomer.md'),
+  )
+  assert.ok(resolveEntityPath('agent', 'newcomer', '../../etc').startsWith(absoluteSubDir))
+})
+
 test('a nested context file is readable at run time, by bare slug', async () => {
   const wp = newWorkspace()
   write(wp, 'context/lore/tavern.md', '---\nname: Tavern\n---\nThe Gilded Flagon.\n')
