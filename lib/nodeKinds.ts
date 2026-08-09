@@ -1,6 +1,7 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef } from './types'
 import { parseSlots } from './slots'
 import { slugify } from './graph'
+import { ENTITY_DIRS } from './entityDirs'
 
 export interface WorkspaceLookup {
   chain: ChainDef
@@ -18,6 +19,8 @@ export type FieldCodec = 'string' | 'number' | 'stringList' | 'cases'
 export interface FieldDescriptor {
   key: string
   codec: FieldCodec
+  /** The workspace file type this field names by slug, for fields that hold a reference (#54). */
+  ref?: keyof typeof ENTITY_DIRS
 }
 
 export interface PaletteEntry {
@@ -83,7 +86,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: false,
     inputs: () => [],
     outputs: () => ['output'],
-    fields: [{ key: 'file', codec: 'string' }],
+    fields: [{ key: 'file', codec: 'string', ref: 'context' }],
     palette: { label: 'Context', category: 'Sources' },
   },
   agent: {
@@ -92,9 +95,9 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [
-      { key: 'agent', codec: 'string' },
-      { key: 'skills!', codec: 'stringList' },
-      { key: 'skills+', codec: 'stringList' },
+      { key: 'agent', codec: 'string', ref: 'agent' },
+      { key: 'skills!', codec: 'stringList', ref: 'skill' },
+      { key: 'skills+', codec: 'stringList', ref: 'skill' },
     ],
     palette: { label: 'Agent', category: 'Agents' },
   },
@@ -104,9 +107,9 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [
-      { key: 'agent', codec: 'string' },
-      { key: 'skills!', codec: 'stringList' },
-      { key: 'skills+', codec: 'stringList' },
+      { key: 'agent', codec: 'string', ref: 'agent' },
+      { key: 'skills!', codec: 'stringList', ref: 'skill' },
+      { key: 'skills+', codec: 'stringList', ref: 'skill' },
     ],
     palette: { label: 'Decider', category: 'Agents' },
   },
@@ -163,7 +166,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
       const outs = (ref?.outputs ?? []).map(p => p.name)
       return outs.length ? outs : ['output']
     },
-    fields: [{ key: 'subchain', codec: 'string' }],
+    fields: [{ key: 'subchain', codec: 'string', ref: 'chain' }],
     palette: { label: 'Subchain', category: 'Composite' },
   },
   join: {

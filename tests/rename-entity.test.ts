@@ -73,6 +73,70 @@ test('the .versions directory follows the new slug, so a pinned run still resolv
   assert.deepStrictEqual(listVersions('agent', 'optimist').map(v => v.version), [2, 1])
 })
 
+test('a past run keeps resolving: its pinned key follows the slug, its version number does not', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  write(
+    wp,
+    'logs/2026-08-08-abc/meta.json',
+    JSON.stringify({
+      runId: '2026-08-08-abc',
+      chainName: 'decision',
+      versions: { 'chain/decision': 1, 'agent/panel-optimist': 3, defaults: 2 },
+    }),
+  )
+
+  const { snapshotVersion, getVersionContent } = await import('../lib/fs/versions')
+  snapshotVersion('agent', 'panel-optimist', 'a')
+  snapshotVersion('agent', 'panel-optimist', 'b')
+  snapshotVersion('agent', 'panel-optimist', 'the pinned bytes')
+
+  const { planRename, renameWorkspaceEntity } = await rename()
+  assert.deepStrictEqual(planRename('agent', 'panel-optimist', 'optimist').runs, ['2026-08-08-abc'])
+  renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+
+  const meta = JSON.parse(read(path.join(wp, 'logs', '2026-08-08-abc', 'meta.json')))
+  assert.deepStrictEqual(meta.versions, { 'chain/decision': 1, 'agent/optimist': 3, defaults: 2 })
+  assert.strictEqual(meta.runId, '2026-08-08-abc', 'the rest of the run record is untouched')
+
+  // what the pinned-versions view fetches, for the key the run now holds
+  assert.strictEqual(getVersionContent('agent', 'optimist', meta.versions['agent/optimist']), 'the pinned bytes')
+})
+
+test('a run that never touched the renamed file is left alone', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  const metaPath = write(wp, 'logs/2026-08-08-abc/meta.json', JSON.stringify({ versions: { 'agent/other': 1 } }))
+  const before = read(metaPath)
+
+  const { renameWorkspaceEntity } = await rename()
+  const result = renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+
+  assert.deepStrictEqual(result.plan.runs, [])
+  assert.strictEqual(read(metaPath), before)
+})
+
+test('a failure part-way leaves no half-rename behind', async () => {
+  const wp = newWorkspace()
+  const agentPath = write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  const chainPath = write(
+    wp,
+    'chains/decision.md',
+    '---\nname: Decision\nnodes:\n  - id: a\n    kind: agent\n    agent: panel-optimist\nedges: []\n---\n',
+  )
+  const chainBefore = read(chainPath)
+
+  // a directory where the renamed file must land makes fs.renameSync throw, after the
+  // chain rewrite has already been written
+  fs.mkdirSync(path.join(wp, 'agents', 'optimist.md'))
+
+  const { renameWorkspaceEntity } = await rename()
+  assert.throws(() => renameWorkspaceEntity('agent', 'panel-optimist', 'optimist'))
+
+  assert.strictEqual(read(chainPath), chainBefore, 'the rewritten reference was rolled back')
+  assert.ok(fs.existsSync(agentPath), 'the file is still at its old name')
+})
+
 test('a rename with no version history leaves no .versions directory behind', async () => {
   const wp = newWorkspace()
   write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
@@ -225,6 +289,19 @@ test('renaming to the same slug changes nothing', async () => {
 
   assert.strictEqual(result.filePath, filePath)
   assert.deepStrictEqual(result.plan.rewrites, [])
+})
+
+test('every node field the registry marks as a reference is a rename site', async () => {
+  const { allFields } = await import('../lib/nodeKinds')
+  const { refSitesFor } = await rename()
+
+  // the registry owns every field fact (ADR-0001), so a new referencing field must reach
+  // the rename without a second list being edited
+  for (const field of allFields.filter(f => f.ref)) {
+    const site = refSitesFor(field.ref!).find(s => s.holder === 'chain' && s.field === field.key)
+    assert.ok(site, `no rename site derives from the registry field \`${field.key}\``)
+    assert.strictEqual(site!.list, field.codec === 'stringList')
+  }
 })
 
 test('the workspace loads cleanly after a rename, with no dangling reference', async () => {

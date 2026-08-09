@@ -5,6 +5,7 @@ import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
 import { saveWorkspaceEntity, deleteWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
 import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
+import { workspaceErrorResponse } from '../../errors'
 import fs from 'fs'
 import yaml from 'js-yaml'
 
@@ -37,11 +38,7 @@ export async function GET(
     const raw = fs.readFileSync(filePath, 'utf-8')
     return NextResponse.json({ ...data, raw })
   } catch (err: unknown) {
-    const error = err as Error
-    if (error.message.includes('Security violation')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }
 
@@ -111,14 +108,7 @@ export async function PATCH(
     const result = moveWorkspaceEntity(type as EntityType, slug, folder)
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
-    const error = err as Error
-    if (error.message.includes('Security violation')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error.message.includes('not found')) {
-      return NextResponse.json({ error: error.message }, { status: 404 })
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }
 
@@ -136,11 +126,7 @@ export async function DELETE(
     const result = deleteWorkspaceEntity(type as EntityType, slug)
     return NextResponse.json(result)
   } catch (err: unknown) {
-    const error = err as Error
-    if (error.message.includes('Security violation')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }
 
