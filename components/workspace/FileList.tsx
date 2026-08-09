@@ -17,6 +17,7 @@ interface FileListProps {
   onToggleFavorite: (e: React.MouseEvent, item: TreeItem) => void;
   onDelete: (e: React.MouseEvent, item: TreeItem) => void;
   onMove: (item: TreeItem, folder: string) => void;
+  onRename: (item: TreeItem) => void;
   onCreateInFolder: (e: React.MouseEvent, folderPath: string) => void;
   onCreateFolderInFolder: (e: React.MouseEvent, folderPath: string) => void;
   emptyLabel: string;
@@ -45,6 +46,7 @@ export default function FileList({
   onToggleFavorite,
   onDelete,
   onMove,
+  onRename,
   onCreateInFolder,
   onCreateFolderInFolder,
   emptyLabel,
@@ -57,7 +59,7 @@ export default function FileList({
     setContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
-  const moveMenuItems = (item: TreeItem): ContextMenuItem[] => [
+  const rowMenuItems = (item: TreeItem): ContextMenuItem[] => [
     {
       key: 'move',
       label: 'Move to…',
@@ -66,6 +68,7 @@ export default function FileList({
         ...folders.map((folder) => ({ key: folder, label: folder, onClick: () => onMove(item, folder) })),
       ],
     },
+    { key: 'rename', label: 'Rename…', onClick: () => onRename(item) },
   ];
 
   if (rows.length === 0) {
@@ -164,7 +167,7 @@ export default function FileList({
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
-        items={moveMenuItems(contextMenu.item)}
+        items={rowMenuItems(contextMenu.item)}
         onClose={() => setContextMenu(null)}
       />
     )}
