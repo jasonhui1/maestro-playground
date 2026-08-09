@@ -6,4 +6,5 @@ export const ENTITY_DIRS = {
   chain: 'chains',
   template: 'templates',
   context: 'context',
+  tool: 'tools',
 } as const

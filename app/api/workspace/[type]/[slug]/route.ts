@@ -3,6 +3,7 @@ import { resolveEntityPath, isValidEntityType, EntityType, loadAgent } from '@/l
 import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
+import { parseTool } from '@/lib/fs/parseTool'
 import { saveWorkspaceEntity, deleteWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
 import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
 import { workspaceErrorResponse } from '../../errors'
@@ -33,6 +34,7 @@ export async function GET(
     else if (type === 'skill') data = parseSkill(filePath)
     else if (type === 'chain') data = parseChain(filePath)
     else if (type === 'template') data = parseTemplate(filePath)
+    else if (type === 'tool') data = parseTool(filePath)
     else if (type === 'context') data = { slug, name: slug }
 
     const raw = fs.readFileSync(filePath, 'utf-8')

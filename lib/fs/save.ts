@@ -2,13 +2,13 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import yaml from 'js-yaml'
 import path from 'path'
-import { resolveEntityPath, resolveFolderPath, sanitizeSlug } from './workspace'
+import { resolveEntityPath, resolveFolderPath, sanitizeSlug, EntityType } from './workspace'
 import { validateYaml } from './validate'
-import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate } from './templates'
+import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
 
 export interface SaveEntityRequest {
-  type: 'agent' | 'skill' | 'chain' | 'template' | 'context'
+  type: EntityType
   slug: string
   data: Record<string, any>
   content: string
@@ -54,6 +54,9 @@ export function createWorkspaceEntity({ type, name, slug, folder }: CreationPara
     case 'context':
       template = { content: '' }
       break
+    case 'tool':
+      template = getToolTemplate(name, cleanSlug)
+      break
     default:
       throw new Error(`Unknown entity type: ${type}`)
   }
@@ -80,7 +83,7 @@ export function createWorkspaceFolder(type: string, folder: string) {
 
 // A move only ever changes the path a slug resolves to (ADR-0012): the slug, .versions
 // history, and every chain reference by slug are untouched.
-export function moveWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string, folder: string) {
+export function moveWorkspaceEntity(type: EntityType, slug: string, folder: string) {
   const currentPath = resolveEntityPath(type, slug)
   if (!fs.existsSync(currentPath)) {
     throw new Error(`Entity not found: ${type}/${slug}`)
@@ -100,7 +103,7 @@ export function moveWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'templat
   return { filePath: targetPath, slug }
 }
 
-export function deleteWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string) {
+export function deleteWorkspaceEntity(type: EntityType, slug: string) {
   const filePath = resolveEntityPath(type, slug)
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath)

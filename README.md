@@ -27,6 +27,7 @@ workspace/
 ├── context/      # Static data/lore (.md files referenced in prompts)
 ├── chains/       # Node DAG pipelines with wiring edges and control flow
 ├── templates/    # Seed prompt presets paired with chains
+├── tools/        # Tool definitions an agent may call mid-node
 └── logs/         # Run logs structured by Run ID
 ```
 

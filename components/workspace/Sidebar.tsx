@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { AgentDef, SkillDef, ChainDef, TemplateDef } from '@/lib/types';
+import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef } from '@/lib/types';
 import Fuse from 'fuse.js';
 import { 
   Bot, 
@@ -15,6 +15,7 @@ import {
   Search,
   X,
   AlertTriangle,
+  Wrench,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -25,12 +26,23 @@ import { buildTreeRows, buildSearchRows, workspaceRootOf, allFolders, type TreeI
 import FileList from './FileList';
 import RenameDialog, { type RenamePlan } from './RenameDialog';
 
+// One entry per key of ENTITY_DIRS, so a new file type shows up here or nowhere.
+const CATEGORIES: { id: EntityType; label: string; icon: typeof Bot }[] = [
+  { id: 'agent', label: 'Agents', icon: Bot },
+  { id: 'skill', label: 'Skills', icon: Settings2 },
+  { id: 'chain', label: 'Chains', icon: LinkIcon },
+  { id: 'template', label: 'Templates', icon: FileText },
+  { id: 'context', label: 'Context', icon: Folder },
+  { id: 'tool', label: 'Tools', icon: Wrench },
+];
+
 interface WorkspaceData {
   agents: AgentDef[];
   skills: SkillDef[];
   chains: ChainDef[];
   templates: TemplateDef[];
   context: { slug: string; name: string; filePath: string }[];
+  tools: ToolDef[];
 }
 
 export default function Sidebar() {
@@ -461,13 +473,6 @@ export default function Sidebar() {
   );
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
   if (!data) return null;
-  const categories = [
-    { id: 'agent' as EntityType, label: 'Agents', icon: Bot },
-    { id: 'skill' as EntityType, label: 'Skills', icon: Settings2 },
-    { id: 'chain' as EntityType, label: 'Chains', icon: LinkIcon },
-    { id: 'template' as EntityType, label: 'Templates', icon: FileText },
-    { id: 'context' as EntityType, label: 'Context', icon: Folder },
-  ];
 
   return (
     <div className="w-full h-full flex flex-col border-r border-zinc-200 min-w-0 bg-white">
@@ -750,17 +755,10 @@ export function CategoryNavigation() {
   const setActiveCategory = useWorkspaceUiStore((s) => s.setActiveCategory);
   const collapsed = useWorkspaceUiStore((s) => s.sidebarCollapsed);
 
-  const categories = [
-    { id: 'agent' as EntityType, label: 'Agents', icon: Bot },
-    { id: 'skill' as EntityType, label: 'Skills', icon: Settings2 },
-    { id: 'chain' as EntityType, label: 'Chains', icon: LinkIcon },
-    { id: 'template' as EntityType, label: 'Templates', icon: FileText },
-    { id: 'context' as EntityType, label: 'Context', icon: Folder },
-  ];
 
   return (
     <div className="w-[64px] h-[100%] flex flex-col items-center py-4 gap-4 border-r border-zinc-200 bg-white shrink-0 select-none">
-      {categories.map((cat) => {
+      {CATEGORIES.map((cat) => {
         const Icon = cat.icon;
         const isActive = activeCategory === cat.id;
         return (

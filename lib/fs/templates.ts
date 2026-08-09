@@ -1,4 +1,4 @@
-import { AgentDef, SkillDef, ChainDef, TemplateDef } from '../types'
+import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef } from '../types'
 
 export function getAgentTemplate(name: string, slug: string): Partial<AgentDef> {
   return {
@@ -41,5 +41,17 @@ export function getTemplateTemplate(name: string, slug: string): Partial<Templat
     description: `A new template named ${name}`,
     chain: '',
     seedPrompt: 'Enter your initial prompt here.'
+  }
+}
+
+export function getToolTemplate(name: string, slug: string): Partial<ToolDef> {
+  return {
+    name,
+    slug,
+    // `retrieve` is the only executor bound today (lib/tools/registry.ts).
+    executor: 'retrieve',
+    params: {},
+    config: {},
+    description: `What ${name} does, written for the model that decides whether to call it.`,
   }
 }

@@ -17,6 +17,11 @@ import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import DockPanel from '@/components/workspace/DockPanel';
 import SeedField from '@/components/workspace/SeedField';
 
+// A context file is bare prose with no frontmatter; every other type is frontmatter + body.
+function editorLanguage(type: string) {
+  return type === 'context' ? 'yaml' : 'markdown'
+}
+
 function WorkspaceContent() {
   const searchParams = useSearchParams();
   const type = searchParams.get('type');
@@ -234,7 +239,7 @@ function WorkspaceContent() {
                     status={status}
                     error={saveError}
                     type={type}
-                    language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                    language={editorLanguage(type)}
                   />
                 </div>
               )}
@@ -268,7 +273,7 @@ function WorkspaceContent() {
                         status={status}
                         error={saveError}
                         type={type}
-                        language={type === 'agent' || type === 'skill' || type === 'chain' || type === 'template' ? 'markdown' : 'yaml'}
+                        language={editorLanguage(type)}
                       />
                     </div>
                   )}

@@ -30,6 +30,10 @@ async function rename() {
   return import('../lib/fs/rename')
 }
 
+async function load() {
+  return import('../lib/fs/workspace')
+}
+
 test('renaming an agent moves the file, keeps its folder, and rewrites the call site', async () => {
   const wp = newWorkspace()
   write(wp, 'agents/panel/panel-optimist.md', '---\nname: Optimist\nmodel: test/model\n---\nbody\n')
@@ -175,6 +179,41 @@ test('renaming a skill rewrites its own name, the agent list, and both call-site
   const ws = loadWorkspace()
   const { injectSkills } = await import('../lib/prompt')
   assert.ok(injectSkills(ws.agents[0], ws.skills, 'body').includes('Be brief.'))
+})
+
+test('renaming a tool rewrites its own name and every agent that calls it', async () => {
+  const wp = newWorkspace()
+  write(wp, 'tools/search/retrieve.md', '---\nname: retrieve\nexecutor: retrieve\n---\nSearch the lore.\n')
+  const agentPath = write(wp, 'agents/world-builder.md', '---\nname: Builder\ntools:\n  - retrieve\n---\nbody\n')
+
+  const { renameWorkspaceEntity } = await rename()
+  renameWorkspaceEntity('tool', 'retrieve', 'lore-search')
+
+  // a tool is bound by frontmatter `name` (lib/tools/registry.ts), so the name follows too
+  const renamed = read(path.join(wp, 'tools', 'search', 'lore-search.md'))
+  assert.ok(renamed.includes('name: lore-search'))
+  assert.ok(renamed.includes('executor: retrieve'), 'the executor id is not a slug and is untouched')
+  assert.ok(read(agentPath).includes('- lore-search'))
+
+  const { loadWorkspace } = await import('../lib/fs/workspace')
+  const ws = loadWorkspace()
+  const { bindAgentTools } = await import('../lib/tools/registry')
+  assert.deepStrictEqual(bindAgentTools(ws.agents[0], ws.tools, wp).map(b => b.def.slug), ['lore-search'])
+})
+
+test('a tool is a workspace file type like any other', async () => {
+  const wp = newWorkspace()
+  const { isValidEntityType, resolveEntityPath } = await load()
+  assert.ok(isValidEntityType('tool'))
+  assert.strictEqual(resolveEntityPath('tool', 'retrieve'), path.join(wp, 'tools', 'retrieve.md'))
+
+  const { createWorkspaceEntity, moveWorkspaceEntity } = await import('../lib/fs/save')
+  createWorkspaceEntity({ type: 'tool', name: 'Lore Search', slug: 'lore-search' })
+  const created = read(path.join(wp, 'tools', 'lore-search.md'))
+  assert.ok(created.includes('name: Lore Search') && created.includes('executor: retrieve'))
+
+  moveWorkspaceEntity('tool', 'lore-search', 'search')
+  assert.ok(fs.existsSync(path.join(wp, 'tools', 'search', 'lore-search.md')))
 })
 
 test('renaming a context file rewrites the agent list and the context node', async () => {

@@ -2,9 +2,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PanelTab } from '../../lib/tabClamp'
+import { ENTITY_DIRS } from '../../lib/entityDirs'
 
 export type DockSide = 'bottom' | 'right'
-export type EntityType = 'agent' | 'skill' | 'chain' | 'template' | 'context'
+// Derived, never restated: a new workspace file type reaches the sidebar by one edit.
+export type EntityType = keyof typeof ENTITY_DIRS
 
 interface WorkspaceUiStore {
   dockSide: DockSide

@@ -31,6 +31,7 @@ const NODE_SITES: TypedRefSite[] = allFields
 const FRONTMATTER_SITES: TypedRefSite[] = [
   { holder: 'agent', scope: 'frontmatter', field: 'skills', list: true, ref: 'skill' },
   { holder: 'agent', scope: 'frontmatter', field: 'context', list: true, ref: 'context' },
+  { holder: 'agent', scope: 'frontmatter', field: 'tools', list: true, ref: 'tool' },
   { holder: 'template', scope: 'frontmatter', field: 'chain', list: false, ref: 'chain' },
 ]
 
@@ -277,8 +278,9 @@ function repointRun(
 }
 
 /**
- * A skill is matched at run time by its frontmatter `name`, not its slug (lib/prompt.ts),
- * so the name follows the slug. A name the user has set apart from the slug is left alone.
+ * A skill and a tool are both matched at run time by frontmatter `name`, not slug
+ * (lib/prompt.ts, lib/tools/registry.ts), so the name follows the slug. A name the user
+ * has set apart from the slug is left alone.
  */
 function renameOwnName(
   filePath: string,
@@ -287,7 +289,7 @@ function renameOwnName(
   to: string,
   write: (filePath: string, body: string) => void,
 ) {
-  if (type !== 'skill') return
+  if (type !== 'skill' && type !== 'tool') return
   const { data, content } = matter(fs.readFileSync(filePath, 'utf-8'))
   if (data.name !== from) return
   data.name = to

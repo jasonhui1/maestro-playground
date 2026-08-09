@@ -55,6 +55,9 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
         } else if (type === 'template') {
           if (!data.name) errors.push("Missing required field: 'name'");
           if (!data.chain) errors.push("Missing required field: 'chain'");
+        } else if (type === 'tool') {
+          if (!data.name) errors.push("Missing required field: 'name'");
+          if (!data.executor) errors.push("Missing required field: 'executor'");
         }
       } else if (language === 'yaml') {
         matter(`---\n${value}\n---`);

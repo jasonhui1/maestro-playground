@@ -1,4 +1,5 @@
 import type { SectionWarning } from './sectionWarning'
+import type { ENTITY_DIRS } from './entityDirs'
 
 export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
 
@@ -198,7 +199,7 @@ export interface TemplateDef {
 }
 
 export interface CreationParams {
-  type: 'agent' | 'skill' | 'chain' | 'template' | 'context'
+  type: keyof typeof ENTITY_DIRS
   name: string
   slug: string
   folder?: string
