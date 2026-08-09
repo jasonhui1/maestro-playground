@@ -21,7 +21,7 @@ import {
 import { useWorkspaceUiStore, type EntityType } from '@/hooks/store/useWorkspaceUiStore';
 import { useToastStore } from '@/hooks/store/useToastStore';
 import { ENTITY_DIRS } from '@/lib/entityDirs';
-import { buildTreeRows, buildSearchRows, workspaceRootOf, type TreeItem } from '@/lib/fileTree';
+import { buildTreeRows, buildSearchRows, workspaceRootOf, allFolders, type TreeItem } from '@/lib/fileTree';
 import FileList from './FileList';
 
 interface WorkspaceData {
@@ -306,6 +306,31 @@ export default function Sidebar() {
     }
   };
 
+  const handleMove = async (item: TreeItem, folder: string) => {
+    try {
+      const res = await fetch(`/api/workspace/${item.entityType}/${item.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to move entity');
+      }
+
+      // Refresh data
+      const dataRes = await fetch('/api/workspace');
+      const newData = await dataRes.json();
+      setData(newData);
+      refreshEmptyFolders(item.entityType as EntityType);
+
+      addToast(`Moved ${item.name} to ${folder || '/'}`, 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+    }
+  };
+
   const confirmDelete = (e: React.MouseEvent, type: EntityType, slug: string, name: string) => {
     e.stopPropagation();
     setItemToDelete({ type, slug, name });
@@ -339,6 +364,13 @@ export default function Sidebar() {
       emptyFolders,
     });
   }, [data, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot, emptyFolders]);
+
+  const availableFolders = useMemo(() => {
+    if (!data || !activeCategory) return [];
+    const items: TreeItem[] = data[ENTITY_DIRS[activeCategory]]
+      .map(i => ({ ...i, entityType: activeCategory }));
+    return allFolders(items, activeCategory, workspaceRoot, emptyFolders);
+  }, [data, activeCategory, workspaceRoot, emptyFolders]);
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center p-4 bg-zinc-50/30">
@@ -417,10 +449,12 @@ export default function Sidebar() {
             rows={rows}
             activeSlug={activeSlug}
             activeType={activeType}
+            folders={availableFolders}
             onSelect={(item) => handleSelect(item.entityType, item.slug)}
             onToggleFolder={toggleFolder}
             onToggleFavorite={(e, item) => toggleFavorite(e, item.entityType, item.slug)}
             onDelete={(e, item) => confirmDelete(e, item.entityType as EntityType, item.slug, item.name)}
+            onMove={handleMove}
             onCreateInFolder={(e, folderPath) => {
               e.stopPropagation();
               setModalType(activeCategory);

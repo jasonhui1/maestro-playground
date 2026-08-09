@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { folderOf, ancestorFolders, workspaceRootOf, buildTreeRows, buildSearchRows, type TreeItem, type EntityType } from '../lib/fileTree'
+import { folderOf, ancestorFolders, workspaceRootOf, buildTreeRows, buildSearchRows, allFolders, type TreeItem, type EntityType } from '../lib/fileTree'
 
 function item(slug: string, filePath: string, entityType: EntityType = 'agent'): TreeItem {
   return { slug, name: slug, filePath, entityType }
@@ -149,6 +149,16 @@ test('an empty folder sharing a name with a file-derived folder does not duplica
     emptyFolders: ['panel'],
   })
   assert.deepStrictEqual(rows.map(r => [r.kind, r.label]), [['folder', 'panel']])
+})
+
+test('allFolders lists every folder a file could move to, populated or empty, deduped and sorted', () => {
+  const items = [
+    item('optimist', `${WS}/agents/panel/deep/optimist.md`),
+    item('flat', `${WS}/agents/flat.md`),
+  ]
+  assert.deepStrictEqual(allFolders(items, 'agent', WS, ['panel', 'archive']), ['archive', 'panel', 'panel/deep'])
+  assert.deepStrictEqual(allFolders(items, 'agent', WS), ['panel', 'panel/deep'])
+  assert.deepStrictEqual(allFolders([], 'agent', WS), [])
 })
 
 test('search keeps the ranked order flat, each row carrying its folder', () => {

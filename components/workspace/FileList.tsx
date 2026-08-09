@@ -1,17 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Plus, Star, Trash2 } from 'lucide-react';
 import type { Row, TreeItem } from '@/lib/fileTree';
 import { FAVORITES_PATH } from '@/lib/fileTree';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 
 interface FileListProps {
   rows: Row[];
   activeSlug: string | null;
   activeType: string | null;
+  /** Every folder under the active type a file could move to (#53), root excluded. */
+  folders: string[];
   onSelect: (item: TreeItem) => void;
   onToggleFolder: (key: string, expanded: boolean) => void;
   onToggleFavorite: (e: React.MouseEvent, item: TreeItem) => void;
   onDelete: (e: React.MouseEvent, item: TreeItem) => void;
+  onMove: (item: TreeItem, folder: string) => void;
   onCreateInFolder: (e: React.MouseEvent, folderPath: string) => void;
   onCreateFolderInFolder: (e: React.MouseEvent, folderPath: string) => void;
   emptyLabel: string;
@@ -34,21 +39,41 @@ export default function FileList({
   rows,
   activeSlug,
   activeType,
+  folders,
   onSelect,
   onToggleFolder,
   onToggleFavorite,
   onDelete,
+  onMove,
   onCreateInFolder,
   onCreateFolderInFolder,
   emptyLabel,
 }: FileListProps) {
   const isActive = (item: TreeItem) => activeType === item.entityType && activeSlug === item.slug;
+  const [contextMenu, setContextMenu] = useState<{ item: TreeItem; x: number; y: number } | null>(null);
+
+  const openContextMenu = (e: React.MouseEvent, item: TreeItem) => {
+    e.preventDefault();
+    setContextMenu({ item, x: e.clientX, y: e.clientY });
+  };
+
+  const moveMenuItems = (item: TreeItem): ContextMenuItem[] => [
+    {
+      key: 'move',
+      label: 'Move to…',
+      submenu: [
+        { key: 'root', label: '/ (root)', onClick: () => onMove(item, '') },
+        ...folders.map((folder) => ({ key: folder, label: folder, onClick: () => onMove(item, folder) })),
+      ],
+    },
+  ];
 
   if (rows.length === 0) {
     return <p className="px-3 py-2 text-xs text-zinc-400 italic">{emptyLabel}</p>;
   }
 
   return (
+    <>
     <ul className="space-y-0.5">
       {rows.map((row) =>
         row.kind === 'folder' ? (
@@ -90,7 +115,7 @@ export default function FileList({
             )}
           </li>
         ) : (
-          <li key={row.key} className="group relative">
+          <li key={row.key} className="group relative" onContextMenu={(e) => openContextMenu(e, row.item)}>
             <button
               onClick={() => onSelect(row.item)}
               className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-all pr-14 flex items-center gap-2 ${
@@ -135,5 +160,14 @@ export default function FileList({
         ),
       )}
     </ul>
+    {contextMenu && (
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={moveMenuItems(contextMenu.item)}
+        onClose={() => setContextMenu(null)}
+      />
+    )}
+    </>
   );
 }

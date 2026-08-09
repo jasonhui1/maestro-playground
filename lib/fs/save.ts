@@ -1,7 +1,8 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import yaml from 'js-yaml'
-import { resolveEntityPath, resolveFolderPath, getWorkspacePath, sanitizeSlug } from './workspace'
+import path from 'path'
+import { resolveEntityPath, resolveFolderPath, sanitizeSlug } from './workspace'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate } from './templates'
 import { CreationParams } from '../types'
@@ -75,6 +76,28 @@ export function createWorkspaceFolder(type: string, folder: string) {
   const folderPath = resolveFolderPath(type, folder)
   fs.mkdirSync(folderPath, { recursive: true })
   return { folderPath }
+}
+
+// A move only ever changes the path a slug resolves to (ADR-0012): the slug, .versions
+// history, and every chain reference by slug are untouched.
+export function moveWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string, folder: string) {
+  const currentPath = resolveEntityPath(type, slug)
+  if (!fs.existsSync(currentPath)) {
+    throw new Error(`Entity not found: ${type}/${slug}`)
+  }
+
+  // resolveFolderPath already confines destDir to the type directory, and a
+  // basename carries no path separators, so targetPath can't escape it either.
+  const destDir = resolveFolderPath(type, folder)
+  const targetPath = path.join(destDir, path.basename(currentPath))
+
+  if (targetPath === currentPath) {
+    return { filePath: targetPath, slug }
+  }
+
+  fs.mkdirSync(destDir, { recursive: true })
+  fs.renameSync(currentPath, targetPath)
+  return { filePath: targetPath, slug }
 }
 
 export function deleteWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string) {

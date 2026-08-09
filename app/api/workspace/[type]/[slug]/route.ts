@@ -3,7 +3,7 @@ import { resolveEntityPath, isValidEntityType, EntityType, loadAgent } from '@/l
 import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
-import { saveWorkspaceEntity, deleteWorkspaceEntity } from '@/lib/fs/save'
+import { saveWorkspaceEntity, deleteWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
 import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
 import fs from 'fs'
 import yaml from 'js-yaml'
@@ -86,6 +86,38 @@ export async function PUT(
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
     const error = err as Error
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Params }
+) {
+  try {
+    const { type, slug } = await params
+
+    if (!isValidEntityType(type)) {
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { folder } = body
+
+    if (typeof folder !== 'string') {
+      return NextResponse.json({ error: 'Missing folder' }, { status: 400 })
+    }
+
+    const result = moveWorkspaceEntity(type as EntityType, slug, folder)
+    return NextResponse.json({ success: true, ...result })
+  } catch (err: unknown) {
+    const error = err as Error
+    if (error.message.includes('Security violation')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error.message.includes('not found')) {
+      return NextResponse.json({ error: error.message }, { status: 404 })
+    }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

@@ -176,6 +176,55 @@ test('resolveFolderPath resolves under the type directory and cannot escape it',
   assert.ok(resolveFolderPath('agent', '../../etc').startsWith(absoluteSubDir))
 })
 
+test('moveWorkspaceEntity relocates the file; the slug still resolves and chain refs are untouched', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/optimist.md', agent('Optimist'))
+  write(wp, 'chains/decision.md', chain('Decision'))
+
+  const { moveWorkspaceEntity } = await import('../lib/fs/save')
+  const result = moveWorkspaceEntity('agent', 'optimist', 'panel')
+  assert.strictEqual(result.filePath, path.join(wp, 'agents', 'panel', 'optimist.md'))
+  assert.strictEqual(result.slug, 'optimist')
+  assert.ok(!fs.existsSync(path.join(wp, 'agents', 'optimist.md')))
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'optimist.md')))
+
+  const { loadWorkspace } = await load()
+  const ws = loadWorkspace()
+  assert.strictEqual(ws.agents[0].slug, 'optimist')
+  assert.strictEqual(ws.chains[0].nodes[0].kind === 'agent' && ws.chains[0].nodes[0].agent, 'optimist')
+})
+
+test('moveWorkspaceEntity to the empty folder moves a file back to the type root', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel/optimist.md', agent('Optimist'))
+
+  const { moveWorkspaceEntity } = await import('../lib/fs/save')
+  const result = moveWorkspaceEntity('agent', 'optimist', '')
+  assert.strictEqual(result.filePath, path.join(wp, 'agents', 'optimist.md'))
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'optimist.md')))
+})
+
+test('moveWorkspaceEntity rejects a target outside the type directory', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/optimist.md', agent('Optimist'))
+
+  const { moveWorkspaceEntity } = await import('../lib/fs/save')
+  // sanitizeFolder strips every traversal segment, so this lands under the type dir
+  // rather than escaping it — proving the guard holds even for an adversarial folder value
+  const result = moveWorkspaceEntity('agent', 'optimist', '../../etc')
+  const absoluteSubDir = path.join(wp, 'agents')
+  assert.ok(result.filePath.startsWith(absoluteSubDir))
+})
+
+test('moveWorkspaceEntity throws for a slug with no file', async () => {
+  newWorkspace()
+  const { moveWorkspaceEntity } = await import('../lib/fs/save')
+  assert.throws(
+    () => moveWorkspaceEntity('agent', 'ghost', 'panel'),
+    /Entity not found/,
+  )
+})
+
 test('createWorkspaceFolder makes an empty directory that a reload still sees', async () => {
   const wp = newWorkspace()
 

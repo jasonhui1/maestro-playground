@@ -88,6 +88,16 @@ export function folderOf(filePath: string, category: EntityType, workspaceRoot?:
   return segments.slice(start + 1, -1).join('/')
 }
 
+/** Every folder under the type directory a file could move to — populated or empty, including
+ * ancestors of a deep folder, so a move target list never skips an intermediate level. */
+export function allFolders(items: TreeItem[], category: EntityType, workspaceRoot: string | undefined, emptyFolders: string[] = []): string[] {
+  const set = new Set<string>()
+  const add = (folder: string) => { for (const f of ancestorFolders(folder)) set.add(f) }
+  for (const item of items) add(folderOf(item.filePath, category, workspaceRoot))
+  for (const folder of emptyFolders) add(folder)
+  return [...set].sort()
+}
+
 /** `panel/deep` → `['panel', 'panel/deep']`. */
 export function ancestorFolders(folder: string): string[] {
   if (!folder) return []
