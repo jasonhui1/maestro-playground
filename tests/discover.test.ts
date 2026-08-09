@@ -3,7 +3,7 @@ import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { discoverFiles } from '../lib/fs/discover'
+import { discoverFiles, walkDirectories } from '../lib/fs/discover'
 
 function tmpDir(prefix: string) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -60,4 +60,27 @@ test('discover: non-markdown files and dot-prefixed entries are skipped', () => 
   write(dir, '.versions/real.md', 'ignored')
 
   assert.deepStrictEqual(discoverFiles(dir).map(f => f.slug), ['real'])
+})
+
+test('walkDirectories: reports every sub-directory, even ones with no markdown in them', () => {
+  const dir = tmpDir('discover-dirs-')
+  fs.mkdirSync(path.join(dir, 'empty'), { recursive: true })
+  write(dir, 'panel/optimist.md', 'optimist body')
+  fs.mkdirSync(path.join(dir, 'panel', 'deep-empty'), { recursive: true })
+
+  const found = walkDirectories(dir).sort()
+  assert.deepStrictEqual(found, [
+    path.join(dir, 'empty'),
+    path.join(dir, 'panel'),
+    path.join(dir, 'panel', 'deep-empty'),
+  ].sort())
+})
+
+test('walkDirectories: skips dot-prefixed directories and a missing root returns nothing', () => {
+  const dir = tmpDir('discover-dirs-skip-')
+  fs.mkdirSync(path.join(dir, 'visible'), { recursive: true })
+  fs.mkdirSync(path.join(dir, '.versions'), { recursive: true })
+
+  assert.deepStrictEqual(walkDirectories(dir), [path.join(dir, 'visible')])
+  assert.deepStrictEqual(walkDirectories(path.join(dir, 'nope')), [])
 })

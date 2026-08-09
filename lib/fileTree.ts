@@ -47,6 +47,8 @@ export interface TreeOptions {
   /** `${entityType}:${slug}` ids, as stored in localStorage. */
   favorites: string[]
   activeSlug?: string | null
+  /** Folder paths with no files in them, from the UI-only directory reader (#52). */
+  emptyFolders?: string[]
 }
 
 function segmentsOf(p: string): string[] {
@@ -142,10 +144,12 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
     }
   }
 
+  const knownFolders = [...folderByItem.values(), ...(opts.emptyFolders ?? [])]
+
   const childFolders = (parent: string) => {
     const prefix = parent ? `${parent}/` : ''
     const names = new Set<string>()
-    for (const folder of folderByItem.values()) {
+    for (const folder of knownFolders) {
       if (!folder.startsWith(prefix) || folder === parent) continue
       names.add(folder.slice(prefix.length).split('/')[0])
     }

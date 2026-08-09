@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import yaml from 'js-yaml'
-import { resolveEntityPath, getWorkspacePath, sanitizeSlug } from './workspace'
+import { resolveEntityPath, resolveFolderPath, getWorkspacePath, sanitizeSlug } from './workspace'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate } from './templates'
 import { CreationParams } from '../types'
@@ -67,6 +67,14 @@ export function createWorkspaceEntity({ type, name, slug, folder }: CreationPara
     content: body,
     folder,
   })
+}
+
+// Never writes a marker file into the new directory (#49) — an empty folder is
+// local-only on disk until it holds a file, and that's an accepted cost.
+export function createWorkspaceFolder(type: string, folder: string) {
+  const folderPath = resolveFolderPath(type, folder)
+  fs.mkdirSync(folderPath, { recursive: true })
+  return { folderPath }
 }
 
 export function deleteWorkspaceEntity(type: 'agent' | 'skill' | 'chain' | 'template' | 'context', slug: string) {

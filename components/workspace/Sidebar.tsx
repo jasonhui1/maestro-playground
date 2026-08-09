@@ -10,8 +10,9 @@ import {
   Link as LinkIcon, 
   FileText, 
   Folder, 
-  Plus, 
-  Search, 
+  Plus,
+  FolderPlus,
+  Search,
   X,
   AlertTriangle,
   PanelLeftClose,
@@ -50,6 +51,12 @@ export default function Sidebar() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ type: EntityType, slug: string, name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [emptyFolders, setEmptyFolders] = useState<string[]>([]);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [folderParent, setFolderParent] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [folderCreateError, setFolderCreateError] = useState<string | null>(null);
 
   const addToast = useToastStore((state) => state.addToast);
   const searchParams = useSearchParams();
@@ -89,6 +96,23 @@ export default function Sidebar() {
       }
     }
   }, []);
+
+  // UI-only: discovery never reports a bare directory, so an empty folder is fetched
+  // separately and merged into the tree client-side (#52).
+  const refreshEmptyFolders = async (category: EntityType) => {
+    try {
+      const res = await fetch(`/api/workspace/folders?type=${category}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setEmptyFolders(json.folders ?? []);
+    } catch {
+      // best-effort: an empty folder just won't show up until the next successful fetch
+    }
+  };
+
+  useEffect(() => {
+    if (activeCategory) refreshEmptyFolders(activeCategory);
+  }, [activeCategory]);
 
   const toggleFavorite = (e: React.MouseEvent, type: string, slug: string) => {
     e.stopPropagation();
@@ -136,6 +160,7 @@ export default function Sidebar() {
       const dataRes = await fetch('/api/workspace');
       const newData = await dataRes.json();
       setData(newData);
+      refreshEmptyFolders(modalType);
 
       addToast(`Created new ${modalType}: ${newName}`, 'success');
 
@@ -149,6 +174,46 @@ export default function Sidebar() {
       addToast(err.message, 'error');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleCreateFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+
+    setIsCreatingFolder(true);
+    setFolderCreateError(null);
+    try {
+      const res = await fetch('/api/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'folder',
+          type: activeCategory,
+          name: newFolderName,
+          ...(folderParent ? { folder: folderParent } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        if (res.status === 409) {
+          setFolderCreateError(err.error || 'That name is already taken');
+          return;
+        }
+        throw new Error(err.error || 'Failed to create folder');
+      }
+
+      await refreshEmptyFolders(activeCategory);
+      addToast(`Created new folder: ${newFolderName}`, 'success');
+
+      setIsFolderModalOpen(false);
+      setNewFolderName('');
+      setFolderParent('');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+    } finally {
+      setIsCreatingFolder(false);
     }
   };
 
@@ -271,8 +336,9 @@ export default function Sidebar() {
       expanded: expandedFolders,
       favorites,
       activeSlug: activeType === activeCategory ? activeSlug : null,
+      emptyFolders,
     });
-  }, [data, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot]);
+  }, [data, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot, emptyFolders]);
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center p-4 bg-zinc-50/30">
@@ -299,17 +365,31 @@ export default function Sidebar() {
             <h2 className="text-lg font-semibold text-zinc-800 capitalize">
               {activeCategory}s
             </h2>
-            <button
-              onClick={() => {
-                setModalType(activeCategory);
-                setTargetFolder('');
-                setIsModalOpen(true);
-              }}
-              className="text-zinc-400 hover:text-zinc-600 transition-colors"
-              title={`Add ${activeCategory}`}
-            >
-              <Plus size={18} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setFolderParent('');
+                  setNewFolderName('');
+                  setFolderCreateError(null);
+                  setIsFolderModalOpen(true);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+                title="New Folder"
+              >
+                <FolderPlus size={18} />
+              </button>
+              <button
+                onClick={() => {
+                  setModalType(activeCategory);
+                  setTargetFolder('');
+                  setIsModalOpen(true);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+                title={`Add ${activeCategory}`}
+              >
+                <Plus size={18} />
+              </button>
+            </div>
           </div>
 
           {/* Search */}
@@ -346,6 +426,13 @@ export default function Sidebar() {
               setModalType(activeCategory);
               setTargetFolder(folderPath);
               setIsModalOpen(true);
+            }}
+            onCreateFolderInFolder={(e, folderPath) => {
+              e.stopPropagation();
+              setFolderParent(folderPath);
+              setNewFolderName('');
+              setFolderCreateError(null);
+              setIsFolderModalOpen(true);
             }}
             emptyLabel={`No ${activeCategory}s found`}
           />
@@ -419,6 +506,59 @@ export default function Sidebar() {
                   disabled={isCreating || !newName.trim()}
                 >
                   {isCreating ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Folder Creation Modal */}
+      {isFolderModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-96 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-semibold text-zinc-900 mb-4">New Folder</h3>
+            <form onSubmit={handleCreateFolder}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  Name
+                </label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => {
+                    setNewFolderName(e.target.value);
+                    setFolderCreateError(null);
+                  }}
+                  placeholder="Enter folder name..."
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                  disabled={isCreatingFolder}
+                />
+                {folderCreateError && (
+                  <p className="mt-1 text-sm text-red-600">{folderCreateError}</p>
+                )}
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFolderModalOpen(false);
+                    setNewFolderName('');
+                    setFolderParent('');
+                    setFolderCreateError(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors"
+                  disabled={isCreatingFolder}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
+                  disabled={isCreatingFolder || !newFolderName.trim()}
+                >
+                  {isCreatingFolder ? 'Creating...' : 'Create'}
                 </button>
               </div>
             </form>

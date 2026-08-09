@@ -47,3 +47,18 @@ export function walkMarkdown(dir: string): string[] {
 export function findBySlug(typeDir: string, slug: string): string | undefined {
   return walkMarkdown(typeDir).find(p => path.basename(p, '.md') === slug)
 }
+
+// UI-only: discoverFiles walks *.md and never reports a bare directory, so an empty
+// folder is otherwise invisible to the sidebar (ADR-0012's empty-folder gap).
+export function walkDirectories(dir: string): string[] {
+  if (!fs.existsSync(dir)) return []
+  const out: string[] = []
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue
+    if (entry.isDirectory()) {
+      const full = path.join(dir, entry.name)
+      out.push(full, ...walkDirectories(full))
+    }
+  }
+  return out
+}

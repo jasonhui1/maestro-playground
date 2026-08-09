@@ -125,6 +125,32 @@ test('no favourite in this category means no Favorites node', () => {
   assert.deepStrictEqual(rows.map(r => r.kind), ['file'])
 })
 
+test('an empty folder from the directory reader still renders, at any depth', () => {
+  const items = [item('flat', `${WS}/agents/flat.md`)]
+  const rows = buildTreeRows(items, {
+    category: 'agent',
+    expanded: { 'agent:empty': true },
+    favorites: [],
+    emptyFolders: ['empty', 'empty/deeper'],
+  })
+  assert.deepStrictEqual(rows.map(r => [r.kind, r.label, r.depth]), [
+    ['folder', 'empty', 0],
+    ['folder', 'deeper', 1],
+    ['file', 'flat', 0],
+  ])
+})
+
+test('an empty folder sharing a name with a file-derived folder does not duplicate it', () => {
+  const items = [item('optimist', `${WS}/agents/panel/optimist.md`)]
+  const rows = buildTreeRows(items, {
+    category: 'agent',
+    expanded: {},
+    favorites: [],
+    emptyFolders: ['panel'],
+  })
+  assert.deepStrictEqual(rows.map(r => [r.kind, r.label]), [['folder', 'panel']])
+})
+
 test('search keeps the ranked order flat, each row carrying its folder', () => {
   const ranked = [
     item('optimist', `${WS}/agents/panel/deep/optimist.md`),

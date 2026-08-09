@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadWorkspace, resolveEntityPath, sanitizeSlug, isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { createWorkspaceEntity, saveWorkspaceEntity } from '@/lib/fs/save'
+import { loadWorkspace, resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, isValidEntityType, EntityType } from '@/lib/fs/workspace'
+import { createWorkspaceEntity, createWorkspaceFolder, saveWorkspaceEntity } from '@/lib/fs/save'
 import { buildChainFromTemplate } from '@/lib/fs/forkChain'
 import { chainToData } from '@/lib/serializeChain'
 import fs from 'fs'
@@ -24,7 +24,7 @@ function alreadyExistsMessage(type: EntityType, slug: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { type, name, slug, fromTemplate, folder } = body
+    const { kind, type, name, slug, fromTemplate, folder } = body
 
     if (!type || !name) {
       return NextResponse.json({ error: 'Missing type or name' }, { status: 400 })
@@ -32,6 +32,20 @@ export async function POST(request: NextRequest) {
 
     if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+    }
+
+    if (kind === 'folder') {
+      const cleanName = sanitizeFolder(name)
+      if (!cleanName) {
+        return NextResponse.json({ error: 'Invalid folder name' }, { status: 400 })
+      }
+      const targetFolder = folder ? `${folder}/${cleanName}` : cleanName
+      const targetPath = resolveFolderPath(type, targetFolder)
+      if (fs.existsSync(targetPath)) {
+        return NextResponse.json({ error: `a folder named \`${name}\` already exists here` }, { status: 409 })
+      }
+      const result = createWorkspaceFolder(type, targetFolder)
+      return NextResponse.json({ success: true, ...result })
     }
 
     if (type === 'chain' && fromTemplate) {

@@ -71,6 +71,23 @@ export function resolveEntityPath(type: string, slug: string, folder?: string) {
   return targetPath
 }
 
+/** Where a folder (not a file) should live under a type directory. Never creates it. */
+export function resolveFolderPath(type: string, folder: string) {
+  const wp = getWorkspacePath()
+  if (!isValidEntityType(type)) {
+    throw new Error(`Invalid entity type: ${type}`)
+  }
+
+  const absoluteSubDir = path.join(wp, ENTITY_TYPES[type])
+  const targetPath = path.join(absoluteSubDir, sanitizeFolder(folder))
+
+  if (!targetPath.startsWith(absoluteSubDir)) {
+    throw new Error('Security violation: Directory traversal detected')
+  }
+
+  return targetPath
+}
+
 /** One agent, resolved against the workspace defaults file — never the raw agent file (ADR-0010). */
 export function loadAgent(filePath: string) {
   return parseAgent(filePath, undefined, loadAgentDefaults(getWorkspacePath()))

@@ -156,6 +156,37 @@ test('a folder value cannot escape the type directory', async () => {
   assert.ok(resolveEntityPath('agent', 'newcomer', '../../etc').startsWith(absoluteSubDir))
 })
 
+test('sanitizeFolder strips a traversal-only name down to empty, not a lookalike sibling', async () => {
+  const { sanitizeFolder } = await load()
+  // '..' carries no safe character, so it sanitizes to '' rather than colliding with
+  // whatever the parent folder already is — the POST route rejects an empty result
+  // before it ever reaches resolveFolderPath.
+  assert.strictEqual(sanitizeFolder('..'), '')
+  assert.strictEqual(sanitizeFolder('...'), '...')
+})
+
+test('resolveFolderPath resolves under the type directory and cannot escape it', async () => {
+  const wp = newWorkspace()
+
+  const { resolveFolderPath } = await load()
+  assert.strictEqual(resolveFolderPath('agent', 'panel'), path.join(wp, 'agents', 'panel'))
+  assert.strictEqual(resolveFolderPath('agent', 'panel/deep'), path.join(wp, 'agents', 'panel', 'deep'))
+
+  const absoluteSubDir = path.join(wp, 'agents')
+  assert.ok(resolveFolderPath('agent', '../../etc').startsWith(absoluteSubDir))
+})
+
+test('createWorkspaceFolder makes an empty directory that a reload still sees', async () => {
+  const wp = newWorkspace()
+
+  const { createWorkspaceFolder } = await import('../lib/fs/save')
+  const { folderPath } = createWorkspaceFolder('agent', 'panel/deep')
+
+  assert.strictEqual(folderPath, path.join(wp, 'agents', 'panel', 'deep'))
+  assert.ok(fs.statSync(folderPath).isDirectory())
+  assert.deepStrictEqual(fs.readdirSync(folderPath), [])
+})
+
 test('a nested context file is readable at run time, by bare slug', async () => {
   const wp = newWorkspace()
   write(wp, 'context/lore/tavern.md', '---\nname: Tavern\n---\nThe Gilded Flagon.\n')
