@@ -1,34 +1,24 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { initRunDir, writeAgentLog, updateRunMeta } from '@/lib/logger'
-import { snapshotVersion } from '@/lib/fs/versions'
+import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput, AgentDef, ChainDef } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { nanoid } from 'nanoid'
-import fs from 'fs'
 import path from 'path'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs } = body
 
-  const { agents, skills, chains, tools } = loadWorkspace()
+  const workspace = loadWorkspace()
+  const { agents, skills, chains, tools } = workspace
 
   const resolved = resolveRunChain(body, { agents, chains })
   if ('error' in resolved) return new Response(resolved.error, { status: resolved.status })
   const { chain, title: runTitle, kind } = resolved
-
-  let currentVersion = 0
-  if (kind === 'chain' && chain.filePath) {
-    let rawContent = ''
-    try { rawContent = fs.readFileSync(chain.filePath, 'utf-8') } catch {}
-    currentVersion = snapshotVersion('chain', chain.slug, rawContent)
-  } else if (kind === 'agent') {
-    const agent = agents.find(a => a.slug === chain.slug)
-    if (agent) currentVersion = snapshotVersion('agent', agent.slug, agent.systemPrompt)
-  }
 
   const validation = validateChain(chain, agents, chains, tools, skills)
   if (!validation.valid) {
@@ -36,6 +26,11 @@ export async function POST(req: NextRequest) {
       status: 400, headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  const versions = pinRunVersions(chain, workspace)
+  // The scalar still names the entry point — the chain for a chain run, the agent
+  // for an agent run — so a step log keeps the one number it has always carried.
+  const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
   const runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
   const meta: RunMeta = {
@@ -49,6 +44,7 @@ export async function POST(req: NextRequest) {
     branchedFromRunId: branchedFromRunId ? path.basename(branchedFromRunId) : undefined,
     branchedFromStep,
     versionNumber: currentVersion > 0 ? currentVersion : undefined,
+    versions,
   }
   initRunDir(meta)
 

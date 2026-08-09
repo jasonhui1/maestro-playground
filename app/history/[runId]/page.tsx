@@ -13,6 +13,7 @@ import { kindOf } from '@/lib/nodeKinds'
 import { buildRunStateMap } from '@/lib/runHistoryState'
 import { branchRun } from '@/lib/branchRun'
 import RunNodePreview from '@/components/trace/RunNodePreview'
+import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -190,6 +191,8 @@ function RunDetail({ run }: { run: RunMeta }) {
         <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-4">Seed Prompt</h2>
         <p className="text-lg text-zinc-800 leading-relaxed font-medium italic">&quot;{run.seedPrompt}&quot;</p>
       </div>
+
+      <RunPinnedVersions run={run} />
 
       {compareMode ? (
         <div className="flex flex-col gap-8">

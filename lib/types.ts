@@ -180,7 +180,10 @@ export interface RunMeta {
   graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
   branchedFromRunId?: string
   branchedFromStep?: number
+  /** Scalar pin of the entry point; the only pin old logs carry (ADR-0011). */
   versionNumber?: number
+  /** One entry per file the run touched, keyed `type/slug` — plus a bare `defaults` (ADR-0011). */
+  versions?: Record<string, number>
 }
 
 export interface TemplateDef {

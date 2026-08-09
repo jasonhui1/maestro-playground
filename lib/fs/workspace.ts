@@ -1,5 +1,5 @@
 import { loadAllAgents, parseAgent } from './parseAgent'
-import { loadAgentDefaults } from './defaults'
+import { loadAgentDefaults, readAgentDefaultsRaw } from './defaults'
 import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
@@ -84,5 +84,6 @@ export function loadWorkspace() {
     templates: loadAllTemplates(wp),
     tools: loadAllTools(wp),
     context,
+    defaultsRaw: readAgentDefaultsRaw(wp),
   }
 }

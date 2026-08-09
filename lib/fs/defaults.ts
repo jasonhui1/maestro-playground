@@ -12,3 +12,10 @@ export function loadAgentDefaults(workspacePath: string): Record<string, unknown
   if (!fs.existsSync(p)) return {}
   return matter(fs.readFileSync(p, 'utf-8')).data as Record<string, unknown>
 }
+
+/** The file bytes a run pins; undefined when the workspace states no defaults (ADR-0011). */
+export function readAgentDefaultsRaw(workspacePath: string): string | undefined {
+  const p = path.join(workspacePath, DEFAULTS_FILENAME)
+  if (!fs.existsSync(p)) return undefined
+  return fs.readFileSync(p, 'utf-8')
+}
