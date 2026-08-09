@@ -14,6 +14,10 @@ interface WorkspaceUiStore {
   sidebarCollapsed: boolean
   paletteCollapsed: boolean
   activeCategory: EntityType
+  /** Sidebar folder expansion, keyed `${entityType}:${folderPath}`. Persisted, so it survives a reload. */
+  expandedFolders: Record<string, boolean>
+  // Takes the row's rendered state, since a folder may render open without a stored entry.
+  toggleFolder: (key: string, expanded: boolean) => void
   setDockSide: (s: DockSide) => void
   togglePanel: () => void
   setPanelSize: (px: number) => void
@@ -33,6 +37,9 @@ export const useWorkspaceUiStore = create<WorkspaceUiStore>()(
       sidebarCollapsed: false,
       paletteCollapsed: false,
       activeCategory: 'agent',
+      expandedFolders: {},
+      toggleFolder: (key, expanded) =>
+        set((st) => ({ expandedFolders: { ...st.expandedFolders, [key]: !expanded } })),
       setDockSide: (s) => set({ dockSide: s }),
       togglePanel: () => set((st) => ({ panelCollapsed: !st.panelCollapsed })),
       setPanelSize: (n) => set({ panelSize: Math.max(10, Math.min(80, n)) }),

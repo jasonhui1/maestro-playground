@@ -10,9 +10,7 @@ import {
   Link as LinkIcon, 
   FileText, 
   Folder, 
-  Star, 
   Plus, 
-  Trash2, 
   Search, 
   X,
   AlertTriangle,
@@ -21,6 +19,9 @@ import {
 } from 'lucide-react';
 import { useWorkspaceUiStore, type EntityType } from '@/hooks/store/useWorkspaceUiStore';
 import { useToastStore } from '@/hooks/store/useToastStore';
+import { ENTITY_DIRS } from '@/lib/entityDirs';
+import { buildTreeRows, buildSearchRows, workspaceRootOf, type TreeItem } from '@/lib/fileTree';
+import FileList from './FileList';
 
 interface WorkspaceData {
   agents: AgentDef[];
@@ -39,6 +40,8 @@ export default function Sidebar() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const activeCategory = useWorkspaceUiStore((s) => s.activeCategory);
   const setActiveCategory = useWorkspaceUiStore((s) => s.setActiveCategory);
+  const expandedFolders = useWorkspaceUiStore((s) => s.expandedFolders);
+  const toggleFolder = useWorkspaceUiStore((s) => s.toggleFolder);
   const [modalType, setModalType] = useState<EntityType>('agent');
   const [newName, setNewName] = useState('');
   const [fromTemplate, setFromTemplate] = useState<string>('');
@@ -232,32 +235,33 @@ export default function Sidebar() {
     setItemToDelete({ type, slug, name });
   };
 
-  const activeItems = useMemo(() => {
+  // The API never sends the workspace root, so it is recovered from every path it does send.
+  const workspaceRoot = useMemo(
+    () => (data ? workspaceRootOf(Object.values(ENTITY_DIRS).flatMap(dir => data[dir].map(i => i.filePath))) : undefined),
+    [data],
+  );
+
+  const rows = useMemo(() => {
     if (!data || !activeCategory) return [];
-    const baseItems = (data[activeCategory === 'agent' ? 'agents' : 
-                          activeCategory === 'skill' ? 'skills' :
-                          activeCategory === 'chain' ? 'chains' :
-                          activeCategory === 'template' ? 'templates' : 'context'] as any[])
-                        .map(i => ({ ...i, entityType: activeCategory }));
-    
-    if (!searchQuery) return baseItems;
+    const items: TreeItem[] = data[ENTITY_DIRS[activeCategory]]
+      .map(i => ({ ...i, entityType: activeCategory }));
 
-    const fuse = new Fuse(baseItems, {
-      keys: ['name', 'slug', 'description'],
-      threshold: 0.3,
+    if (searchQuery) {
+      const fuse = new Fuse(items, { keys: ['name', 'slug', 'description'], threshold: 0.3 });
+      return buildSearchRows(fuse.search(searchQuery).map(r => r.item), {
+        category: activeCategory,
+        workspaceRoot,
+        favorites,
+      });
+    }
+    return buildTreeRows(items, {
+      category: activeCategory,
+      workspaceRoot,
+      expanded: expandedFolders,
+      favorites,
+      activeSlug: activeType === activeCategory ? activeSlug : null,
     });
-    return fuse.search(searchQuery).map(r => r.item);
-  }, [data, activeCategory, searchQuery]);
-
-  const sortedItems = useMemo(() => {
-    return [...activeItems].sort((a, b) => {
-      const aIsFav = favorites.includes(`${a.entityType}:${a.slug}`);
-      const bIsFav = favorites.includes(`${b.entityType}:${b.slug}`);
-      if (aIsFav && !bIsFav) return -1;
-      if (!aIsFav && bIsFav) return 1;
-      return 0;
-    });
-  }, [activeItems, favorites]);
+  }, [data, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot]);
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center p-4 bg-zinc-50/30">
@@ -317,55 +321,16 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2">
-          <ul className="space-y-1">
-            {sortedItems.map((item) => {
-              const isActive = activeType === item.entityType && activeSlug === item.slug;
-              const isFav = favorites.includes(`${item.entityType}:${item.slug}`);
-              
-              return (
-                <li key={`${item.entityType}:${item.slug}`} className="group relative">
-                  <button
-                    onClick={() => handleSelect(item.entityType, item.slug)}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-all pr-14 flex items-center gap-2 group/item ${
-                      isActive
-                        ? 'bg-zinc-100/80 text-zinc-900 font-medium'
-                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
-                    }`}
-                  >
-                    {isActive && (
-                      <div className="absolute left-0 top-2 bottom-2 w-1 bg-indigo-500 rounded-full" />
-                    )}
-                    <span className="truncate block flex-1">
-                      {item.name}
-                    </span>
-                  </button>
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button
-                      onClick={(e) => toggleFavorite(e, item.entityType, item.slug)}
-                      className={`transition-opacity ${
-                        isFav ? 'text-yellow-500 opacity-100' : 'text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-yellow-500'
-                      }`}
-                      title={isFav ? "Remove from favorites" : "Add to favorites"}
-                    >
-                      <Star size={14} className={isFav ? "fill-current" : ""} />
-                    </button>
-                    <button
-                      onClick={(e) => confirmDelete(e, item.entityType, item.slug, item.name)}
-                      className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-            {sortedItems.length === 0 && (
-              <li className="px-3 py-2 text-xs text-zinc-400 italic">
-                No {activeCategory}s found
-              </li>
-            )}
-          </ul>
+          <FileList
+            rows={rows}
+            activeSlug={activeSlug}
+            activeType={activeType}
+            onSelect={(item) => handleSelect(item.entityType, item.slug)}
+            onToggleFolder={toggleFolder}
+            onToggleFavorite={(e, item) => toggleFavorite(e, item.entityType, item.slug)}
+            onDelete={(e, item) => confirmDelete(e, item.entityType as EntityType, item.slug, item.name)}
+            emptyLabel={`No ${activeCategory}s found`}
+          />
         </nav>
 
 

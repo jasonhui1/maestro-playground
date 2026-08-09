@@ -5,17 +5,12 @@ import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
 import { discoverFiles, findBySlug } from './discover'
+import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
 
 
-export const ENTITY_TYPES = {
-  agent: 'agents',
-  skill: 'skills',
-  chain: 'chains',
-  template: 'templates',
-  context: 'context'
-} as const;
+export const ENTITY_TYPES = ENTITY_DIRS;
 
 export type EntityType = keyof typeof ENTITY_TYPES;
 
