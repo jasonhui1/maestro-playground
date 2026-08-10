@@ -22,7 +22,7 @@ import {
 import { useWorkspaceUiStore, type EntityType } from '@/hooks/store/useWorkspaceUiStore';
 import { useToastStore } from '@/hooks/store/useToastStore';
 import { ENTITY_DIRS } from '@/lib/entityDirs';
-import { buildTreeRows, buildSearchRows, workspaceRootOf, allFolders, type TreeItem } from '@/lib/fileTree';
+import { buildTreeRows, buildSearchRows, workspaceRootOf, allFolders, folderOf, type TreeItem } from '@/lib/fileTree';
 import FileList from './FileList';
 import RenameDialog, { type RenamePlan } from './RenameDialog';
 
@@ -325,6 +325,8 @@ export default function Sidebar() {
   };
 
   const handleMove = async (item: TreeItem, folder: string) => {
+    // Same folder picked from the menu, or dropped back where it started (#56): a no-op.
+    if (folderOf(item.filePath, item.entityType, workspaceRoot) === folder) return;
     try {
       const res = await fetch(`/api/workspace/${item.entityType}/${item.slug}`, {
         method: 'PATCH',
@@ -579,6 +581,7 @@ export default function Sidebar() {
             activeSlug={activeSlug}
             activeType={activeType}
             folders={availableFolders}
+            dragDisabled={!!searchQuery}
             onSelect={(item) => handleSelect(item.entityType, item.slug)}
             onToggleFolder={toggleFolder}
             onToggleFavorite={(e, item) => toggleFavorite(e, item.entityType, item.slug)}

@@ -31,6 +31,8 @@ export interface FileRow {
   isFavorite: boolean
   /** The file's folder, shown dim where the row sits outside that folder. */
   subtitle: string | null
+  /** Row sits under the pinned ★ Favorites node, not its real folder — not a drag source (#56). */
+  inFavorites: boolean
 }
 
 export type Row = FolderRow | FileRow
@@ -109,6 +111,15 @@ export function folderKey(category: string, folder: string): string {
   return `${category}:${folder}`
 }
 
+// Distinct from any folder row's key (`${category}:${path}`), so it never collides (#56).
+export const ROOT_DROP_ID = '__root_drop__'
+
+/** Maps a dnd-kit drop target to the folder `onMove` expects, or undefined for an invalid drop (#56). */
+export function resolveDropFolder(overId: string, overFolderPath: string | undefined): string | undefined {
+  if (overId === ROOT_DROP_ID) return ''
+  return overFolderPath
+}
+
 function byLabel(a: { label: string }, b: { label: string }) {
   return a.label.localeCompare(b.label)
 }
@@ -149,6 +160,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
           item: i,
           isFavorite: true,
           subtitle: folderByItem.get(i) || null,
+          inFavorites: true,
         })
       }
     }
@@ -192,6 +204,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
         item,
         isFavorite: isFav(item),
         subtitle: null,
+        inFavorites: false,
       })
     }
   }
@@ -214,5 +227,6 @@ export function buildSearchRows(
     item,
     isFavorite: favorites.has(`${item.entityType}:${item.slug}`),
     subtitle: folderOf(item.filePath, opts.category, opts.workspaceRoot) || null,
+    inFavorites: false,
   }))
 }

@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { folderOf, ancestorFolders, workspaceRootOf, buildTreeRows, buildSearchRows, allFolders, type TreeItem, type EntityType } from '../lib/fileTree'
+import { folderOf, ancestorFolders, workspaceRootOf, buildTreeRows, buildSearchRows, allFolders, resolveDropFolder, ROOT_DROP_ID, type TreeItem, type EntityType } from '../lib/fileTree'
 
 function item(slug: string, filePath: string, entityType: EntityType = 'agent'): TreeItem {
   return { slug, name: slug, filePath, entityType }
@@ -114,6 +114,9 @@ test('a starred file pins into ★ Favorites and still sits, starred, in its rea
   ])
   // the two rows address the same file but must not collide as React keys
   assert.notStrictEqual(rows[1].key, rows[3].key)
+  // only the Favorites-node copy is barred from being a drag source (#56)
+  const fileRows = rows.filter(r => r.kind === 'file')
+  assert.deepStrictEqual(fileRows.map(r => r.inFavorites), [true, false, false])
 })
 
 test('no favourite in this category means no Favorites node', () => {
@@ -159,6 +162,12 @@ test('allFolders lists every folder a file could move to, populated or empty, de
   assert.deepStrictEqual(allFolders(items, 'agent', WS, ['panel', 'archive']), ['archive', 'panel', 'panel/deep'])
   assert.deepStrictEqual(allFolders(items, 'agent', WS), ['panel', 'panel/deep'])
   assert.deepStrictEqual(allFolders([], 'agent', WS), [])
+})
+
+test('a drop resolves to root over the sentinel, to the folder row it landed on, or to nothing (#56)', () => {
+  assert.strictEqual(resolveDropFolder(ROOT_DROP_ID, undefined), '')
+  assert.strictEqual(resolveDropFolder('agent:panel', 'panel'), 'panel')
+  assert.strictEqual(resolveDropFolder('agent:panel', undefined), undefined)
 })
 
 test('search keeps the ranked order flat, each row carrying its folder', () => {
