@@ -236,6 +236,102 @@ test('createWorkspaceFolder makes an empty directory that a reload still sees', 
   assert.deepStrictEqual(fs.readdirSync(folderPath), [])
 })
 
+test('renameWorkspaceFolder renames the leaf segment, keeping its parent and its files', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel/optimist.md', agent('Optimist'))
+
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  const result = renameWorkspaceFolder('agent', 'panel', 'roster')
+
+  assert.strictEqual(result.folder, 'roster')
+  assert.strictEqual(result.folderPath, path.join(wp, 'agents', 'roster'))
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'roster', 'optimist.md')))
+  assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel')))
+
+  // a folder is never a reference (ADR-0012), so the file's slug still resolves unchanged
+  const { loadWorkspace } = await load()
+  assert.strictEqual(loadWorkspace().agents[0].slug, 'optimist')
+})
+
+test('renameWorkspaceFolder renames a nested folder without moving it out from under its parent', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel/deep/optimist.md', agent('Optimist'))
+
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  const result = renameWorkspaceFolder('agent', 'panel/deep', 'deeper')
+
+  assert.strictEqual(result.folder, 'panel/deeper')
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'deeper', 'optimist.md')))
+})
+
+test('renameWorkspaceFolder rejects a name colliding with an existing sibling', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
+  fs.mkdirSync(path.join(wp, 'agents', 'roster'), { recursive: true })
+
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => renameWorkspaceFolder('agent', 'panel', 'roster'), /already exists/)
+})
+
+test('renameWorkspaceFolder to the same name changes nothing', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
+
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  const result = renameWorkspaceFolder('agent', 'panel', 'panel')
+  assert.strictEqual(result.folder, 'panel')
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel')))
+})
+
+test('renameWorkspaceFolder throws for a folder that does not exist', async () => {
+  newWorkspace()
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => renameWorkspaceFolder('agent', 'ghost', 'spirit'), /not found/i)
+})
+
+test('renameWorkspaceFolder rejects a new name that sanitizes to nothing', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
+
+  const { renameWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => renameWorkspaceFolder('agent', 'panel', '../..'), /invalid/i)
+})
+
+test('deleteWorkspaceFolder removes an empty folder from disk', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
+
+  const { deleteWorkspaceFolder } = await import('../lib/fs/save')
+  deleteWorkspaceFolder('agent', 'panel')
+
+  assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel')))
+})
+
+test('deleteWorkspaceFolder refuses a folder holding files, naming the count', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel/optimist.md', agent('Optimist'))
+  write(wp, 'agents/panel/deep/second.md', agent('Second'))
+
+  const { deleteWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => deleteWorkspaceFolder('agent', 'panel'), /2 files inside/)
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'optimist.md')))
+})
+
+test('deleteWorkspaceFolder refuses a folder holding only an empty subfolder', async () => {
+  const wp = newWorkspace()
+  fs.mkdirSync(path.join(wp, 'agents', 'panel', 'deep'), { recursive: true })
+
+  const { deleteWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => deleteWorkspaceFolder('agent', 'panel'))
+  assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'deep')))
+})
+
+test('deleteWorkspaceFolder throws for a folder that does not exist', async () => {
+  newWorkspace()
+  const { deleteWorkspaceFolder } = await import('../lib/fs/save')
+  assert.throws(() => deleteWorkspaceFolder('agent', 'ghost'), /not found/i)
+})
+
 test('a nested context file is readable at run time, by bare slug', async () => {
   const wp = newWorkspace()
   write(wp, 'context/lore/tavern.md', '---\nname: Tavern\n---\nThe Gilded Flagon.\n')

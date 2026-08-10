@@ -6,6 +6,7 @@ import { ChevronRight } from 'lucide-react';
 export interface ContextMenuItem {
   key: string;
   label: string;
+  title?: string;
   onClick?: () => void;
   submenu?: ContextMenuItem[];
 }
@@ -55,6 +56,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
                 onClose();
               }
             }}
+            title={item.title}
             className="w-full text-left px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 flex items-center justify-between gap-4"
           >
             <span>{item.label}</span>

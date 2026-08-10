@@ -16,6 +16,9 @@ export function workspaceErrorResponse(err: unknown) {
   if (error.message?.startsWith('Invalid name')) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
+  if (error.message?.startsWith('Folder not empty')) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
   if (error.message?.includes('not found')) {
     return NextResponse.json({ error: error.message }, { status: 404 })
   }

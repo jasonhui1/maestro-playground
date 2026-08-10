@@ -349,6 +349,51 @@ export default function Sidebar() {
     }
   };
 
+  // Rename is cosmetic to the engine (ADR-0012): no preview, no ref-rewrite, just the
+  // fs rename. A collision resolves to an inline error string for the row to show (#55).
+  const handleRenameFolder = async (folderPath: string, name: string): Promise<string | null> => {
+    if (!activeCategory) return null;
+    try {
+      const res = await fetch('/api/workspace/folders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: activeCategory, folder: folderPath, name }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        return err.error || 'Failed to rename folder';
+      }
+
+      await refreshEmptyFolders(activeCategory);
+      const dataRes = await fetch('/api/workspace');
+      setData(await dataRes.json());
+      return null;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  };
+
+  // An empty folder deletes without ceremony; a non-empty one is refused with the file
+  // count, surfaced as a toast since there's no dialog for the immediate case (#55).
+  const handleDeleteFolder = async (folderPath: string) => {
+    if (!activeCategory) return;
+    try {
+      const res = await fetch(
+        `/api/workspace/folders?type=${activeCategory}&folder=${encodeURIComponent(folderPath)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete folder');
+      }
+
+      await refreshEmptyFolders(activeCategory);
+      addToast(`Deleted folder: ${folderPath.split('/').pop()}`, 'success');
+    } catch (err: unknown) {
+      addToast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  };
+
   const closeRename = () => {
     setItemToRename(null);
     setRenameName('');
@@ -558,6 +603,8 @@ export default function Sidebar() {
               setFolderCreateError(null);
               setIsFolderModalOpen(true);
             }}
+            onRenameFolder={handleRenameFolder}
+            onDeleteFolder={handleDeleteFolder}
             emptyLabel={`No ${activeCategory}s found`}
           />
         </nav>

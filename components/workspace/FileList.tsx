@@ -20,6 +20,9 @@ interface FileListProps {
   onRename: (item: TreeItem) => void;
   onCreateInFolder: (e: React.MouseEvent, folderPath: string) => void;
   onCreateFolderInFolder: (e: React.MouseEvent, folderPath: string) => void;
+  /** Renames a folder's leaf segment. Resolves an inline error message, or null on success (#55). */
+  onRenameFolder: (folderPath: string, name: string) => Promise<string | null>;
+  onDeleteFolder: (folderPath: string) => void;
   emptyLabel: string;
 }
 
@@ -49,14 +52,26 @@ export default function FileList({
   onRename,
   onCreateInFolder,
   onCreateFolderInFolder,
+  onRenameFolder,
+  onDeleteFolder,
   emptyLabel,
 }: FileListProps) {
   const isActive = (item: TreeItem) => activeType === item.entityType && activeSlug === item.slug;
-  const [contextMenu, setContextMenu] = useState<{ item: TreeItem; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<
+    | { kind: 'file'; item: TreeItem; x: number; y: number }
+    | { kind: 'folder'; path: string; label: string; x: number; y: number }
+    | null
+  >(null);
+  const [editingFolder, setEditingFolder] = useState<{ path: string; value: string; error: string | null } | null>(null);
 
   const openContextMenu = (e: React.MouseEvent, item: TreeItem) => {
     e.preventDefault();
-    setContextMenu({ item, x: e.clientX, y: e.clientY });
+    setContextMenu({ kind: 'file', item, x: e.clientX, y: e.clientY });
+  };
+
+  const openFolderContextMenu = (e: React.MouseEvent, path: string, label: string) => {
+    e.preventDefault();
+    setContextMenu({ kind: 'folder', path, label, x: e.clientX, y: e.clientY });
   };
 
   const rowMenuItems = (item: TreeItem): ContextMenuItem[] => [
@@ -71,6 +86,31 @@ export default function FileList({
     { key: 'rename', label: 'Rename…', onClick: () => onRename(item) },
   ];
 
+  const folderMenuItems = (path: string, label: string): ContextMenuItem[] => [
+    {
+      key: 'rename',
+      label: 'Rename…',
+      title: "A folder isn't a reference — renaming it doesn't touch any file, chain, or version history.",
+      onClick: () => setEditingFolder({ path, value: label, error: null }),
+    },
+    { key: 'delete', label: 'Delete', onClick: () => onDeleteFolder(path) },
+  ];
+
+  const commitFolderRename = async () => {
+    if (!editingFolder) return;
+    const { path, value } = editingFolder;
+    if (!value.trim()) {
+      setEditingFolder(null);
+      return;
+    }
+    const error = await onRenameFolder(path, value.trim());
+    if (error) {
+      setEditingFolder({ path, value, error });
+    } else {
+      setEditingFolder(null);
+    }
+  };
+
   if (rows.length === 0) {
     return <p className="px-3 py-2 text-xs text-zinc-400 italic">{emptyLabel}</p>;
   }
@@ -80,41 +120,78 @@ export default function FileList({
     <ul className="space-y-0.5">
       {rows.map((row) =>
         row.kind === 'folder' ? (
-          <li key={row.key} className="group relative">
-            <button
-              onClick={() => onToggleFolder(row.key, row.expanded)}
-              aria-expanded={row.expanded}
-              className="w-full text-left px-2 py-1.5 text-sm rounded-md flex items-center gap-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors pr-14"
-              style={{ paddingLeft: 8 + row.depth * INDENT }}
-            >
-              <Guide depth={row.depth} />
-              {row.expanded ? <ChevronDown size={13} className="shrink-0 text-zinc-400" /> : <ChevronRight size={13} className="shrink-0 text-zinc-400" />}
-              {row.path === FAVORITES_PATH ? (
-                <Star size={13} className="shrink-0 fill-current text-yellow-500" />
-              ) : row.expanded ? (
-                <FolderOpen size={13} className="shrink-0 text-zinc-400" />
-              ) : (
+          <li
+            key={row.key}
+            className="group relative"
+            onContextMenu={row.path !== FAVORITES_PATH ? (e) => openFolderContextMenu(e, row.path, row.label) : undefined}
+          >
+            {editingFolder?.path === row.path ? (
+              <div
+                className="flex items-center gap-1.5 py-1.5"
+                style={{ paddingLeft: 8 + row.depth * INDENT }}
+              >
+                <Guide depth={row.depth} />
+                {row.expanded ? <ChevronDown size={13} className="shrink-0 text-zinc-400" /> : <ChevronRight size={13} className="shrink-0 text-zinc-400" />}
                 <Folder size={13} className="shrink-0 text-zinc-400" />
-              )}
-              <span className="truncate font-medium">{row.label}</span>
-            </button>
-            {row.path !== FAVORITES_PATH && (
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <button
-                  onClick={(e) => onCreateFolderInFolder(e, row.path)}
-                  className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-600 transition-opacity"
-                  title="New folder in this folder"
-                >
-                  <FolderPlus size={14} />
-                </button>
-                <button
-                  onClick={(e) => onCreateInFolder(e, row.path)}
-                  className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-600 transition-opacity"
-                  title="New file in this folder"
-                >
-                  <Plus size={14} />
-                </button>
+                <input
+                  autoFocus
+                  value={editingFolder.value}
+                  onChange={(e) => setEditingFolder({ path: row.path, value: e.target.value, error: null })}
+                  onBlur={commitFolderRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitFolderRename();
+                    if (e.key === 'Escape') setEditingFolder(null);
+                  }}
+                  title="A folder isn't a reference — renaming it doesn't touch any file, chain, or version history."
+                  className="min-w-0 flex-1 px-1 py-0 text-sm border border-zinc-300 rounded focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                />
               </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => onToggleFolder(row.key, row.expanded)}
+                  aria-expanded={row.expanded}
+                  className="w-full text-left px-2 py-1.5 text-sm rounded-md flex items-center gap-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors pr-14"
+                  style={{ paddingLeft: 8 + row.depth * INDENT }}
+                >
+                  <Guide depth={row.depth} />
+                  {row.expanded ? <ChevronDown size={13} className="shrink-0 text-zinc-400" /> : <ChevronRight size={13} className="shrink-0 text-zinc-400" />}
+                  {row.path === FAVORITES_PATH ? (
+                    <Star size={13} className="shrink-0 fill-current text-yellow-500" />
+                  ) : row.expanded ? (
+                    <FolderOpen size={13} className="shrink-0 text-zinc-400" />
+                  ) : (
+                    <Folder size={13} className="shrink-0 text-zinc-400" />
+                  )}
+                  <span className="truncate font-medium">{row.label}</span>
+                </button>
+                {row.path !== FAVORITES_PATH && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button
+                      onClick={(e) => onCreateFolderInFolder(e, row.path)}
+                      className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-600 transition-opacity"
+                      title="New folder in this folder"
+                    >
+                      <FolderPlus size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => onCreateInFolder(e, row.path)}
+                      className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-600 transition-opacity"
+                      title="New file in this folder"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            {editingFolder?.path === row.path && editingFolder.error && (
+              <p
+                className="text-xs text-red-600 pb-1"
+                style={{ paddingLeft: 8 + row.depth * INDENT + 20 }}
+              >
+                {editingFolder.error}
+              </p>
             )}
           </li>
         ) : (
@@ -167,7 +244,11 @@ export default function FileList({
       <ContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
-        items={rowMenuItems(contextMenu.item)}
+        items={
+          contextMenu.kind === 'file'
+            ? rowMenuItems(contextMenu.item)
+            : folderMenuItems(contextMenu.path, contextMenu.label)
+        }
         onClose={() => setContextMenu(null)}
       />
     )}
