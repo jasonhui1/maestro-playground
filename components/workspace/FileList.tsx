@@ -246,12 +246,22 @@ function FileRowItem({ row, isActive, dragDisabled, onSelect, onToggleFavorite, 
 }
 
 // A variant has no file, folder, or history of its own (ADR-0013) — no drag handle, no
-// star, no delete, no context menu. Selecting it opens the file that declares it.
-function VariantRowItem({ row, onSelect }: { row: VariantRow; onSelect: (item: TreeItem) => void }) {
+// star, no delete. Selecting it opens the file that declares it. Rename is the one action
+// it does carry: its name is the reference a chain writes (#62).
+function VariantRowItem({
+  row,
+  onSelect,
+  onContextMenu,
+}: {
+  row: VariantRow;
+  onSelect: (item: TreeItem) => void;
+  onContextMenu: (e: React.MouseEvent, item: TreeItem) => void;
+}) {
   return (
     <li className="relative">
       <button
         onClick={() => onSelect(row.fileItem)}
+        onContextMenu={(e) => onContextMenu(e, row.item)}
         style={{ paddingLeft: 12 + row.depth * INDENT }}
         title={`Variant of ${row.fileItem.name}`}
         className="w-full text-left px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-2 text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600"
@@ -302,6 +312,7 @@ export default function FileList({
   const isActive = (item: TreeItem) => activeType === item.entityType && activeSlug === item.slug;
   const [contextMenu, setContextMenu] = useState<
     | { kind: 'file'; item: TreeItem; x: number; y: number }
+    | { kind: 'variant'; item: TreeItem; x: number; y: number }
     | { kind: 'folder'; path: string; label: string; x: number; y: number }
     | null
   >(null);
@@ -316,10 +327,23 @@ export default function FileList({
     setContextMenu({ kind: 'file', item, x: e.clientX, y: e.clientY });
   };
 
+  const openVariantContextMenu = (e: React.MouseEvent, item: TreeItem) => {
+    e.preventDefault();
+    setContextMenu({ kind: 'variant', item, x: e.clientX, y: e.clientY });
+  };
+
   const openFolderContextMenu = (e: React.MouseEvent, path: string, label: string) => {
     e.preventDefault();
     setContextMenu({ kind: 'folder', path, label, x: e.clientX, y: e.clientY });
   };
+
+  // The one action a variant shares with a file: its name is the reference a chain
+  // writes, whether that name is a filename or a `variants:` entry (#62).
+  const renameMenuItem = (item: TreeItem): ContextMenuItem => ({
+    key: 'rename',
+    label: 'Rename…',
+    onClick: () => onRename(item),
+  });
 
   const rowMenuItems = (item: TreeItem): ContextMenuItem[] => [
     {
@@ -330,7 +354,7 @@ export default function FileList({
         ...folders.map((folder) => ({ key: folder, label: folder, onClick: () => onMove(item, folder) })),
       ],
     },
-    { key: 'rename', label: 'Rename…', onClick: () => onRename(item) },
+    renameMenuItem(item),
   ];
 
   const folderMenuItems = (path: string, label: string): ContextMenuItem[] => [
@@ -396,7 +420,7 @@ export default function FileList({
               onContextMenu={openFolderContextMenu}
             />
           ) : row.kind === 'variant' ? (
-            <VariantRowItem key={row.key} row={row} onSelect={onSelect} />
+            <VariantRowItem key={row.key} row={row} onSelect={onSelect} onContextMenu={openVariantContextMenu} />
           ) : (
             <FileRowItem
               key={row.key}
@@ -427,7 +451,9 @@ export default function FileList({
         items={
           contextMenu.kind === 'file'
             ? rowMenuItems(contextMenu.item)
-            : folderMenuItems(contextMenu.path, contextMenu.label)
+            : contextMenu.kind === 'variant'
+              ? [renameMenuItem(contextMenu.item)]
+              : folderMenuItems(contextMenu.path, contextMenu.label)
         }
         onClose={() => setContextMenu(null)}
       />
