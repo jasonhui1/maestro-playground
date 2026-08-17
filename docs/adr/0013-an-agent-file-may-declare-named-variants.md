@@ -40,11 +40,11 @@ name: Premortem
 skills: [base-protocol, concise]
 
 variants:
-  - name: rot
+  - id: rot
     skills+: [cause-technical]
-  - name: burnout
+  - id: burnout
     skills+: [cause-motivation]
-  - name: creep
+  - id: creep
     skills+: [cause-scope]
 ---
 
@@ -68,10 +68,13 @@ A chain names a variant the way it names any agent:
 workspace lookup carries it. Its input sockets come from the shared body, minus
 any slot the variant fills.
 
-**A variant name is a slug.** [ADR-0012](0012-folders-organise-files-names-address-them.md)
-gives one flat namespace per type. A variant name must not collide with another
-variant name, or with any agent file name, under `agents/`. A collision is a
-load-time error that names both sources.
+**A variant's `id` is a slug.** [ADR-0012](0012-folders-organise-files-names-address-them.md)
+gives one flat namespace per type. A variant's `id` must not collide with another
+variant's `id`, or with any agent file name, under `agents/`. A collision is a
+load-time error that names both sources. It may also state `name:`, a display
+label shown wherever an agent's name is shown; never used for addressing, and a
+chain still writes `agent: <id>`. A variant that states no `name:` displays its
+`id` (#61).
 
 **A variant changes skills and fills slots.** It may state `skills+` or `skills!`.
 It may state `prompt` — a bare string, which fills `{prompt}`, or a map, which
@@ -82,11 +85,13 @@ holds: a chain that needs a whole new body needs a second agent file.
 ---
 name: Premortem
 variants:
-  - name: rot
+  - id: rot
+    name: "Root cause: rot"
     skills+: [cause-technical]
     prompt:
       cause: technical decay
-  - name: burnout
+  - id: burnout
+    name: "Root cause: burnout"
     skills+: [cause-motivation]
     prompt:
       cause: the author stopped caring
@@ -112,6 +117,12 @@ file may therefore expose different sockets.
 **A file that declares variants is not addressable by its own name.** It yields its
 variants and nothing else. The shared body may hold a slot that only a variant
 fills, so running the file bare would leave that slot unresolved.
+
+**A declaring file's own `name:` is unused.** Nothing resolves to the declaring
+file itself, so nothing ever reads that field — a reader who wants a variant's
+display name states `name:` on the variant instead (#61). A declaring file that
+states `name:` is not an error; the field is simply inert, the same as a
+frontmatter field no defaults file or agent file reads.
 
 ## Rationale
 

@@ -112,7 +112,7 @@ export function findAgentFile(slug: string): string | undefined {
   if (own) return own
   for (const filePath of walkMarkdown(agentsDir)) {
     const declared = parseAgent(filePath).variants ?? []
-    if (declared.some(v => v.name === slug)) return filePath
+    if (declared.some(v => v.id === slug)) return filePath
   }
   return undefined
 }

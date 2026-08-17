@@ -10,12 +10,12 @@ const withVariants = file(
 skills:
   - base-protocol
 variants:
-  - name: rot
+  - id: rot
     prompt: the technical cause
-  - name: burnout
+  - id: burnout
     skills+: [harsh]
     prompt: the motivational cause
-  - name: creep
+  - id: creep
     skills!: [terse]
     prompt:
       cause: the scope cause`,
@@ -64,46 +64,62 @@ test('variants share the file body, so an unfilled slot stays a socket on all of
 
 // A variant is addressable, so a dropped one would surface far from its cause —
 // as an unknown-agent error in some chain. Every malformed entry throws.
-test('a variant with no name throws, naming the file', () => {
+test('a variant with no id throws, naming the file', () => {
   assert.throws(
-    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - name: ""', 'Body')),
-    /\/w\/agents\/x\.md: variant 1 states no "name"/,
+    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: ""', 'Body')),
+    /\/w\/agents\/x\.md: variant 1 states no "id"/,
   )
 })
 
 test('a nested variants block throws — one level only', () => {
   assert.throws(
-    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - name: a\n    variants:\n      - name: b', 'Body')),
+    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: a\n    variants:\n      - id: b', 'Body')),
     /variant "a" declares variants; one level only/,
   )
 })
 
 test('filling a slot the body does not contain throws, naming the variant', () => {
   assert.throws(
-    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - name: a\n    prompt:\n      nosuch: v', 'Body {real}')),
+    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: a\n    prompt:\n      nosuch: v', 'Body {real}')),
     /variant "a": prompt fills "\{nosuch\}", which the body does not contain/,
   )
 })
 
 test('a non-scalar slot value throws instead of stringifying to [object Object]', () => {
   assert.throws(
-    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - name: a\n    prompt:\n      k:\n        deep: 1', 'Body {k}')),
+    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: a\n    prompt:\n      k:\n        deep: 1', 'Body {k}')),
     /prompt slot "k" must be a scalar, not a map/,
   )
 })
 
 test('a slot name holding regex metacharacters fills only itself', () => {
-  const [a] = parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - name: v\n    prompt:\n      "a.b": FILLED', 'Body {a.b} and {axb}'))
+  const [a] = parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: v\n    prompt:\n      "a.b": FILLED', 'Body {a.b} and {axb}'))
   assert.ok(a.systemPrompt.includes('Body FILLED and {axb}'))
 })
 
 test('a variant that changes skills reports skills as coming from the variant', () => {
   const [ext, repl, none] = parseAgentFile('/w/agents/x.md', file(
-    'name: X\nskills: [a]\nvariants:\n  - name: v1\n    skills+: [b]\n  - name: v2\n    skills!: [c]\n  - name: v3',
+    'name: X\nskills: [a]\nvariants:\n  - id: v1\n    skills+: [b]\n  - id: v2\n    skills!: [c]\n  - id: v3',
     'Body'))
   assert.strictEqual(ext.resolution?.sources.skills, 'variant')
   assert.strictEqual(repl.resolution?.sources.skills, 'variant')
   assert.strictEqual(none.resolution?.sources.skills, 'file')
+})
+
+test('a variant with no stated name displays its id', () => {
+  const [rot] = parseAgentFile('/w/agents/premortem.md', withVariants)
+  assert.strictEqual(rot.slug, 'rot')
+  assert.strictEqual(rot.name, 'rot')
+  assert.strictEqual(rot.resolution?.sources.name, 'file')
+})
+
+test('a variant with a stated name displays it, and addresses by id regardless', () => {
+  const [named] = parseAgentFile('/w/agents/x.md', file(
+    'name: X\nvariants:\n  - id: rot\n    name: "Root cause: rot"',
+    'Body'))
+  assert.strictEqual(named.slug, 'rot')
+  assert.strictEqual(named.name, 'Root cause: rot')
+  assert.strictEqual(named.resolution?.sources.name, 'variant')
 })
 
 test('a variant carries no variants of its own', () => {

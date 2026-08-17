@@ -129,11 +129,12 @@ export function normalizeVariants(raw: unknown, where: string): VariantDecl[] {
   if (!Array.isArray(raw)) throw new Error(`${where}: "variants" must be a list.`)
   return raw.map((v, i) => {
     const entry = v as Record<string, unknown>
-    const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
-    if (!name) throw new Error(`${where}: variant ${i + 1} states no "name".`)
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : ''
+    if (!id) throw new Error(`${where}: variant ${i + 1} states no "id".`)
     // One level (ADR-0013): a nested block would otherwise be silently ignored.
-    if ('variants' in entry) throw new Error(`${where}: variant "${name}" declares variants; one level only.`)
-    return { ...(entry as unknown as VariantDecl), name }
+    if ('variants' in entry) throw new Error(`${where}: variant "${id}" declares variants; one level only.`)
+    const name = typeof entry.name === 'string' ? entry.name.trim() : undefined
+    return { ...(entry as unknown as VariantDecl), id, name: name || undefined }
   })
 }
 
@@ -176,14 +177,20 @@ export function parseAgentFile(
     const changesSkills = v['skills!'] !== undefined || v['skills+'] !== undefined
     return {
       ...base,
-      slug: v.name,
-      name: v.name,
+      slug: v.id,
+      // A stated name is a display label only, never an address (#61); an unstated
+      // one falls back to the id, so a variant still shows something readable.
+      name: v.name ?? v.id,
       skills: v['skills!'] ?? [...base.skills, ...(v['skills+'] ?? [])],
-      systemPrompt: fillSlots(base.systemPrompt, v.prompt, `${filePath} variant "${v.name}"`),
+      systemPrompt: fillSlots(base.systemPrompt, v.prompt, `${filePath} variant "${v.id}"`),
       variants: undefined,
       variantOf: base.slug,
-      resolution: base.resolution && changesSkills
-        ? { ...base.resolution, sources: { ...base.resolution.sources, skills: 'variant' } }
+      resolution: base.resolution
+        ? { ...base.resolution, sources: {
+            ...base.resolution.sources,
+            ...(changesSkills ? { skills: 'variant' as const } : {}),
+            ...(v.name ? { name: 'variant' as const } : {}),
+          } }
         : base.resolution,
     }
   })

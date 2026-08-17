@@ -76,7 +76,9 @@ export interface AgentResolution {
 
 /** One `variants:` entry: a named agent sharing the file's body (ADR-0013). */
 export interface VariantDecl {
-  name: string
+  id: string
+  /** Optional display label; falls back to `id` when unstated (#61). */
+  name?: string
   'skills+'?: string[]
   'skills!'?: string[]
   /** A bare string fills `{prompt}`; a map fills the slot each key names. */
