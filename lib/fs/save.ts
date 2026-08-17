@@ -104,15 +104,6 @@ export function moveWorkspaceEntity(type: EntityType, slug: string, folder: stri
   return { filePath: targetPath, slug }
 }
 
-export function deleteWorkspaceEntity(type: EntityType, slug: string) {
-  const filePath = resolveEntityPath(type, slug)
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath)
-    return { success: true, filePath }
-  }
-  throw new Error(`Entity not found: ${type}/${slug}`)
-}
-
 // A folder rename only ever touches its own leaf segment (ADR-0012: a folder is never a
 // reference), so it's a plain fs.renameSync with no rewrite pass, unlike an entity rename.
 export function renameWorkspaceFolder(type: EntityType, folder: string, name: string) {

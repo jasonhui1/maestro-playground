@@ -332,7 +332,7 @@ test('renaming to the same slug changes nothing', async () => {
 
 test('every node field the registry marks as a reference is a rename site', async () => {
   const { allFields } = await import('../lib/nodeKinds')
-  const { refSitesFor } = await rename()
+  const { refSitesFor } = await import('../lib/fs/entityRefs')
 
   // the registry owns every field fact (ADR-0001), so a new referencing field must reach
   // the rename without a second list being edited

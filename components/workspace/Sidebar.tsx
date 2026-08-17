@@ -469,8 +469,7 @@ export default function Sidebar() {
     }
   };
 
-  const confirmDelete = (e: React.MouseEvent, type: EntityType, slug: string, name: string) => {
-    e.stopPropagation();
+  const confirmDelete = (type: EntityType, slug: string, name: string) => {
     setItemToDelete({ type, slug, name });
   };
 
@@ -585,7 +584,7 @@ export default function Sidebar() {
             onSelect={(item) => handleSelect(item.entityType, item.slug)}
             onToggleFolder={toggleFolder}
             onToggleFavorite={(e, item) => toggleFavorite(e, item.entityType, item.slug)}
-            onDelete={(e, item) => confirmDelete(e, item.entityType as EntityType, item.slug, item.name)}
+            onDelete={(item) => confirmDelete(item.entityType as EntityType, item.slug, item.name)}
             onMove={handleMove}
             onRename={(item) => {
               setItemToRename(item);

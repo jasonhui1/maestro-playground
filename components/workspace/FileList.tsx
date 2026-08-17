@@ -28,7 +28,7 @@ interface FileListProps {
   onSelect: (item: TreeItem) => void;
   onToggleFolder: (key: string, expanded: boolean) => void;
   onToggleFavorite: (e: React.MouseEvent, item: TreeItem) => void;
-  onDelete: (e: React.MouseEvent, item: TreeItem) => void;
+  onDelete: (item: TreeItem) => void;
   onMove: (item: TreeItem, folder: string) => void;
   onRename: (item: TreeItem) => void;
   onCreateInFolder: (e: React.MouseEvent, folderPath: string) => void;
@@ -183,7 +183,7 @@ interface FileRowItemProps {
   dragDisabled: boolean;
   onSelect: (item: TreeItem) => void;
   onToggleFavorite: (e: React.MouseEvent, item: TreeItem) => void;
-  onDelete: (e: React.MouseEvent, item: TreeItem) => void;
+  onDelete: (item: TreeItem) => void;
   onContextMenu: (e: React.MouseEvent, item: TreeItem) => void;
 }
 
@@ -234,7 +234,7 @@ function FileRowItem({ row, isActive, dragDisabled, onSelect, onToggleFavorite, 
           <Star size={14} className={row.isFavorite ? 'fill-current' : ''} />
         </button>
         <button
-          onClick={(e) => onDelete(e, row.item)}
+          onClick={(e) => { e.stopPropagation(); onDelete(row.item); }}
           className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
           title="Delete"
         >
@@ -452,7 +452,9 @@ export default function FileList({
           contextMenu.kind === 'file'
             ? rowMenuItems(contextMenu.item)
             : contextMenu.kind === 'variant'
-              ? [renameMenuItem(contextMenu.item)]
+              // Deleting a variant edits the file that declares it (#63), so the row
+              // offers it even though the row has no file behind it.
+              ? [renameMenuItem(contextMenu.item), { key: 'delete', label: 'Delete', onClick: () => onDelete(contextMenu.item) }]
               : folderMenuItems(contextMenu.path, contextMenu.label)
         }
         onClose={() => setContextMenu(null)}

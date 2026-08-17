@@ -3,48 +3,13 @@ import fs from 'fs'
 import path from 'path'
 import { EntityType, ENTITY_TYPES, getWorkspacePath, sanitizeSlug } from './workspace'
 import { walkMarkdown, findBySlug } from './discover'
-import { normalizeVariants } from './parseAgent'
 import { getVersionsDir } from './versions'
-import { allFields } from '../nodeKinds'
+import {
+  RefHit, refSitesFor, parseFile, typeDir, inboundRefs, rewriteRefs,
+  variantIndex, VariantSource,
+} from './entityRefs'
 import { parseVersionKey, versionKey, TouchedFile } from '../runVersions'
 import { parseRefs } from '../refs'
-import { VariantDecl } from '../types'
-
-/**
- * A typed field that holds a slug — the parser knows a slug sits there and nowhere else.
- * `scope: 'node'` means the field sits on each entry of a chain file's `nodes` list.
- */
-export interface RefSite {
-  holder: EntityType
-  scope: 'frontmatter' | 'node'
-  field: string
-  list: boolean
-}
-
-/** A site plus the type it names, which is what selects the sites for one rename. */
-type TypedRefSite = RefSite & { ref: EntityType }
-
-// Node fields derive from the node-kind registry, which owns every field fact (ADR-0001).
-const NODE_SITES: TypedRefSite[] = allFields
-  .filter(f => f.ref)
-  .map(f => ({ holder: 'chain', scope: 'node', field: f.key, list: f.codec === 'stringList', ref: f.ref! }))
-
-// The registry does not reach outside a chain file, so a frontmatter field states itself.
-const FRONTMATTER_SITES: TypedRefSite[] = [
-  { holder: 'agent', scope: 'frontmatter', field: 'skills', list: true, ref: 'skill' },
-  { holder: 'agent', scope: 'frontmatter', field: 'context', list: true, ref: 'context' },
-  { holder: 'agent', scope: 'frontmatter', field: 'tools', list: true, ref: 'tool' },
-  { holder: 'template', scope: 'frontmatter', field: 'chain', list: false, ref: 'chain' },
-]
-
-/**
- * Every typed field that names a file of the given type. Prose `{slug}` placeholders are
- * absent on purpose: they are textual and ambiguous, so a rename reports them instead of
- * rewriting them (#54). This is not a general reference index — #13 owns that.
- */
-export function refSitesFor(type: EntityType): RefSite[] {
-  return [...NODE_SITES, ...FRONTMATTER_SITES].filter(s => s.ref === type)
-}
 
 /**
  * Types whose slug can also appear in prompt prose, as `{slug}` (a context file) or
@@ -56,11 +21,7 @@ const PROSE_REF_KIND: Partial<Record<EntityType, 'file' | 'agent'>> = {
 }
 
 /** One referencing file the rename will rewrite, and the typed fields it will touch. */
-export interface RenameEdit {
-  filePath: string
-  type: EntityType
-  fields: string[]
-}
+export type RenameEdit = RefHit
 
 export interface RenamePlan {
   type: EntityType
@@ -77,74 +38,8 @@ export interface RenamePlan {
   manual: { filePath: string; type: EntityType }[]
 }
 
-// Passing options opts out of gray-matter's content-keyed cache, which would otherwise
-// hand the same object to a later reader — and this module rewrites its parse in place.
-function parseFile(filePath: string) {
-  return matter(fs.readFileSync(filePath, 'utf-8'), {})
-}
-
-function typeDir(type: EntityType) {
-  return path.join(getWorkspacePath(), ENTITY_TYPES[type])
-}
-
 function logsDir() {
   return path.join(getWorkspacePath(), 'logs')
-}
-
-/** Swaps `from` for `to` in one typed field, in place. Returns whether it changed. */
-function rewriteField(holder: Record<string, unknown>, site: RefSite, from: string, to: string): boolean {
-  const value = holder[site.field]
-  if (site.list) {
-    if (!Array.isArray(value)) return false
-    let changed = false
-    holder[site.field] = value.map(entry => {
-      if (entry === from) { changed = true; return to }
-      return entry
-    })
-    return changed
-  }
-  if (value !== from) return false
-  holder[site.field] = to
-  return true
-}
-
-/**
- * Applies every site to one holder file's parsed frontmatter, in place, and returns the
- * fields it touched. The planner calls this on a throwaway parse to learn those fields.
- */
-function applyRefRewrites(data: Record<string, unknown>, sites: RefSite[], from: string, to: string): string[] {
-  const touched = new Set<string>()
-  for (const site of sites) {
-    if (site.scope === 'frontmatter') {
-      if (rewriteField(data, site, from, to)) touched.add(site.field)
-      continue
-    }
-    const nodes = data.nodes
-    if (!Array.isArray(nodes)) continue
-    for (const node of nodes) {
-      if (node && typeof node === 'object' && rewriteField(node as Record<string, unknown>, site, from, to)) {
-        touched.add(site.field)
-      }
-    }
-  }
-  return Array.from(touched)
-}
-
-function collectRewrites(type: EntityType, from: string, to: string): RenameEdit[] {
-  const byHolder = new Map<EntityType, RefSite[]>()
-  for (const site of refSitesFor(type)) {
-    byHolder.set(site.holder, [...(byHolder.get(site.holder) ?? []), site])
-  }
-
-  const edits: RenameEdit[] = []
-  for (const [holder, sites] of byHolder) {
-    for (const filePath of walkMarkdown(typeDir(holder))) {
-      const { data } = parseFile(filePath)
-      const fields = applyRefRewrites(data as Record<string, unknown>, sites, from, to)
-      if (fields.length) edits.push({ filePath, type: holder, fields })
-    }
-  }
-  return edits
 }
 
 function collectManual(type: EntityType, from: string): { filePath: string; type: EntityType }[] {
@@ -183,38 +78,6 @@ function collectRuns(type: EntityType, from: string): string[] {
       return false
     }
   })
-}
-
-/** One variant name, and the file whose frontmatter declares it (ADR-0013). */
-interface VariantSource {
-  filePath: string
-  fileSlug: string
-}
-
-/**
- * Every variant declared under `agents/`, by name — empty for any other type, which has
- * no variants (ADR-0013). Built once per rename and passed down: it reads every agent
- * file, so a workspace of any size pays for it once.
- *
- * A duplicate keeps its first source and a malformed block is skipped: both are load-time
- * errors the workspace already reports (ADR-0012), and neither may block renaming an
- * unrelated agent — or renaming the broken file back into shape.
- */
-function variantIndex(type: EntityType): Map<string, VariantSource> {
-  const found = new Map<string, VariantSource>()
-  if (type !== 'agent') return found
-  for (const filePath of walkMarkdown(typeDir('agent'))) {
-    let declared: VariantDecl[]
-    try {
-      declared = normalizeVariants(parseFile(filePath).data.variants, filePath)
-    } catch {
-      continue
-    }
-    for (const variant of declared) {
-      if (!found.has(variant.id)) found.set(variant.id, { filePath, fileSlug: path.basename(filePath, '.md') })
-    }
-  }
-  return found
 }
 
 /** The file a rename acts on: the named file, or the file declaring the named variant. Throws for neither. */
@@ -274,7 +137,7 @@ export function planRename(type: EntityType, from: string, to: string): RenamePl
     to: cleanTo,
     filePath,
     variantOf,
-    rewrites: addressable ? [...ownEdit, ...collectRewrites(type, from, cleanTo)] : [],
+    rewrites: addressable ? [...ownEdit, ...inboundRefs(type, from)] : [],
     // A run keys on the declaring file's slug (ADR-0011), which a variant rename never
     // changes, so there is no pinned key to repoint.
     runs: variantOf ? [] : collectRuns(type, from),
@@ -307,7 +170,7 @@ export function renameWorkspaceEntity(type: EntityType, from: string, to: string
       // block is not a typed reference site — it is rewritten below.
       if (plan.variantOf && edit.filePath === plan.filePath) continue
       const { data, content } = parseFile(edit.filePath)
-      applyRefRewrites(data as Record<string, unknown>, sites.filter(s => s.holder === edit.type), from, plan.to)
+      rewriteRefs(data as Record<string, unknown>, sites.filter(s => s.holder === edit.type), from, plan.to)
       write(edit.filePath, matter.stringify(content, data))
     }
     for (const runId of plan.runs) repointRun(runId, type, from, plan.to, write)

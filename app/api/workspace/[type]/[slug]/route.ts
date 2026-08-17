@@ -4,7 +4,8 @@ import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
 import { parseTool } from '@/lib/fs/parseTool'
-import { saveWorkspaceEntity, deleteWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
+import { saveWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
+import { deleteWorkspaceEntity } from '@/lib/fs/delete'
 import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
 import { workspaceErrorResponse } from '../../errors'
 import fs from 'fs'
@@ -144,18 +145,6 @@ export async function DELETE(
     
     if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
-    }
-
-    // Deleting or moving a variant is an edit to the file that declares it, which
-    // this route cannot express (ADR-0013).
-    if (type === 'agent') {
-      const declaring = declaringAgentSlug(slug)
-      if (declaring && declaring !== slug) {
-        return NextResponse.json(
-          { error: `"${slug}" is a variant declared in ${declaring}.md — edit that file instead.` },
-          { status: 400 },
-        )
-      }
     }
 
     const result = deleteWorkspaceEntity(type as EntityType, slug)
