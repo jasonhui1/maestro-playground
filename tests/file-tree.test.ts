@@ -2,8 +2,8 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import { folderOf, ancestorFolders, workspaceRootOf, buildTreeRows, buildSearchRows, allFolders, resolveDropFolder, ROOT_DROP_ID, type TreeItem, type EntityType } from '../lib/fileTree'
 
-function item(slug: string, filePath: string, entityType: EntityType = 'agent'): TreeItem {
-  return { slug, name: slug, filePath, entityType }
+function item(slug: string, filePath: string, entityType: EntityType = 'agent', variantOf?: string): TreeItem {
+  return { slug, name: slug, filePath, entityType, variantOf }
 }
 
 const WS = '/Users/x/agents-playground/workspace'
@@ -175,9 +175,54 @@ test('search keeps the ranked order flat, each row carrying its folder', () => {
     item('optimist', `${WS}/agents/panel/deep/optimist.md`),
     item('flat', `${WS}/agents/flat.md`),
   ]
-  const rows = buildSearchRows(ranked, { category: 'agent', favorites: ['agent:flat'] })
-  assert.deepStrictEqual(rows.map(r => [r.kind, r.label, r.depth, r.subtitle ?? null, r.isFavorite ?? false]), [
+  const rows = buildSearchRows(ranked, ranked, { category: 'agent', favorites: ['agent:flat'] })
+  assert.deepStrictEqual(rows.map(r => r.kind === 'file' ? [r.kind, r.label, r.depth, r.subtitle, r.isFavorite] : [r.kind]), [
     ['file', 'optimist', 0, 'panel/deep', false],
     ['file', 'flat', 0, null, true],
+  ])
+})
+
+test('a file declaring variants draws one row, its variants nested as children (#60)', () => {
+  const items = [
+    item('panel', `${WS}/agents/panel.md`),
+    item('optimist', `${WS}/agents/panel.md`, 'agent', 'panel'),
+    item('skeptic', `${WS}/agents/panel.md`, 'agent', 'panel'),
+    item('flat', `${WS}/agents/flat.md`),
+  ]
+  const rows = buildTreeRows(items, { category: 'agent', expanded: {}, favorites: [] })
+  assert.deepStrictEqual(rows.map(r => [r.kind, r.label, r.depth]), [
+    ['file', 'flat', 0],
+    ['file', 'panel', 0],
+    ['variant', 'optimist', 1],
+    ['variant', 'skeptic', 1],
+  ])
+  const variantRow = rows.find(r => r.kind === 'variant')
+  assert.strictEqual(variantRow?.kind === 'variant' && variantRow.fileItem.slug, 'panel')
+})
+
+test('a variant is not independently favoritable — only the declaring file is', () => {
+  const items = [
+    item('panel', `${WS}/agents/panel.md`),
+    item('optimist', `${WS}/agents/panel.md`, 'agent', 'panel'),
+  ]
+  const rows = buildTreeRows(items, {
+    category: 'agent',
+    expanded: { 'agent:__favorites__': true },
+    favorites: ['agent:optimist'],
+  })
+  assert.deepStrictEqual(rows.map(r => r.kind), ['file', 'variant'])
+})
+
+test('search reveals a matched variant nested under its declaring file, even if the file itself did not match', () => {
+  const all = [
+    item('panel', `${WS}/agents/panel.md`),
+    item('optimist', `${WS}/agents/panel.md`, 'agent', 'panel'),
+    item('skeptic', `${WS}/agents/panel.md`, 'agent', 'panel'),
+  ]
+  const ranked = [all[1]] // only the variant matched
+  const rows = buildSearchRows(ranked, all, { category: 'agent', favorites: [] })
+  assert.deepStrictEqual(rows.map(r => [r.kind, r.label, r.depth]), [
+    ['file', 'panel', 0],
+    ['variant', 'optimist', 1],
   ])
 })

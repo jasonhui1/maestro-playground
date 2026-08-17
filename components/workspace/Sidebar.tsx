@@ -487,7 +487,7 @@ export default function Sidebar() {
 
     if (searchQuery) {
       const fuse = new Fuse(items, { keys: ['name', 'slug', 'description'], threshold: 0.3 });
-      return buildSearchRows(fuse.search(searchQuery).map(r => r.item), {
+      return buildSearchRows(fuse.search(searchQuery).map(r => r.item), items, {
         category: activeCategory,
         workspaceRoot,
         favorites,

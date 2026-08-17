@@ -13,7 +13,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Plus, Star, Trash2 } from 'lucide-react';
-import type { FileRow, FolderRow, Row, TreeItem } from '@/lib/fileTree';
+import type { FileRow, FolderRow, Row, TreeItem, VariantRow } from '@/lib/fileTree';
 import { FAVORITES_PATH, ROOT_DROP_ID, resolveDropFolder } from '@/lib/fileTree';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 
@@ -245,6 +245,25 @@ function FileRowItem({ row, isActive, dragDisabled, onSelect, onToggleFavorite, 
   );
 }
 
+// A variant has no file, folder, or history of its own (ADR-0013) — no drag handle, no
+// star, no delete, no context menu. Selecting it opens the file that declares it.
+function VariantRowItem({ row, onSelect }: { row: VariantRow; onSelect: (item: TreeItem) => void }) {
+  return (
+    <li className="relative">
+      <button
+        onClick={() => onSelect(row.fileItem)}
+        style={{ paddingLeft: 12 + row.depth * INDENT }}
+        title={`Variant of ${row.fileItem.name}`}
+        className="w-full text-left px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-2 text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600"
+      >
+        <Guide depth={row.depth} />
+        <span className="w-1 h-1 rounded-full bg-zinc-300 shrink-0" />
+        <span className="truncate">{row.label}</span>
+      </button>
+    </li>
+  );
+}
+
 // A dedicated area below the tree, so a file dragged out of any folder has somewhere to
 // land that means "root" without having to be dropped precisely on empty space (#56).
 function RootDropZone({ dragDisabled }: { dragDisabled: boolean }) {
@@ -376,6 +395,8 @@ export default function FileList({
               onCreateFolderInFolder={onCreateFolderInFolder}
               onContextMenu={openFolderContextMenu}
             />
+          ) : row.kind === 'variant' ? (
+            <VariantRowItem key={row.key} row={row} onSelect={onSelect} />
           ) : (
             <FileRowItem
               key={row.key}

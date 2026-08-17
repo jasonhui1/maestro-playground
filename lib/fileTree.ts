@@ -10,6 +10,8 @@ export interface TreeItem {
   name: string
   filePath: string
   entityType: EntityType
+  /** Set only for an agent variant (ADR-0013): the slug of the file that declares it. */
+  variantOf?: string
 }
 
 export interface FolderRow {
@@ -35,7 +37,19 @@ export interface FileRow {
   inFavorites: boolean
 }
 
-export type Row = FolderRow | FileRow
+/** A variant has no file of its own (ADR-0013) — it renders as a child row of the file
+ * that declares it, never as a sibling. Its own row carries no file actions. */
+export interface VariantRow {
+  kind: 'variant'
+  key: string
+  label: string
+  depth: number
+  item: TreeItem
+  /** The declaring file — selecting a variant opens this file. */
+  fileItem: TreeItem
+}
+
+export type Row = FolderRow | FileRow | VariantRow
 
 // Shares the folder-path namespace: an on-disk folder of this name would share its
 // expansion key. Accepted — the pinned node is not addressable on disk.
@@ -129,8 +143,31 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
   const favorites = new Set(opts.favorites)
   const isFav = (i: TreeItem) => favorites.has(`${i.entityType}:${i.slug}`)
 
-  const folderByItem = new Map(items.map(i => [i, folderOf(i.filePath, category, opts.workspaceRoot)]))
-  const active = opts.activeSlug ? items.find(i => i.slug === opts.activeSlug) : undefined
+  // A variant is not a file on disk (ADR-0013) — only the declaring file draws a row;
+  // its variants render as that row's children (#60).
+  const fileItems = items.filter(i => !i.variantOf)
+  const variantsByFile = new Map<string, TreeItem[]>()
+  for (const i of items) {
+    if (!i.variantOf) continue
+    const list = variantsByFile.get(i.variantOf) ?? []
+    list.push(i)
+    variantsByFile.set(i.variantOf, list)
+  }
+  const variantRowsFor = (file: TreeItem, depth: number): VariantRow[] =>
+    (variantsByFile.get(file.slug) ?? [])
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(v => ({
+        kind: 'variant',
+        key: `variant:${v.entityType}:${v.slug}`,
+        label: v.name,
+        depth,
+        item: v,
+        fileItem: file,
+      }))
+
+  const folderByItem = new Map(fileItems.map(i => [i, folderOf(i.filePath, category, opts.workspaceRoot)]))
+  const active = opts.activeSlug ? fileItems.find(i => i.slug === opts.activeSlug) : undefined
   // Auto-expansion only seeds a folder with no stored state, so collapsing an ancestor
   // of the active file by hand still sticks.
   const seededOpen = new Set(active ? ancestorFolders(folderByItem.get(active) ?? '') : [])
@@ -139,7 +176,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
 
   const rows: Row[] = []
 
-  const favItems = items.filter(isFav)
+  const favItems = fileItems.filter(isFav)
   if (favItems.length > 0) {
     const open = opts.expanded[folderKey(category, FAVORITES_PATH)] ?? true
     rows.push({
@@ -162,6 +199,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
           subtitle: folderByItem.get(i) || null,
           inFavorites: true,
         })
+        rows.push(...variantRowsFor(i, 2))
       }
     }
   }
@@ -191,7 +229,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
       })
       if (expanded) emit(folder.path, depth + 1)
     }
-    const files = items
+    const files = fileItems
       .filter(i => folderByItem.get(i) === parent)
       .map(i => ({ item: i, label: i.name }))
       .sort(byLabel)
@@ -206,6 +244,7 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
         subtitle: null,
         inFavorites: false,
       })
+      rows.push(...variantRowsFor(item, depth + 1))
     }
   }
   emit('', 0)
@@ -213,20 +252,49 @@ export function buildTreeRows(items: TreeItem[], opts: TreeOptions): Row[] {
   return rows
 }
 
-/** Search is a second render of the same list: ranking is the point, so the tree flattens. */
+/** Search is a second render of the same list: ranking is the point, so the tree flattens —
+ * except a matched variant, which still reveals nested under its declaring file (#60), found
+ * via `allItems` since a match on the variant alone doesn't rank its file. */
 export function buildSearchRows(
   ranked: TreeItem[],
+  allItems: TreeItem[],
   opts: Pick<TreeOptions, 'category' | 'workspaceRoot' | 'favorites'>,
-): FileRow[] {
+): (FileRow | VariantRow)[] {
   const favorites = new Set(opts.favorites)
-  return ranked.map(item => ({
-    kind: 'file',
-    key: `${item.entityType}:${item.slug}`,
-    label: item.name,
-    depth: 0,
-    item,
-    isFavorite: favorites.has(`${item.entityType}:${item.slug}`),
-    subtitle: folderOf(item.filePath, opts.category, opts.workspaceRoot) || null,
-    inFavorites: false,
-  }))
+  const rows: (FileRow | VariantRow)[] = []
+  const emittedFiles = new Set<string>()
+
+  const pushFile = (item: TreeItem) => {
+    if (emittedFiles.has(item.slug)) return
+    emittedFiles.add(item.slug)
+    rows.push({
+      kind: 'file',
+      key: `${item.entityType}:${item.slug}`,
+      label: item.name,
+      depth: 0,
+      item,
+      isFavorite: favorites.has(`${item.entityType}:${item.slug}`),
+      subtitle: folderOf(item.filePath, opts.category, opts.workspaceRoot) || null,
+      inFavorites: false,
+    })
+  }
+
+  for (const matched of ranked) {
+    if (!matched.variantOf) {
+      pushFile(matched)
+      continue
+    }
+    const file = allItems.find(i => i.slug === matched.variantOf && !i.variantOf)
+    if (!file) continue
+    pushFile(file)
+    rows.push({
+      kind: 'variant',
+      key: `variant:${matched.entityType}:${matched.slug}`,
+      label: matched.name,
+      depth: 1,
+      item: matched,
+      fileItem: file,
+    })
+  }
+  return rows
 }
