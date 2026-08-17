@@ -22,14 +22,14 @@ nodes:
       - 613.6134808337994
       - -222.3196326377822
     zone: refine
-    agent: patch-agent
+    agent: patch
   - id: review
     kind: agent
     pos:
       - 924.7916995903909
       - -222.6358645248351
     zone: refine
-    agent: review-agent
+    agent: review
   - id: le
     kind: loop-end
     pos:
