@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveEntityPath, isValidEntityType, EntityType, loadAgent } from '@/lib/fs/workspace'
+import { resolveEntityPath, isValidEntityType, EntityType, loadAgent, findAgentFile, declaringAgentSlug } from '@/lib/fs/workspace'
 import { parseSkill } from '@/lib/fs/parseSkill'
 import { parseChain } from '@/lib/fs/parseChain'
 import { parseTemplate } from '@/lib/fs/parseTemplate'
@@ -23,7 +23,11 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
-    const filePath = resolveEntityPath(type, slug)
+    // An agent name may be a variant, which has no file of its own — it opens the
+    // file that declares it (ADR-0013).
+    const filePath = type === 'agent'
+      ? findAgentFile(slug) ?? resolveEntityPath(type, slug)
+      : resolveEntityPath(type, slug)
 
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
@@ -75,9 +79,14 @@ export async function PUT(
       if (!agentCheck.valid) return NextResponse.json(agentCheck, { status: 400 })
     }
 
+    // A variant has no file of its own, so a save lands on the file that declares
+    // it — never on a new file named after the variant, which would make two files
+    // claim one name and stop the workspace loading (ADR-0013).
+    const targetSlug = type === 'agent' ? declaringAgentSlug(slug) ?? slug : slug
+
     const result = saveWorkspaceEntity({
       type: type as EntityType,
-      slug,
+      slug: targetSlug,
       data,
       content,
     })
@@ -107,6 +116,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Missing folder' }, { status: 400 })
     }
 
+    // Deleting or moving a variant is an edit to the file that declares it, which
+    // this route cannot express (ADR-0013).
+    if (type === 'agent') {
+      const declaring = declaringAgentSlug(slug)
+      if (declaring && declaring !== slug) {
+        return NextResponse.json(
+          { error: `"${slug}" is a variant declared in ${declaring}.md — edit that file instead.` },
+          { status: 400 },
+        )
+      }
+    }
+
     const result = moveWorkspaceEntity(type as EntityType, slug, folder)
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
@@ -123,6 +144,18 @@ export async function DELETE(
     
     if (!isValidEntityType(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+    }
+
+    // Deleting or moving a variant is an edit to the file that declares it, which
+    // this route cannot express (ADR-0013).
+    if (type === 'agent') {
+      const declaring = declaringAgentSlug(slug)
+      if (declaring && declaring !== slug) {
+        return NextResponse.json(
+          { error: `"${slug}" is a variant declared in ${declaring}.md — edit that file instead.` },
+          { status: 400 },
+        )
+      }
     }
 
     const result = deleteWorkspaceEntity(type as EntityType, slug)

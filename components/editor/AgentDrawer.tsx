@@ -84,6 +84,7 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
 const SOURCE_LABEL: Record<FieldSource, string> = {
   file: 'this file',
   defaults: 'defaults.md',
+  variant: 'this variant',
   'built-in': 'built-in',
   env: 'AI_MODEL_NAME',
 }

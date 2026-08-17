@@ -1,8 +1,8 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDef } from '../types'
-import { discoverFiles } from './discover'
+import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDef, VariantDecl } from '../types'
+import { discoverFiles, assertUniqueSlug } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 
@@ -112,6 +112,9 @@ export function parseAgent(
     max_tool_turns: typeof merged.max_tool_turns === 'number' ? merged.max_tool_turns : undefined,
     // The body is never inherited: the prompt supports extend only (ADR-0010).
     systemPrompt: content.trim(),
+    // Read off the same frontmatter as every other field, so a variant block is
+    // subject to the same rules rather than a second, laxer parse (ADR-0013).
+    variants: normalizeVariants(data.variants, filePath),
     filePath,
     rawContent: raw,
     isFavorite: false,
@@ -119,8 +122,84 @@ export function parseAgent(
   }
 }
 
+// A malformed entry throws rather than being dropped: a variant is addressable, so
+// a silently missing one shows up as an unknown-agent error in a chain instead.
+export function normalizeVariants(raw: unknown, where: string): VariantDecl[] {
+  if (raw === undefined || raw === null) return []
+  if (!Array.isArray(raw)) throw new Error(`${where}: "variants" must be a list.`)
+  return raw.map((v, i) => {
+    const entry = v as Record<string, unknown>
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
+    if (!name) throw new Error(`${where}: variant ${i + 1} states no "name".`)
+    // One level (ADR-0013): a nested block would otherwise be silently ignored.
+    if ('variants' in entry) throw new Error(`${where}: variant "${name}" declares variants; one level only.`)
+    return { ...(entry as unknown as VariantDecl), name }
+  })
+}
+
+function fillSlots(body: string, prompt: VariantDecl['prompt'], where: string): string {
+  if (prompt === undefined) return body
+  const fills = typeof prompt === 'string' ? { prompt } : prompt
+  let out = body
+  for (const [slot, value] of Object.entries(fills)) {
+    if (value === null || typeof value === 'object') {
+      throw new Error(`${where}: prompt slot "${slot}" must be a scalar, not ${Array.isArray(value) ? 'a list' : 'a map'}.`)
+    }
+    // A slot the body does not declare is a typo the reader would never see: the
+    // fill would vanish and the variant would silently be the shared body.
+    const token = new RegExp(`\\{\\s*${escapeRegExp(slot)}\\s*\\}`, 'g')
+    if (!token.test(out)) {
+      throw new Error(`${where}: prompt fills "{${slot}}", which the body does not contain.`)
+    }
+    token.lastIndex = 0
+    // Filling a slot removes its token, so it stops being an input socket: an
+    // agent node's sockets are exactly its prompt's slots (ADR-0013).
+    out = out.replace(token, String(value))
+  }
+  return out
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** One file yields its variants, or itself when it declares none (ADR-0013). */
+export function parseAgentFile(
+  filePath: string,
+  rawContent?: string,
+  defaults: Record<string, unknown> = {},
+): AgentDef[] {
+  const base = parseAgent(filePath, rawContent, defaults)
+  if (!base.variants?.length) return [base]
+
+  return base.variants.map(v => {
+    const changesSkills = v['skills!'] !== undefined || v['skills+'] !== undefined
+    return {
+      ...base,
+      slug: v.name,
+      name: v.name,
+      skills: v['skills!'] ?? [...base.skills, ...(v['skills+'] ?? [])],
+      systemPrompt: fillSlots(base.systemPrompt, v.prompt, `${filePath} variant "${v.name}"`),
+      variants: undefined,
+      variantOf: base.slug,
+      resolution: base.resolution && changesSkills
+        ? { ...base.resolution, sources: { ...base.resolution.sources, skills: 'variant' } }
+        : base.resolution,
+    }
+  })
+}
+
 export function loadAllAgents(workspacePath: string): AgentDef[] {
   const defaults = loadAgentDefaults(workspacePath)
-  return discoverFiles(path.join(workspacePath, 'agents'))
-    .map(f => parseAgent(f.filePath, f.raw, defaults))
+  const out: AgentDef[] = []
+  const bySlug = new Map<string, string>()
+  for (const f of discoverFiles(path.join(workspacePath, 'agents'))) {
+    for (const a of parseAgentFile(f.filePath, f.raw, defaults)) {
+      // A variant name and a file name are addressed alike, so they share the one
+      // flat namespace per type (ADR-0012).
+      assertUniqueSlug(bySlug, a.slug, a.filePath, 'agent name')
+      out.push(a)
+    }
+  }
+  return out
 }

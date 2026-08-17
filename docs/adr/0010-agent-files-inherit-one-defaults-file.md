@@ -36,10 +36,14 @@ Override means the later value takes the place of the earlier value. Extend
 means the later value adds to the earlier value. Neither word states a
 position.
 
-The prompt body supports **extend only**. A later source fills a named slot in
-the body. A later source may not send a whole new body. A chain that needs a
-whole new body needs a second agent file. This rule holds for the defaults
-file, and it holds for a call site.
+The prompt body supports **extend only**. A later source may not send a whole
+new body. A chain that needs a whole new body needs a second agent file. This
+rule holds for the defaults file, and it holds for a call site.
+
+The one later source that fills a named slot in the body is a variant
+([ADR-0013](0013-an-agent-file-may-declare-named-variants.md)). Neither the
+defaults file nor a call site fills a slot; on every other agent an incoming
+edge is the only thing that resolves one.
 
 A call site may set the `skills` field in either mode. A marker states the
 mode. `skills!` overrides the agent file list. `skills+` extends it.

@@ -7,6 +7,26 @@ export interface DiscoveredFile {
   raw: string       // file bytes as read; ADR-0011 hashes these, not the parsed body
 }
 
+/**
+ * A name addresses a file, so two sources may not claim one name (ADR-0012).
+ * Records `slug` in `bySlug`, or throws naming both sources.
+ */
+export function assertUniqueSlug(
+  bySlug: Map<string, string>,
+  slug: string,
+  filePath: string,
+  what = 'slug',
+): void {
+  const clash = bySlug.get(slug)
+  if (clash) {
+    throw new Error(
+      `Duplicate ${what} "${slug}":\n  ${clash}\n  ${filePath}\n` +
+      `Rename one of them — a folder groups files, but the name addresses them.`
+    )
+  }
+  bySlug.set(slug, filePath)
+}
+
 /** Every `*.md` under one type directory, at any depth. A duplicate slug throws (ADR-0012). */
 export function discoverFiles(typeDir: string): DiscoveredFile[] {
   const found: DiscoveredFile[] = []
@@ -14,14 +34,7 @@ export function discoverFiles(typeDir: string): DiscoveredFile[] {
 
   for (const filePath of walkMarkdown(typeDir)) {
     const slug = path.basename(filePath, '.md')
-    const clash = bySlug.get(slug)
-    if (clash) {
-      throw new Error(
-        `Duplicate slug "${slug}" under ${typeDir}:\n  ${clash}\n  ${filePath}\n` +
-        `Rename one of them — a folder groups files, but the name addresses them.`
-      )
-    }
-    bySlug.set(slug, filePath)
+    assertUniqueSlug(bySlug, slug, filePath)
     found.push({ slug, filePath, raw: fs.readFileSync(filePath, 'utf-8') })
   }
 

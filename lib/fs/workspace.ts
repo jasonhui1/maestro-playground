@@ -4,7 +4,7 @@ import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
-import { discoverFiles, findBySlug } from './discover'
+import { discoverFiles, findBySlug, walkMarkdown } from './discover'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
@@ -91,6 +91,30 @@ export function resolveFolderPath(type: string, folder: string) {
 /** One agent, resolved against the workspace defaults file — never the raw agent file (ADR-0010). */
 export function loadAgent(filePath: string) {
   return parseAgent(filePath, undefined, loadAgentDefaults(getWorkspacePath()))
+}
+
+/**
+ * The slug of the file behind an agent name — the name itself for a file, and the
+ * declaring file for a variant (ADR-0013). Undefined when nothing claims the name.
+ */
+export function declaringAgentSlug(slug: string): string | undefined {
+  const filePath = findAgentFile(slug)
+  return filePath ? path.basename(filePath, '.md') : undefined
+}
+
+/**
+ * The file behind an agent name. A variant has no file of its own, so its name
+ * resolves to the file that declares it (ADR-0013); undefined when nothing claims it.
+ */
+export function findAgentFile(slug: string): string | undefined {
+  const agentsDir = path.join(getWorkspacePath(), 'agents')
+  const own = findBySlug(agentsDir, slug)
+  if (own) return own
+  for (const filePath of walkMarkdown(agentsDir)) {
+    const declared = parseAgent(filePath).variants ?? []
+    if (declared.some(v => v.name === slug)) return filePath
+  }
+  return undefined
 }
 
 export function loadWorkspace() {

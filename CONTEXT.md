@@ -60,6 +60,10 @@ A loop-start/loop-end pair and the body nodes between them; iterates until the `
 
 The place that names an agent and supplies its per-instance values: an `agent` node in a chain file. One agent file may have many call sites. The agent file holds what every call site shares. The call site holds what one node changes. _Avoid_: instance, invocation, usage.
 
+## Variant
+
+A named agent declared inside another agent's file, sharing that file's prompt body and changing its skill list or filling one of its slots ([ADR-0013](docs/adr/0013-an-agent-file-may-declare-named-variants.md)). A variant **is** an agent: its name is a slug, addressed from a chain exactly like a file name, and it shares the one flat namespace per type that ADR-0012 gives. A file that declares variants is not addressable by its own name — it yields its variants and nothing else. `variantOf` on the resolved agent names the declaring file, which is what a run pins and what the editor opens. _Avoid_: parameterized agent, agent instance, subtype.
+
 ## Defaults file
 
 `workspace/defaults.md` — the shared agent frontmatter. An agent file states only
@@ -81,6 +85,8 @@ The two merge modes. Both answer one question: what happens when a later source 
 
 Neither word states a position. `extend` does not mean "at the end"; the prompt extends at a named slot in the middle of the body. _Avoid_: replace, append, merge, patch, layer.
 
+Only a **variant** extends the prompt ([ADR-0013](docs/adr/0013-an-agent-file-may-declare-named-variants.md)). A call site and the defaults file extend the skill list only; on every other agent an incoming edge is the only thing that fills a slot.
+
 Two sources use these modes. A defaults file and an agent file merge by override, per field ([ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md)). An agent file and a call site merge by the mode a marker states: `skills!` overrides the agent file list, `skills+` extends it.
 
-**The prompt supports extend only.** A call site fills a slot in the body. A call site may not send a whole new body. A chain that needs a whole new body needs a second agent file instead — otherwise the agent file names an empty shape, and a reader of the agent file learns nothing about the run.
+**The prompt supports extend only.** A variant fills a slot in the body; a call site may not. Neither may send a whole new body. A chain that needs a whole new body needs a second agent file instead — otherwise the agent file names an empty shape, and a reader of the agent file learns nothing about the run.

@@ -66,12 +66,21 @@ export const AGENT_FIELDS = [
 ] as const satisfies readonly (keyof AgentDef)[]
 
 export type AgentField = typeof AGENT_FIELDS[number]
-export type FieldSource = 'file' | 'defaults' | 'built-in' | 'env'
+export type FieldSource = 'file' | 'defaults' | 'variant' | 'built-in' | 'env'
 
 /** Where each resolved field came from, and any inheritance field the file may not state (ADR-0010). */
 export interface AgentResolution {
   sources: Record<AgentField, FieldSource>
   forbidden: string[]
+}
+
+/** One `variants:` entry: a named agent sharing the file's body (ADR-0013). */
+export interface VariantDecl {
+  name: string
+  'skills+'?: string[]
+  'skills!'?: string[]
+  /** A bare string fills `{prompt}`; a map fills the slot each key names. */
+  prompt?: string | Record<string, string>
 }
 
 export interface AgentDef {
@@ -93,6 +102,8 @@ export interface AgentDef {
   tools?: string[]      // tool names referenced from workspace/tools/*.md
   max_tool_turns?: number // cap per node execution; default DEFAULT_MAX_TOOL_TURNS
   resolution?: AgentResolution // set by the loaders; absent on a def built in memory
+  variants?: VariantDecl[]  // declared by the file; empty on a variant itself (ADR-0013)
+  variantOf?: string    // slug of the file declaring this variant (ADR-0013)
 }
 
 export interface ToolParamDef {

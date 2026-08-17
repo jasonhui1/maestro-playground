@@ -78,7 +78,8 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
     if (!slug) return
     const agent = ws.agents.find(a => a.slug === slug)
     if (!agent) return
-    add('agent', agent.slug, agent.rawContent)
+    // A variant has no file of its own, so the key is the declaring file (ADR-0013).
+    add('agent', agent.variantOf ?? agent.slug, agent.rawContent)
 
     // An agent names its skills and tools by name; a version key is a slug.
     for (const name of resolveNodeSkills(node, agent.skills)) {
