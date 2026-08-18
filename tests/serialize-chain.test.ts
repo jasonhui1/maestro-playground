@@ -31,6 +31,16 @@ edges:
   assert.ok(/from: seed\n/.test(out) || /from: seed$/m.test(out), 'output socket should collapse to bare node')
   assert.ok(/t\.input/.test(out), 'named input socket retained')
 
+  // No value anywhere in the tree may be undefined — js-yaml aborts the whole dump on one.
+  const noName = parseChainContent('---\nnodes:\n  - { id: a, kind: report }\n---\n', 'no-name')
+  assert.strictEqual(noName.name, 'no-name', 'a file without name: is named by its slug')
+  serializeChain(
+    { name: undefined as unknown as string, description: undefined,
+      inputs: [{ name: 'in', node: 'seed', socket: undefined }] },
+    [{ id: 'a', kind: 'report', pos: undefined, zone: undefined } as never],
+    [{ fromNode: 'a', fromSocket: 'output', toNode: 'b', toSocket: 'in' }],
+  )
+
   // Empty chain
   const empty = serializeChain({ name: 'x', description: '' }, [], [])
   const e2 = parseChainContent(empty, 'x')
