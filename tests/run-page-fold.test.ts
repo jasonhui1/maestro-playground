@@ -69,7 +69,8 @@ test('run-page fold: rail order, loop rounds, and card metadata', async () => {
   assert.deepStrictEqual(orderFor(order, 0), ['n1', 'n2', 'n3'])
 
   // loop node keeps every round, latest output live
-  assert.deepStrictEqual(s.n2.rounds, [{ round: 0, output: 'v0' }, { round: 1, output: 'v1' }, { round: 2, output: 'v2' }])
+  assert.deepStrictEqual(s.n2.rounds.map(r => ({ round: r.round, output: r.output })),
+    [{ round: 0, output: 'v0' }, { round: 1, output: 'v1' }, { round: 2, output: 'v2' }])
   assert.strictEqual(s.n2.output, 'v2')
   assert.strictEqual(s.n2.thought, 'think2')
 

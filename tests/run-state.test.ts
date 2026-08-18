@@ -4,10 +4,12 @@ import { applyRunEvent, RunStateMap } from '../lib/runState'
 import { AgentOutput } from '../lib/types'
 
 test('run-state', () => {
-  function out(overrides: Partial<{ output: string; status: string; round: number; agentName: string }>) {
+  function out(overrides: Partial<{ output: string; status: string; round: number; agentName: string
+    tokensIn: number; tokensOut: number; costUsd: number; latencyMs: number }>) {
     return { agentName: 'w', systemPrompt: '', input: '', output: '', thought: '', tokensIn: 0, tokensOut: 0,
       costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success', ...overrides } as unknown as AgentOutput
   }
+  const noCost = { tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0 }
 
   let s: RunStateMap = {}
   s = applyRunEvent(s, { type: 'agent_start', nodeId: 'a', agentName: 'w', step: 0 })
@@ -28,10 +30,15 @@ test('run-state', () => {
   // looped node: agent_done with round archives into rounds, resets buffer on next start
   let l: RunStateMap = {}
   l = applyRunEvent(l, { type: 'agent_start', nodeId: 'p', agentName: 'patch', step: 1 })
-  l = applyRunEvent(l, { type: 'agent_done', nodeId: 'p', agentName: 'patch', step: 1, output: out({ output: 'v1', round: 0 }) })
+  l = applyRunEvent(l, { type: 'agent_done', nodeId: 'p', agentName: 'patch', step: 1, output: out({ output: 'v1', round: 0, costUsd: 0.01, latencyMs: 100 }) })
   l = applyRunEvent(l, { type: 'agent_start', nodeId: 'p', agentName: 'patch', step: 2 })
-  l = applyRunEvent(l, { type: 'agent_done', nodeId: 'p', agentName: 'patch', step: 2, output: out({ output: 'v2', round: 1 }) })
-  assert.deepStrictEqual(l.p.rounds, [{ round: 0, output: 'v1' }, { round: 1, output: 'v2' }])
+  l = applyRunEvent(l, { type: 'agent_done', nodeId: 'p', agentName: 'patch', step: 2, output: out({ output: 'v2', round: 1, costUsd: 0.02, latencyMs: 200 }) })
+  // each round keeps its own numbers: `result` is the last round's, so a panel showing
+  // an archived round would otherwise price it at the latest round's cost (#64)
+  assert.deepStrictEqual(l.p.rounds, [
+    { round: 0, output: 'v1', metrics: { ...noCost, costUsd: 0.01, latencyMs: 100 } },
+    { round: 1, output: 'v2', metrics: { ...noCost, costUsd: 0.02, latencyMs: 200 } },
+  ])
   assert.strictEqual(l.p.output, 'v2')
 
   // agent_done keeps the raw payload so views can read metrics/systemPrompt/error (#33)

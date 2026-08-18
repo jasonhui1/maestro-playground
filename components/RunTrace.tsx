@@ -12,11 +12,27 @@ function StatusIcon({ status }: { status: NodeRunState['status'] }) {
   return <div className="w-3.5 h-3.5 shrink-0 rounded-full bg-zinc-200" />
 }
 
-export function RunTrace({ order, states }: { order: string[]; states: RunStateMap }) {
-  const [selected, setSelected] = useState<string | null>(null)
-  const active = selected && states[selected] ? selected : order[order.length - 1] ?? null
+export function RunTrace({ order, states, selected: controlled, onSelect, onBranch, isBranching }: {
+  order: string[]
+  states: RunStateMap
+  // History drives selection from a canvas as well as the rail, so the two agree (#64).
+  // Left out, the rail owns it.
+  selected?: string | null
+  onSelect?: (id: string) => void
+  onBranch?: (nodeId: string, round: number | null) => void
+  isBranching?: boolean
+}) {
+  const [own, setOwn] = useState<string | null>(null)
+  const isControlled = controlled !== undefined
+  const selected = isControlled ? controlled : own
+  const select = isControlled ? onSelect ?? (() => {}) : setOwn
+  // A canvas selection can name a node with no output of its own — a seed or context
+  // node, or one the run never reached — so the pane says so rather than substituting.
+  const shown = selected ?? order[order.length - 1] ?? null
+  const panel = shown && states[shown] ? shown : null
 
-  if (order.length === 0) {
+  // With a selection there is something to say about it, even from an empty rail.
+  if (order.length === 0 && !selected) {
     return <div className="text-sm text-zinc-300 italic py-8 text-center">Waiting for instance to start...</div>
   }
 
@@ -29,9 +45,9 @@ export function RunTrace({ order, states }: { order: string[]; states: RunStateM
           return (
             <button
               key={id}
-              onClick={() => setSelected(id)}
+              onClick={() => select(id)}
               className={`flex items-center gap-2 px-3 py-2.5 text-left md:border-b border-zinc-100 shrink-0 transition-colors ${
-                active === id ? 'bg-white' : 'hover:bg-white/60'
+                panel === id ? 'bg-white' : 'hover:bg-white/60'
               }`}
             >
               <span className="text-[10px] font-mono text-zinc-300 w-4 shrink-0">{i + 1}</span>
@@ -48,9 +64,19 @@ export function RunTrace({ order, states }: { order: string[]; states: RunStateM
         })}
       </div>
 
-      {active && states[active]
-        ? <NodeRunPanel key={active} nodeId={active} state={states[active]} />
-        : <div className="p-6 text-sm text-zinc-300 italic">Select a step.</div>}
+      {panel
+        ? <NodeRunPanel
+            key={panel}
+            nodeId={panel}
+            state={states[panel]}
+            onBranch={onBranch && (round => onBranch(panel, round))}
+            isBranching={isBranching}
+          />
+        : <div className="p-6 text-sm text-zinc-300 italic">
+            {selected
+              ? <><span className="font-mono not-italic">{selected}</span> has no recorded output in this run.</>
+              : 'Select a step.'}
+          </div>}
     </div>
   )
 }

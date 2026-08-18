@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildRunStateMap } from '../lib/runHistoryState'
+import { buildRunStateMap, runOrderOf, stepIndexOf } from '../lib/runHistoryState'
 import type { AgentOutput } from '../lib/types'
 
 test('runHistoryState', () => {
@@ -80,12 +80,42 @@ test('runHistoryState', () => {
   // n2 assertions
   assert.strictEqual(map['n2'].status, 'success')
   assert.strictEqual(map['n2'].output, 'round1')
+  // per-round metrics, same shape the live fold builds (#64)
+  const m = { tokensIn: 10, tokensOut: 10, costUsd: 0.01, latencyMs: 100 }
   assert.deepStrictEqual(map['n2'].rounds, [
-    { round: 0, output: 'round0' },
-    { round: 1, output: 'round1' },
+    { round: 0, output: 'round0', metrics: m },
+    { round: 1, output: 'round1', metrics: m },
   ])
 
   // n3 assertions
   assert.strictEqual(map['n3'].status, 'skipped')
   assert.strictEqual(map['n3'].output, '')
+})
+
+// The sidebar rail and "branch from here" both read the flat agentOutputs list: one
+// needs the node order, the other needs the step a given round was written at (#64).
+test('runOrderOf / stepIndexOf', () => {
+  const out = (nodeId: string, round?: number): AgentOutput => ({
+    nodeId, agentName: nodeId, systemPrompt: '', input: '', output: '',
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,
+    status: 'success', model: 'm', timestamp: 't',
+    ...(round !== undefined ? { round } : {}),
+  })
+  const outputs = [out('a'), out('loop', 0), out('loop', 1), out('loop', 2), out('b')]
+
+  // one entry per node, in the order each first appears — a loop's rounds do not repeat it
+  assert.deepStrictEqual(runOrderOf(outputs), ['a', 'loop', 'b'])
+  assert.deepStrictEqual(runOrderOf([]), [])
+  // an output with no nodeId predates graph capture and cannot be placed on the rail
+  assert.deepStrictEqual(runOrderOf([{ ...out('a'), nodeId: undefined }]), [])
+
+  // a named round resolves to the step that round was written at
+  assert.strictEqual(stepIndexOf(outputs, 'loop', 1), 2)
+  assert.strictEqual(stepIndexOf(outputs, 'loop', 0), 1)
+  // null round means "the round in view is the latest" — branch from the node's last step
+  assert.strictEqual(stepIndexOf(outputs, 'loop', null), 3)
+  assert.strictEqual(stepIndexOf(outputs, 'a', null), 0)
+  // a node that never ran, or a round it never reached, has no step to branch from
+  assert.strictEqual(stepIndexOf(outputs, 'seed', null), -1)
+  assert.strictEqual(stepIndexOf(outputs, 'loop', 9), -1)
 })

@@ -9,7 +9,14 @@ import { ToolLoopNarration } from '@/components/trace/ToolLoopNarration'
 import { SectionWarnings } from '@/components/trace/SectionWarnings'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
 
-export function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRunState }) {
+export function NodeRunPanel({ nodeId, state, onBranch, isBranching }: {
+  nodeId: string
+  state: NodeRunState
+  // History forks a run from the round on screen, so the affordance belongs to the panel
+  // that owns `round` — a caller outside it could only ever branch from the last one (#64).
+  onBranch?: (round: number | null) => void
+  isBranching?: boolean
+}) {
   const [round, setRound] = useState<number | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
   const [showThinking, setShowThinking] = useState(false)
@@ -17,10 +24,11 @@ export function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRun
   const looped = state.rounds.length > 1
   // null round means "latest": a live loop shows the streaming buffer, not an archived round
   const viewingArchivedRound = looped && round !== null
+  const archived = viewingArchivedRound ? state.rounds.find(x => x.round === round) : undefined
   const narration = narrationOf(state)
-  const shown = viewingArchivedRound
-    ? state.rounds.find(x => x.round === round)?.output ?? ''
-    : narration.answer
+  const shown = viewingArchivedRound ? archived?.output ?? '' : narration.answer
+  // `result` is the last round's, so pricing an archived round from it would misreport it (#64)
+  const metrics = archived?.metrics ?? r
 
   return (
     <div className="flex flex-col min-w-0 relative">
@@ -33,16 +41,25 @@ export function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRun
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {r && (
+          {metrics && (
             <>
               <div className="w-40">
-                <TokenCostBar tokensIn={r.tokensIn} tokensOut={r.tokensOut} costUsd={r.costUsd} />
+                <TokenCostBar tokensIn={metrics.tokensIn} tokensOut={metrics.tokensOut} costUsd={metrics.costUsd} />
               </div>
-              <span className="text-[10px] font-mono text-zinc-400">{(r.latencyMs / 1000).toFixed(2)}s</span>
+              <span className="text-[10px] font-mono text-zinc-400">{(metrics.latencyMs / 1000).toFixed(2)}s</span>
             </>
           )}
           {state.status !== 'running' && shown && (
             <SaveToContextButton agentName={state.agentName ?? nodeId} output={shown} />
+          )}
+          {onBranch && (
+            <button
+              onClick={() => onBranch(round)}
+              disabled={isBranching}
+              className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
+            >
+              {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
+            </button>
           )}
         </div>
       </div>
@@ -62,16 +79,16 @@ export function NodeRunPanel({ nodeId, state }: { nodeId: string; state: NodeRun
               Round {x.round}
             </button>
           ))}
-          {state.status === 'running' && (
-            <button
-              onClick={() => setRound(null)}
-              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${
-                round === null ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-500 hover:bg-blue-100'
-              }`}
-            >
-              Live
-            </button>
-          )}
+          {/* the only way out of an archived round — a settled loop needs it too, or the
+              round buttons are a one-way door (#64) */}
+          <button
+            onClick={() => setRound(null)}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${
+              round === null ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-500 hover:bg-blue-100'
+            }`}
+          >
+            {state.status === 'running' ? 'Live' : 'Latest'}
+          </button>
         </div>
       )}
 

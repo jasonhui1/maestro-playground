@@ -11,11 +11,19 @@ export interface LiveToolCall extends ToolCallRecord {
   activity?: string
 }
 
+// What one round of a loop produced and cost. `result` below is only the last round's,
+// so a panel showing an archived round reads its numbers from the round itself (#64).
+export interface RoundRecord {
+  round: number
+  output: string
+  metrics: { tokensIn: number; tokensOut: number; costUsd: number; latencyMs: number }
+}
+
 export interface NodeRunState {
   status: 'idle' | 'running' | 'success' | 'error' | 'skipped'
   output: string
   thought: string
-  rounds: { round: number; output: string }[]
+  rounds: RoundRecord[]
   agentName?: string
   result?: AgentOutput   // last agent_done payload; carries metrics/systemPrompt/error (#33)
   toolCalls: LiveToolCall[]
@@ -33,6 +41,10 @@ export const emptyNodeState = (): NodeRunState =>
 // fold in ./runHistoryState.ts so the two cannot drift.
 export const settledToolCalls = (calls: ToolCallRecord[]): LiveToolCall[] =>
   calls.map(c => ({ ...c, status: 'done' }))
+
+// Also shared with the log-replay fold, for the same reason.
+export const roundRecord = (round: number, o: AgentOutput): RoundRecord =>
+  ({ round, output: o.output, metrics: { tokensIn: o.tokensIn, tokensOut: o.tokensOut, costUsd: o.costUsd, latencyMs: o.latencyMs } })
 
 // The live view and the log converge here by construction (#26, #35).
 export function toolTurnsOf(state: NodeRunState): ToolTurnGroup<LiveToolCall>[] {
@@ -88,7 +100,7 @@ export function applyRunEvent(state: RunStateMap, e: RunEvent): RunStateMap {
     const prev = state[e.nodeId] ?? empty()
     const status = (e.output.status as NodeRunState['status']) ?? 'success'
     const rounds = e.output.round !== undefined
-      ? [...prev.rounds, { round: e.output.round, output: e.output.output }]
+      ? [...prev.rounds, roundRecord(e.output.round, e.output)]
       : prev.rounds
     // The settled transcript wins: it carries turnText the events never send.
     const toolCalls = e.output.toolCalls ? settledToolCalls(e.output.toolCalls) : prev.toolCalls

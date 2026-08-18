@@ -10,9 +10,9 @@ import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { kindOf } from '@/lib/nodeKinds'
-import { buildRunStateMap } from '@/lib/runHistoryState'
+import { buildRunStateMap, runOrderOf, stepIndexOf } from '@/lib/runHistoryState'
 import { branchRun } from '@/lib/branchRun'
-import RunNodePreview from '@/components/trace/RunNodePreview'
+import { RunTrace } from '@/components/RunTrace'
 import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
@@ -94,6 +94,7 @@ function RunDetail({ run }: { run: RunMeta }) {
   }), [g, run.chainName])
 
   const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
+  const traceOrder = useMemo(() => runOrderOf(run.agentOutputs), [run.agentOutputs])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => {
     const workspace = { chain: chainDef, agents, chains: [] }
@@ -121,6 +122,12 @@ function RunDetail({ run }: { run: RunMeta }) {
     } finally {
       setIsBranching(false)
     }
+  }
+
+  // The trace names the round on screen; the fork point is that round's step in the log.
+  function handleBranchRound(nodeId: string, round: number | null) {
+    const step = stepIndexOf(run.agentOutputs, nodeId, round)
+    if (step !== -1) handleBranch(step)
   }
 
   return (
@@ -251,10 +258,12 @@ function RunDetail({ run }: { run: RunMeta }) {
               readOnly
             />
           </div>
-          <RunNodePreview
-            node={g.nodes.find(n => n.id === selectedNodeId) || null}
-            run={run}
-            onBranch={handleBranch}
+          <RunTrace
+            order={traceOrder}
+            states={overlay}
+            selected={selectedNodeId}
+            onSelect={setSelectedNodeId}
+            onBranch={handleBranchRound}
             isBranching={isBranching}
           />
         </div>
