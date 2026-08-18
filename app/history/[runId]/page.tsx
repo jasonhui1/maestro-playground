@@ -272,10 +272,8 @@ function RunDetail({ run }: { run: RunMeta }) {
           <RunTrace
             order={traceOrder}
             states={overlay}
-            selected={selectedNodeId}
-            onSelect={setSelectedNodeId}
-            onBranch={handleBranchRound}
-            isBranching={isBranching}
+            selection={{ selected: selectedNodeId, onSelect: setSelectedNodeId }}
+            branch={{ onBranch: handleBranchRound, isBranching }}
           />
         </div>
       ) : (

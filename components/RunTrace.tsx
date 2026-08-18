@@ -12,20 +12,17 @@ function StatusIcon({ status }: { status: NodeRunState['status'] }) {
   return <div className="w-3.5 h-3.5 shrink-0 rounded-full bg-zinc-200" />
 }
 
-export function RunTrace({ order, states, selected: controlled, onSelect, onBranch, isBranching }: {
+export function RunTrace({ order, states, selection, branch }: {
   order: string[]
   states: RunStateMap
   // History drives selection from a canvas as well as the rail, so the two agree (#64).
   // Left out, the rail owns it.
-  selected?: string | null
-  onSelect?: (id: string) => void
-  onBranch?: (nodeId: string, round: number | null) => void
-  isBranching?: boolean
+  selection?: { selected: string | null; onSelect: (id: string) => void }
+  branch?: { onBranch: (nodeId: string, round: number | null) => void; isBranching: boolean }
 }) {
   const [own, setOwn] = useState<string | null>(null)
-  const isControlled = controlled !== undefined
-  const selected = isControlled ? controlled : own
-  const select = isControlled ? onSelect ?? (() => {}) : setOwn
+  const selected = selection ? selection.selected : own
+  const select = selection ? selection.onSelect : setOwn
   // A canvas selection can name a node with no output of its own — a seed or context
   // node, or one the run never reached — so the pane says so rather than substituting.
   const shown = selected ?? order[order.length - 1] ?? null
@@ -69,8 +66,7 @@ export function RunTrace({ order, states, selected: controlled, onSelect, onBran
             key={panel}
             nodeId={panel}
             state={states[panel]}
-            onBranch={onBranch && (round => onBranch(panel, round))}
-            isBranching={isBranching}
+            branch={branch && { onBranch: round => branch.onBranch(panel, round), isBranching: branch.isBranching }}
           />
         : <div className="p-6 text-sm text-zinc-300 italic">
             {selected

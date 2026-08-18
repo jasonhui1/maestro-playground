@@ -9,13 +9,12 @@ import { ToolLoopNarration } from '@/components/trace/ToolLoopNarration'
 import { SectionWarnings } from '@/components/trace/SectionWarnings'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
 
-export function NodeRunPanel({ nodeId, state, onBranch, isBranching }: {
+export function NodeRunPanel({ nodeId, state, branch }: {
   nodeId: string
   state: NodeRunState
   // History forks a run from the round on screen, so the affordance belongs to the panel
   // that owns `round` — a caller outside it could only ever branch from the last one (#64).
-  onBranch?: (round: number | null) => void
-  isBranching?: boolean
+  branch?: { onBranch: (round: number | null) => void; isBranching: boolean }
 }) {
   const [round, setRound] = useState<number | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
@@ -52,13 +51,13 @@ export function NodeRunPanel({ nodeId, state, onBranch, isBranching }: {
           {state.status !== 'running' && shown && (
             <SaveToContextButton agentName={state.agentName ?? nodeId} output={shown} />
           )}
-          {onBranch && (
+          {branch && (
             <button
-              onClick={() => onBranch(round)}
-              disabled={isBranching}
+              onClick={() => branch.onBranch(round)}
+              disabled={branch.isBranching}
               className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
             >
-              {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
+              {branch.isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
             </button>
           )}
         </div>
