@@ -17,6 +17,10 @@ import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
+// ChainCanvas syncs off prop identity, so a read-only canvas must hand it the same
+// no-op every render — a fresh arrow would refire its sync effect into a render loop.
+const noop = () => {}
+
 // The page is only a fetch gate: it holds no view state, so RunDetail below can
 // assume a loaded run and derive everything from it without null guards.
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
@@ -95,6 +99,15 @@ function RunDetail({ run }: { run: RunMeta }) {
 
   const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
   const traceOrder = useMemo(() => runOrderOf(run.agentOutputs), [run.agentOutputs])
+
+  // Same identity contract as the no-ops above: the canvas re-syncs on a new array.
+  const selectedIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId])
+  const canvasIds = useMemo(() => new Set((g?.nodes ?? []).map(n => n.id)), [g])
+  const selectOnCanvas = useCallback((ids: string[]) => setSelectedNodeId(prev =>
+    // The rail lists nodes inside subchains, which the canvas has no node for. It
+    // reports those as "nothing selected", which must not clear the rail's pick.
+    ids.length === 0 && prev && !canvasIds.has(prev) ? prev : ids[0] ?? null
+  ), [canvasIds])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => {
     const workspace = { chain: chainDef, agents, chains: [] }
@@ -245,16 +258,16 @@ function RunDetail({ run }: { run: RunMeta }) {
               nodes={g.nodes}
               edges={g.edges}
               buildData={buildData}
-              selectedIds={selectedNodeId ? [selectedNodeId] : []}
-              onSelectionChange={(ids) => setSelectedNodeId(ids[0] ?? null)}
-              onMove={() => {}}
-              onMoveMany={() => {}}
-              onConnect={() => {}}
-              onDeleteNode={() => {}}
-              onDeleteEdge={() => {}}
+              selectedIds={selectedIds}
+              onSelectionChange={selectOnCanvas}
+              onMove={noop}
+              onMoveMany={noop}
+              onConnect={noop}
+              onDeleteNode={noop}
+              onDeleteEdge={noop}
               instanceCount={0}
               currentInstance={0}
-              onInstance={() => {}}
+              onInstance={noop}
               readOnly
             />
           </div>
