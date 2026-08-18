@@ -51,6 +51,23 @@ export function applyViewChanges(view: CanvasView, changes: NodeChange[]): Canva
   return { measured, drag }
 }
 
+// The selection a change stream leaves behind, or null when it carries no `select`.
+//
+// React Flow reports a click twice: once here, and once through onSelectionChange —
+// but that second one reads a lookup it mutated without a store update, so it lands
+// one click late (#64). The change stream is the timely one, so selection is folded
+// from it and the late callback is left unused.
+export function applySelectChanges(selected: string[], changes: NodeChange[]): string[] | null {
+  let next: Set<string> | null = null
+  for (const c of changes) {
+    if (c.type !== 'select') continue
+    next ??= new Set(selected)
+    if (c.selected) next.add(c.id)
+    else next.delete(c.id)
+  }
+  return next && [...next]
+}
+
 // Lay one layer of the overlay over nodes projected from the chain. A node with no patch
 // is handed back as the same object, so React Flow's own equality check skips it.
 export function overlay(nodes: Node[], patch: Record<string, NodePatch>): Node[] {

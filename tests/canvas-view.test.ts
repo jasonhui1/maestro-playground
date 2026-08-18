@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import type { Node, NodeChange } from '@xyflow/react'
-import { applyViewChanges, emptyCanvasView, overlay } from '../lib/canvasView'
+import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay } from '../lib/canvasView'
 
 test('applyViewChanges: only what React Flow owns, and only when it changed', () => {
   let v = emptyCanvasView()
@@ -61,4 +61,39 @@ test('overlay: only patched nodes are rebuilt', () => {
   const live = overlay(measured, { a: { position: { x: 5, y: 5 } } })
   assert.strictEqual(live[1], measured[1], 'measured node survives a drag of its neighbour')
   assert.deepStrictEqual(live[0].measured, { width: 9, height: 9 }, 'the drag layer does not drop it')
+})
+
+test('applySelectChanges: a click lands on the click, not the one after it', () => {
+  // React Flow reports a click as one change per affected node.
+  assert.deepStrictEqual(
+    applySelectChanges([], [{ id: 'a', type: 'select', selected: true }]),
+    ['a'],
+  )
+
+  // Clicking b deselects a in the same batch.
+  assert.deepStrictEqual(
+    applySelectChanges(['a'], [
+      { id: 'a', type: 'select', selected: false },
+      { id: 'b', type: 'select', selected: true },
+    ]),
+    ['b'],
+  )
+
+  // Multi-select adds to what is already held.
+  assert.deepStrictEqual(
+    applySelectChanges(['a'], [{ id: 'b', type: 'select', selected: true }]),
+    ['a', 'b'],
+  )
+
+  // Clicking the pane clears.
+  assert.deepStrictEqual(
+    applySelectChanges(['a'], [{ id: 'a', type: 'select', selected: false }]),
+    [],
+  )
+
+  // No select in the batch is not "nothing selected" — a drag must not clear the pick.
+  assert.strictEqual(
+    applySelectChanges(['a'], [{ id: 'a', type: 'position', position: { x: 1, y: 2 }, dragging: true }]),
+    null,
+  )
 })

@@ -8,7 +8,7 @@ import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
-import { applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
+import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
 import ContextNode from './nodes/ContextNode'
@@ -93,12 +93,10 @@ export default function ChainCanvas(props: ChainCanvasProps) {
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setView(v => applyViewChanges(v, changes))
-  }, [])
+    const next = applySelectChanges(selectedIds, changes)
+    if (next) onSelectionChange(next)
+  }, [selectedIds, onSelectionChange])
 
-  const handleSelectionChange = useCallback(
-    ({ nodes }: { nodes: Node[] }) => onSelectionChange(nodes.map(n => n.id)),
-    [onSelectionChange],
-  )
   const handleSelectionDragStop = useCallback(
     (_: React.MouseEvent, nodes: Node[]) =>
       onMoveMany(nodes.map(n => ({ id: n.id, pos: [n.position.x, n.position.y] as [number, number] }))),
@@ -132,7 +130,6 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           nodesConnectable={!props.readOnly}
           edgesReconnectable={!props.readOnly}
           onNodeDragStop={props.readOnly ? undefined : (_, node) => props.onMove(node.id, [node.position.x, node.position.y])}
-          onSelectionChange={handleSelectionChange}
           onSelectionDragStop={props.readOnly ? undefined : handleSelectionDragStop}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={['Meta', 'Control']}
