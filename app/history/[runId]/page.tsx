@@ -3,7 +3,6 @@ import { useState, useEffect, use, useMemo, useCallback } from 'react'
 import { RunMeta, AgentDef, ChainNode } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
-import DiffViewer from '@/components/DiffViewer'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
@@ -12,8 +11,8 @@ import type { EditorNodeData } from '@/components/editor/nodeData'
 import { kindOf } from '@/lib/nodeKinds'
 import { buildRunStateMap, runOrderOf, stepIndexOf } from '@/lib/runHistoryState'
 import { branchRun } from '@/lib/branchRun'
-import { RunTrace } from '@/components/RunTrace'
-import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
+import DockSplit from '@/components/workspace/DockSplit'
+import RunDock from '@/components/trace/RunDock'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -71,10 +70,7 @@ function RunDetail({ run }: { run: RunMeta }) {
 
   const [agents, setAgents] = useState<AgentDef[]>([])
   const [isBranching, setIsBranching] = useState(false)
-  const [compareMode, setCompareMode] = useState(false)
-  const [leftIdx, setLeftIdx] = useState(0)
-  const [rightIdx, setRightIdx] = useState(run.agentOutputs.length > 1 ? 1 : 0)
-  const [viewMode, setViewMode] = useState<'graph' | 'list'>(g ? 'graph' : 'list')
+  const [seedOpen, setSeedOpen] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -142,116 +138,44 @@ function RunDetail({ run }: { run: RunMeta }) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-12">
-      {/* Header */}
-      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div className="flex flex-col gap-2">
-          <Link href="/history" className="text-xs font-bold text-zinc-400 hover:text-zinc-900 flex items-center gap-1 transition-colors">
-            <ChevronLeft size={12} strokeWidth={3} />
-            BACK TO HISTORY
-          </Link>
-          <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">{run.chainName}</h1>
-          <div className="flex items-center gap-3 text-xs font-medium text-zinc-500">
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-900 font-bold uppercase tracking-wider">{run.status}</span>
-            <span>•</span>
-            <span>{new Date(run.startedAt).toLocaleString()}</span>
-            <span>•</span>
-            <span className="font-mono">{run.runId}</span>
-          </div>
+    <div className="h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col bg-white">
+      {/* Header strip: the run's identity, its seed, and what you can do with it. */}
+      <header className="px-4 py-2 border-b border-zinc-100 flex items-center gap-3 bg-white shrink-0">
+        <Link href="/history" className="text-zinc-400 hover:text-zinc-900 transition-colors" aria-label="Back to history">
+          <ChevronLeft size={16} strokeWidth={3} />
+        </Link>
+        <h1 className="text-sm font-bold text-zinc-900">{run.chainName}</h1>
+        <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-900 text-[10px] font-bold uppercase tracking-wider">{run.status}</span>
+        <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
+        <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
+
+        <button
+          onClick={() => setSeedOpen(o => !o)}
+          title={run.seedPrompt}
+          className="flex-1 min-w-0 text-left text-[11px] italic text-zinc-500 hover:text-zinc-900 truncate border-l border-zinc-100 pl-3"
+        >
+          &ldquo;{run.seedPrompt}&rdquo;
+        </button>
+
+        <a href={`/api/runs/${run.runId}/export?format=markdown`}
+          className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0">
+          <Download size={12} />MD
+        </a>
+        <a href={`/api/runs/${run.runId}/export?format=json`}
+          className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0">
+          <Download size={12} />JSON
+        </a>
+      </header>
+
+      {seedOpen && (
+        <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50 text-sm text-zinc-800 italic max-h-32 overflow-auto shrink-0">
+          &ldquo;{run.seedPrompt}&rdquo;
         </div>
+      )}
 
-        <div className="flex gap-3">
-          {!compareMode && g && (
-            <div className="flex rounded-xl border border-zinc-200 overflow-hidden">
-              <button
-                onClick={() => setViewMode('graph')}
-                className={`px-4 py-2 text-xs font-bold transition-all ${viewMode === 'graph' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:text-zinc-900'}`}
-              >
-                GRAPH
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-4 py-2 text-xs font-bold transition-all border-l border-zinc-200 ${viewMode === 'list' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:text-zinc-900'}`}
-              >
-                LIST
-              </button>
-            </div>
-          )}
-          <a
-            href={`/api/runs/${run.runId}/export?format=markdown`}
-            className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
-          >
-            <Download size={14} />
-            EXPORT .MD
-          </a>
-          <a
-            href={`/api/runs/${run.runId}/export?format=json`}
-            className="px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-2"
-          >
-            <Download size={14} />
-            EXPORT .JSON
-          </a>
-          <button
-            onClick={() => setCompareMode(!compareMode)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              compareMode
-                ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-200'
-                : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900'
-            }`}
-          >
-            {compareMode ? 'EXIT COMPARE' : 'COMPARE OUTPUTS'}
-          </button>
-        </div>
-      </div>
-
-      {/* Seed Prompt */}
-      <div className="bg-zinc-50 rounded-2xl p-8 border border-zinc-100">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-4">Seed Prompt</h2>
-        <p className="text-lg text-zinc-800 leading-relaxed font-medium italic">&quot;{run.seedPrompt}&quot;</p>
-      </div>
-
-      <RunPinnedVersions run={run} />
-
-      {compareMode ? (
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-wrap gap-6 items-center justify-center bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Left:</span>
-              <select
-                className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-100"
-                value={leftIdx}
-                onChange={(e) => setLeftIdx(parseInt(e.target.value))}
-              >
-                {run.agentOutputs.map((out, i) => (
-                  <option key={i} value={i}>{i+1}. {out.agentName}</option>
-                ))}
-              </select>
-            </div>
-            <div className="w-px h-4 bg-zinc-200 hidden md:block" />
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Right:</span>
-              <select
-                className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-100"
-                value={rightIdx}
-                onChange={(e) => setRightIdx(parseInt(e.target.value))}
-              >
-                {run.agentOutputs.map((out, i) => (
-                  <option key={i} value={i}>{i+1}. {out.agentName}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <DiffViewer
-            leftTitle={`${run.agentOutputs[leftIdx]?.agentName} (${run.agentOutputs[leftIdx]?.model})`}
-            leftContent={run.agentOutputs[leftIdx]?.output || ''}
-            rightTitle={`${run.agentOutputs[rightIdx]?.agentName} (${run.agentOutputs[rightIdx]?.model})`}
-            rightContent={run.agentOutputs[rightIdx]?.output || ''}
-          />
-        </div>
-      ) : (viewMode === 'graph' && g) ? (
-        <div className="flex flex-col gap-6">
-          <div className="w-full h-[520px] border border-zinc-200 rounded-2xl overflow-hidden">
+      <div className="flex-1 min-h-0">
+        <DockSplit
+          main={g ? (
             <ChainCanvas
               nodes={g.nodes}
               edges={g.edges}
@@ -268,58 +192,51 @@ function RunDetail({ run }: { run: RunMeta }) {
               onInstance={noop}
               readOnly
             />
-          </div>
-          <RunTrace
-            order={traceOrder}
-            states={overlay}
-            selection={{ selected: selectedNodeId, onSelect: setSelectedNodeId }}
-            branch={{ onBranch: handleBranchRound, isBranching }}
-          />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Agent Execution Chain</h2>
-          <div className="flex flex-col gap-4">
-            {run.agentOutputs.map((output, idx) => (
-              <div key={idx} className="group flex flex-col border border-zinc-200 rounded-2xl overflow-hidden bg-white hover:border-zinc-300 transition-all shadow-sm hover:shadow-md">
-                <div className="bg-zinc-50 px-6 py-4 border-b border-zinc-200 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">
-                      {idx + 1}
+          ) : (
+            // Runs captured before the graph was recorded have no canvas to draw,
+            // so their outputs are the main region instead.
+            <div className="h-full overflow-auto p-4 flex flex-col gap-4">
+              {run.agentOutputs.map((output, idx) => (
+                <div key={idx} className="flex flex-col border border-zinc-200 rounded-xl overflow-hidden bg-white">
+                  <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[11px] font-bold">{idx + 1}</div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-zinc-900">{output.agentName}</span>
+                        <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{output.model} &bull; {output.latencyMs}ms</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-zinc-900">{output.agentName}</span>
-                      <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{output.model} • {output.latencyMs}ms</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
-                    <button
-                      onClick={() => handleBranch(idx)}
-                      disabled={isBranching}
-                      className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
-                    >
-                      {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
-                    </button>
-                    <div className="w-full sm:w-48">
-                      <TokenCostBar
-                        tokensIn={output.tokensIn}
-                        tokensOut={output.tokensOut}
-                        costUsd={output.costUsd}
-                      />
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                      <button
+                        onClick={() => handleBranch(idx)}
+                        disabled={isBranching}
+                        className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
+                      </button>
+                      <div className="w-full sm:w-48">
+                        <TokenCostBar tokensIn={output.tokensIn} tokensOut={output.tokensOut} costUsd={output.costUsd} />
+                      </div>
                     </div>
                   </div>
+                  <div className="p-4">
+                    <AgentStreamOutput {...output} isStreaming={false} />
+                  </div>
                 </div>
-                <div className="p-4">
-                  <AgentStreamOutput
-                    {...output}
-                    isStreaming={false}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              ))}
+            </div>
+          )}
+          dock={
+            <RunDock
+              run={run}
+              order={traceOrder}
+              states={overlay}
+              selection={{ selected: selectedNodeId, onSelect: setSelectedNodeId }}
+              branch={{ onBranch: handleBranchRound, isBranching }}
+            />
+          }
+        />
+      </div>
     </div>
   )
 }

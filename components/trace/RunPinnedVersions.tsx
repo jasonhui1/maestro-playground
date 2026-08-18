@@ -65,8 +65,8 @@ export default function RunPinnedVersions({ run }: { run: RunMeta }) {
   const entries = run.versions ? Object.entries(run.versions).sort(([a], [b]) => a.localeCompare(b)) : []
 
   return (
-    <div className="bg-zinc-50 rounded-2xl p-8 border border-zinc-100">
-      <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-4 flex items-center gap-2">
+    <div className="p-3">
+      <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-3 flex items-center gap-2">
         <Layers size={12} />
         Pinned Versions
       </h2>

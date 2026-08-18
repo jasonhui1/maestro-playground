@@ -11,10 +11,10 @@ import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
 import { ChainDef, AgentDef, ToolDef, SkillDef } from '@/lib/types';
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore';
-import { Group, Panel, Separator } from 'react-resizable-panels';
 import { validateChain } from '@/lib/chainGraph';
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import DockPanel from '@/components/workspace/DockPanel';
+import DockSplit from '@/components/workspace/DockSplit';
 import SeedField from '@/components/workspace/SeedField';
 
 // A context file is bare prose with no frontmatter; every other type is frontmatter + body.
@@ -70,12 +70,6 @@ function WorkspaceContent() {
     if (type !== 'chain' || !parsedChain) return []
     return validateChain(parsedChain, editorAgents, editorChains, editorTools, editorSkills).issues
   }, [type, parsedChain, editorAgents, editorChains, editorTools, editorSkills])
-
-  const dockSide = useWorkspaceUiStore(s => s.dockSide)
-  const panelCollapsed = useWorkspaceUiStore(s => s.panelCollapsed)
-  // Persisted panel size percentage driven from useWorkspaceUiStore
-  const panelSize = useWorkspaceUiStore(s => s.panelSize)
-
 
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
@@ -214,10 +208,10 @@ function WorkspaceContent() {
               <WorkspaceSkeleton />
             </div>
           </div>
-                ) : panelCollapsed ? (
-          <div className={`h-full flex ${dockSide === 'right' ? 'flex-row' : 'flex-col'}`}>
-            <div className="flex-1 min-h-0">
-              {type === 'chain' && chainView === 'graph' && parsedChain ? (
+        ) : (
+          <DockSplit
+            main={
+              type === 'chain' && chainView === 'graph' && parsedChain ? (
                 <ChainEditor
                   key={slug}
                   slug={slug}
@@ -242,50 +236,10 @@ function WorkspaceContent() {
                     language={editorLanguage(type)}
                   />
                 </div>
-              )}
-            </div>
-            <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
-          </div>
-        ) : (
-          <Group orientation={dockSide === 'right' ? 'horizontal' : 'vertical'}>
-            <Panel minSize="30%">
-              <div className="h-full flex flex-col">
-                <div className="flex-1 min-h-0">
-                  {type === 'chain' && chainView === 'graph' && parsedChain ? (
-                    <ChainEditor
-                      key={slug}
-                      slug={slug}
-                      initialChain={parsedChain}
-                      agents={editorAgents}
-                      contextFiles={editorContext}
-                      refetchAgents={refetchEditorData}
-                      initialSeedPrompt={seedParam}
-                      chains={editorChains}
-                      tools={editorTools}
-                      skills={editorSkills}
-                      onSaveStatus={setGraphSaveStatus}
-                    />
-                  ) : (
-                    <div className="h-full p-6 pt-4">
-                      <FileEditor
-                        content={content}
-                        onChange={setContent}
-                        status={status}
-                        error={saveError}
-                        type={type}
-                        language={editorLanguage(type)}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Panel>
-            <Separator className={`bg-zinc-100 hover:bg-zinc-200 transition-colors ${dockSide === 'right' ? 'w-1 border-x' : 'h-1 border-y'} border-zinc-200`} />
-            <Panel defaultSize={`${panelSize}%`} minSize="10%"
-              onResize={(size) => useWorkspaceUiStore.getState().setPanelSize(size as unknown as number)}>
-              <DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />
-            </Panel>
-          </Group>
+              )
+            }
+            dock={<DockPanel type={type} slug={slug} view={view} issues={dockIssues} onSelectIssueNode={() => {}} />}
+          />
         )}
       </div>
     </div>
