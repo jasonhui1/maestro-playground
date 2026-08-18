@@ -1,14 +1,14 @@
 'use client'
-import React, { useCallback, useMemo, useState, useEffect } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider,
-  type Node, type Edge, type Connection, type NodeProps,
-  applyNodeChanges, type NodeChange,
+  type Node, type Edge, type NodeProps, type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
+import { applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
 import ContextNode from './nodes/ContextNode'
@@ -60,14 +60,13 @@ function edgeId(e: ChainEdge): string {
 }
 
 export default function ChainCanvas(props: ChainCanvasProps) {
-  const { onSelectionChange, onMoveMany } = props
+  const { nodes: chainNodes, selectedIds, buildData, onSelectionChange, onMoveMany } = props
 
-  // Local state for the rendered react flow nodes to buffer dragging
-  const [rfNodes, setRfNodes] = useState<Node[]>([])
-
-  // Keep local rfNodes synchronized when props change externally
-  useEffect(() => {
-    const frames: Node[] = computeZoneFrames(props.nodes).map(f => ({
+  // The nodes are projected from the chain on every render rather than mirrored into
+  // state, so a caller handing us a fresh `selectedIds` array costs one recompute
+  // instead of an effect that re-fires into "Maximum update depth exceeded" (#64).
+  const base = useMemo<Node[]>(() => {
+    const frames: Node[] = computeZoneFrames(chainNodes).map(f => ({
       id: `zone-frame-${f.zone}`,
       type: 'zoneFrame',
       position: { x: f.x, y: f.y },
@@ -76,23 +75,26 @@ export default function ChainCanvas(props: ChainCanvasProps) {
       draggable: false,
       zIndex: -1,
     }))
-    const nodes: Node[] = props.nodes.map(n => ({
+    const nodes: Node[] = chainNodes.map(n => ({
       id: n.id,
       type: n.kind,
       position: { x: n.pos?.[0] ?? 0, y: n.pos?.[1] ?? 0 },
-      data: props.buildData(n),
-      selected: props.selectedIds.includes(n.id),
+      data: buildData(n),
+      selected: selectedIds.includes(n.id),
     }))
-    setRfNodes([...frames, ...nodes])
-  }, [props.nodes, props.selectedIds, props.buildData])
+    return [...frames, ...nodes]
+  }, [chainNodes, selectedIds, buildData])
+
+  // What React Flow owns on top of that: measured sizes, then the live drag position.
+  // Layered in that order so a gesture rebuilds only the node under the cursor.
+  const [view, setView] = useState<CanvasView>(emptyCanvasView)
+  const measured = useMemo(() => overlay(base, view.measured), [base, view.measured])
+  const rfNodes = useMemo(() => overlay(measured, view.drag), [measured, view.drag])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setRfNodes((nds) => applyNodeChanges(changes, nds))
+    setView(v => applyViewChanges(v, changes))
   }, [])
 
-  // React Flow keys its selection effect off the handler's identity — these MUST
-  // be stable, or the effect re-fires every render and (via onSelectionChange's
-  // setState) loops "Maximum update depth exceeded".
   const handleSelectionChange = useCallback(
     ({ nodes }: { nodes: Node[] }) => onSelectionChange(nodes.map(n => n.id)),
     [onSelectionChange],

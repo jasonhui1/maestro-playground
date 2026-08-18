@@ -17,8 +17,7 @@ import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
-// ChainCanvas syncs off prop identity, so a read-only canvas must hand it the same
-// no-op every render — a fresh arrow would refire its sync effect into a render loop.
+// Every edit handler a read-only canvas is still required to be handed.
 const noop = () => {}
 
 // The page is only a fetch gate: it holds no view state, so RunDetail below can
@@ -100,7 +99,6 @@ function RunDetail({ run }: { run: RunMeta }) {
   const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
   const traceOrder = useMemo(() => runOrderOf(run.agentOutputs), [run.agentOutputs])
 
-  // Same identity contract as the no-ops above: the canvas re-syncs on a new array.
   const selectedIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId])
   const canvasIds = useMemo(() => new Set((g?.nodes ?? []).map(n => n.id)), [g])
   const selectOnCanvas = useCallback((ids: string[]) => setSelectedNodeId(prev =>
