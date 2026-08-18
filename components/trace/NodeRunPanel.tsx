@@ -8,6 +8,8 @@ import { CollapsibleDetail } from '@/components/ui/CollapsibleDetail'
 import { ToolLoopNarration } from '@/components/trace/ToolLoopNarration'
 import { SectionWarnings } from '@/components/trace/SectionWarnings'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
+import { Markdown } from '@/components/ui/Markdown'
+import { RenderToggle } from '@/components/ui/RenderToggle'
 
 export function NodeRunPanel({ nodeId, state, branch }: {
   nodeId: string
@@ -19,6 +21,7 @@ export function NodeRunPanel({ nodeId, state, branch }: {
   const [round, setRound] = useState<number | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
   const [showThinking, setShowThinking] = useState(false)
+  const [raw, setRaw] = useState(false)
   const r = state.result
   const looped = state.rounds.length > 1
   // null round means "latest": a live loop shows the streaming buffer, not an archived round
@@ -48,6 +51,7 @@ export function NodeRunPanel({ nodeId, state, branch }: {
               <span className="text-[10px] font-mono text-zinc-400">{(metrics.latencyMs / 1000).toFixed(2)}s</span>
             </>
           )}
+          {shown && <RenderToggle raw={raw} onToggle={setRaw} />}
           {state.status !== 'running' && shown && (
             <SaveToContextButton agentName={state.agentName ?? nodeId} output={shown} />
           )}
@@ -94,15 +98,21 @@ export function NodeRunPanel({ nodeId, state, branch }: {
       {/* like thought, the transcript is the latest round's — don't pair it with an archived one */}
       {narration.isNarrating && !viewingArchivedRound && <ToolLoopNarration turns={narration.turns} />}
 
-      <div className="p-4 text-sm text-zinc-700 whitespace-pre-wrap font-mono leading-relaxed flex-1 min-h-[8rem] overflow-x-auto">
+      <div className="p-4 text-sm text-zinc-700 leading-relaxed flex-1 min-h-[8rem] overflow-x-auto">
         {r?.error && !viewingArchivedRound ? (
-          <div className="flex items-start gap-2 text-red-500 bg-red-50/50 p-3 rounded border border-red-100">
+          <div className="flex items-start gap-2 text-red-500 bg-red-50/50 p-3 rounded border border-red-100 font-mono whitespace-pre-wrap">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
             <span>{r.error}</span>
           </div>
         ) : state.status === 'skipped' ? (
           <span className="text-zinc-300 italic">Skipped — this node did not run.</span>
-        ) : shown || <span className="text-zinc-300 italic">Waiting for agent output...</span>}
+        ) : shown ? (
+          raw
+            ? <div className="whitespace-pre-wrap font-mono">{shown}</div>
+            : <Markdown>{shown}</Markdown>
+        ) : (
+          <span className="text-zinc-300 italic">Waiting for agent output...</span>
+        )}
       </div>
 
       {/* thought is per-node, not per-round: hide it rather than pair it with an archived round */}

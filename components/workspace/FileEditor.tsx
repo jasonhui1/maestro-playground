@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import matter from 'gray-matter';
+import { Markdown } from '@/components/ui/Markdown';
+import { RenderToggle } from '@/components/ui/RenderToggle';
 
 interface FileEditorProps {
   content: string;
@@ -13,8 +15,20 @@ interface FileEditorProps {
   type?: string | null;
 }
 
+// Frontmatter is config, not prose, so preview shows it verbatim instead of feeding it to
+// the markdown renderer. Invalid YAML falls back to previewing the file whole.
+function splitFrontmatter(source: string): { frontmatter: string | null; body: string } {
+  try {
+    const file = matter(source);
+    return { frontmatter: file.matter.trim() || null, body: file.content };
+  } catch {
+    return { frontmatter: null, body: source };
+  }
+}
+
 export function FileEditor({ content, onChange, status, error, language = 'markdown', type }: FileEditorProps) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [preview, setPreview] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
 
@@ -113,6 +127,10 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
     return () => clearTimeout(timer);
   }, [content, validate]);
 
+  // A yaml file has no prose to preview, so the toggle can't strand it in an empty pane
+  const showPreview = preview && language === 'markdown';
+  const { frontmatter, body } = showPreview ? splitFrontmatter(content) : { frontmatter: null, body: '' };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-2 px-1 h-8">
@@ -163,8 +181,24 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
             )}
           </div>
         </div>
+
+        {language === 'markdown' && (
+          <RenderToggle raw={!preview} onToggle={(raw) => setPreview(!raw)} labels={['Preview', 'Edit']} />
+        )}
       </div>
-      
+
+      {showPreview ? (
+        <div className="flex-1 border border-zinc-200 rounded-lg overflow-auto bg-white shadow-sm p-5">
+          {frontmatter && (
+            <pre className="mb-4 p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] font-mono text-zinc-500 whitespace-pre-wrap">
+              {frontmatter}
+            </pre>
+          )}
+          {body.trim()
+            ? <Markdown className="max-w-3xl">{body}</Markdown>
+            : <span className="text-sm text-zinc-300 italic">Nothing to preview.</span>}
+        </div>
+      ) : (
       <div className="flex-1 border border-zinc-200 rounded-lg overflow-hidden bg-white shadow-sm">
         <Editor
           height="100%"
@@ -186,6 +220,7 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
           }}
         />
       </div>
+      )}
     </div>
   );
 }
