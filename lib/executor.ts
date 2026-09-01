@@ -50,6 +50,7 @@ export async function runChainGraph(
   chains: ChainDef[] = [],
   tools: ToolDef[] = [],
   depth = 0,
+  paramValue = '',
 ): Promise<AgentOutput[]> {
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
@@ -100,7 +101,7 @@ export async function runChainGraph(
   const edgeValue = (e: typeof chain.edges[number]): string => {
     const src = nodeById.get(e.fromNode)
     if (!src) return ''
-    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext)
+    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
     if (read.missingSection) {
       reportWarning({ fromNode: e.fromNode, section: read.missingSection, toNode: e.toNode, toSocket: e.toSocket })
     }
@@ -123,7 +124,7 @@ export async function runChainGraph(
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
-    const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext)
+    const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext, paramValue)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
     // two nodes naming the same agent may still produce two different system prompts.
@@ -250,7 +251,7 @@ export async function runChainGraph(
     const node = nodeById.get(nodeId)
     if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
 
-    if (node.kind === 'seed' || node.kind === 'context') { markOut(nodeId, () => true); return }
+    if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
     const slots = usedSlots(node)
     const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
@@ -307,7 +308,7 @@ export async function runChainGraph(
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
           },
-          runFn, innerStart, chains, tools, depth + 1,
+          runFn, innerStart, chains, tools, depth + 1, paramValue,
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()
@@ -317,7 +318,7 @@ export async function runChainGraph(
         for (const p of ref.outputs ?? []) {
           const inner = innerById.get(p.node)
           if (!inner) { outMap.set(p.name, ''); continue }
-          const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext)
+          const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext, paramValue)
           // A skipped inner node produced no answer, so its missing heading is not a
           // convention violation — only a real answer can violate one (#40).
           if (read.missingSection && byNode.get(p.node)?.status === 'success') {

@@ -11,20 +11,23 @@ export interface SocketRead {
 }
 
 // Resolves the value carried on a source node's socket.
-// seed -> seed prompt; context -> file; gate/branch -> their pass-through output
-// (socket ignored); agent/decider -> output (full) or a named section.
+// seed -> seed prompt; context -> file; param -> the run's dropdown pick;
+// gate/branch -> their pass-through output (socket ignored); agent/decider ->
+// output (full) or a named section.
 export function readSocket(
   src: ChainNode,
   socket: string,
   nodeOutputs: Map<string, AgentOutput>,
   seedPrompt: string,
   readContext: (file: string) => string,
+  paramValue: string = '',
 ): SocketRead {
   if (src.kind === 'seed') {
     const o = nodeOutputs.get(src.id)
     return { value: o ? o.output : seedPrompt }
   }
   if (src.kind === 'context') return { value: readContext(src.file || '') }
+  if (src.kind === 'param') return { value: paramValue }
   if (src.kind === 'subchain') {
     const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
     return { value: o ? o.output : '' }
@@ -59,6 +62,7 @@ export function resolveNodePrompt(
   nodeOutputs: Map<string, AgentOutput>,
   seedPrompt: string,
   readContext: (file: string) => string,
+  paramValue: string = '',
 ): ResolvedPrompt {
   let out = agent.systemPrompt
   const warnings: SectionWarning[] = []
@@ -72,7 +76,7 @@ export function resolveNodePrompt(
       if (!src) {
         value = `[${slot}: source "${edge.fromNode}" missing]`
       } else {
-        const read = readSocket(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext)
+        const read = readSocket(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
         value = read.value
         if (read.missingSection) {
           warnings.push({ fromNode: edge.fromNode, section: read.missingSection, toNode: node.id, toSocket: slot })

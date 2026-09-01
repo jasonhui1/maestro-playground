@@ -168,6 +168,19 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   validateZones(chain, add)
   validateSubchains(chain, chains, add, warn)
+
+  // `readSocket` dispatches every `kind: 'param'` node to the run's one value by
+  // kind alone (#69) — `parameter.node` only stays meaningful if it is the chain's
+  // only param node, checked here rather than threaded into that general function.
+  const paramNodes = chain.nodes.filter(n => n.kind === 'param')
+  if (chain.parameter) {
+    if (paramNodes.length > 1) add(`Chain declares a parameter but has ${paramNodes.length} "param" nodes (must be exactly one)`)
+    else if (!nodeById.has(chain.parameter.node) || nodeById.get(chain.parameter.node)?.kind !== 'param') {
+      add(`Declared parameter's node "${chain.parameter.node}" is not a "param" node`)
+    }
+  } else if (paramNodes.length > 0) {
+    add(`Chain has a "param" node but declares no parameter`)
+  }
   return { valid: errors.length === 0, errors, issues }
 }
 

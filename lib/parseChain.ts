@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import { ChainDef, ChainNode, ChainEdge, ChainPort } from './types'
+import { ChainDef, ChainNode, ChainEdge, ChainPort, ChainParameter } from './types'
 import { allFields, FieldCodec } from './nodeKinds'
 
 export function parseEndpoint(s: string): { node: string; socket: string } {
@@ -54,7 +54,18 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
         }))
       : undefined
 
+  const parameter: ChainParameter | undefined =
+    data.parameter && typeof data.parameter === 'object'
+      ? {
+          name: String((data.parameter as Record<string, unknown>).name),
+          options: Array.isArray((data.parameter as Record<string, unknown>).options)
+            ? ((data.parameter as Record<string, unknown>).options as unknown[]).map(String)
+            : [],
+          node: String((data.parameter as Record<string, unknown>).node),
+        }
+      : undefined
+
   // A file with no `name:` is named by its slug — an undefined name reaches the YAML
   // dumper on the next edit and throws (js-yaml cannot represent undefined).
-  return { slug, name: data.name ?? slug, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false, inputs: ports('inputs'), outputs: ports('outputs'), view: data.view ? String(data.view) : undefined, moment: data.moment ? String(data.moment) : undefined }
+  return { slug, name: data.name ?? slug, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false, inputs: ports('inputs'), outputs: ports('outputs'), view: data.view ? String(data.view) : undefined, moment: data.moment ? String(data.moment) : undefined, parameter }
 }

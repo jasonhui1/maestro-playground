@@ -12,6 +12,7 @@ import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay, type Ca
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
 import ContextNode from './nodes/ContextNode'
+import ParamNode from './nodes/ParamNode'
 import AgentNode from './nodes/AgentNode'
 import GateNode from './nodes/GateNode'
 import BranchNode from './nodes/BranchNode'
@@ -30,7 +31,7 @@ import JoinNode from './nodes/JoinNode'
 // node kind, so it sits outside the mapped type.
 type KindComponents = { [K in ChainNodeKind]: React.ComponentType<NodeProps<Node<EditorNodeDataOf<K>>>> }
 const nodeTypes: KindComponents & { zoneFrame: React.ComponentType<any> } = {
-  seed: SeedNode, context: ContextNode, agent: AgentNode, decider: AgentNode,
+  seed: SeedNode, context: ContextNode, param: ParamNode, agent: AgentNode, decider: AgentNode,
   gate: GateNode, branch: BranchNode, 'loop-start': LoopStartNode, 'loop-end': LoopEndNode,
   subchain: SubchainNode,
   report: ReportNode,

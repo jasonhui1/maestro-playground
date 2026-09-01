@@ -89,6 +89,15 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     fields: [{ key: 'file', codec: 'string', ref: 'context' }],
     palette: { label: 'Context', category: 'Sources' },
   },
+  // Options live only on ChainDef.parameter — a single source, no field to desync (#69).
+  param: {
+    kind: 'param',
+    acceptsInputs: false,
+    inputs: () => [],
+    outputs: () => ['output'],
+    fields: [],
+    palette: { label: 'Parameter', category: 'Sources' },
+  },
   agent: {
     kind: 'agent',
     acceptsInputs: true,

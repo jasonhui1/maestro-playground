@@ -1,7 +1,7 @@
 import type { SectionWarning } from './sectionWarning'
 import type { ENTITY_DIRS } from './entityDirs'
 
-export type ChainNodeKind = 'seed' | 'context' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
+export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
@@ -30,6 +30,7 @@ export interface ChainNodeBase {
 export type ChainNode =
   | (ChainNodeBase & { kind: 'seed' })
   | (ChainNodeBase & { kind: 'context'; file?: string })
+  | (ChainNodeBase & { kind: 'param' })
   | (ChainNodeBase & { kind: 'agent'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'decider'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'gate'; condition?: string })
@@ -149,6 +150,16 @@ export interface SkillDef {
   isFavorite?: boolean
 }
 
+// The one user-facing dropdown a chain may declare (#69). `node` names the
+// `kind: 'param'` node whose value the run supplies, mirroring how `seed`
+// nodes take `seedPrompt` — the chain declares the choices, the run supplies
+// the pick.
+export interface ChainParameter {
+  name: string
+  options: string[]
+  node: string
+}
+
 export interface ChainDef {
   slug: string
   name: string
@@ -164,6 +175,8 @@ export interface ChainDef {
   view?: string
   /** The situation that should make you reach for this chain; display-only (ADR-0016). */
   moment?: string
+  /** At most one dropdown beside the paste-text box; absent means no dropdown (#69). */
+  parameter?: ChainParameter
 }
 
 export interface AgentOutput {

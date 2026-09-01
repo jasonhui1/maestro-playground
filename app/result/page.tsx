@@ -22,6 +22,7 @@ export default function ResultPage() {
   const [mode, setMode] = useState<'paste' | 'file'>('paste')
   const [pasted, setPasted] = useState('')
   const [fileSlug, setFileSlug] = useState('')
+  const [paramValue, setParamValue] = useState('')
   const [states, setStates] = useState<RunStateMap>({})
   const [order, setOrder] = useState<string[]>([])
   const [running, setRunning] = useState(false)
@@ -51,6 +52,7 @@ export default function ResultPage() {
   }, [])
 
   const chain = chains.find(c => c.slug === chainSlug)
+  useEffect(() => { setParamValue('') }, [chainSlug])
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
   const seedText = mode === 'paste' ? pasted : seedFile?.rawContent ?? ''
   const seed: SeedSource = mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }
@@ -85,7 +87,7 @@ export default function ResultPage() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chainName: chain.name, seedPrompt: seedText }),
+        body: JSON.stringify({ chainName: chain.name, seedPrompt: seedText, paramValue }),
       })
       if (!res.ok) { setError(await runErrorMessage(res)); return }
       const reader = res.body?.getReader()
@@ -156,10 +158,24 @@ export default function ResultPage() {
           </div>
         </div>
 
+        {chain?.parameter && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">{chain.parameter.name}</span>
+            <select
+              value={paramValue}
+              onChange={e => setParamValue(e.target.value)}
+              className="self-start rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 outline-none"
+            >
+              <option value="">Choose {chain.parameter.name}…</option>
+              {chain.parameter.options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+        )}
+
         <div className="flex items-center gap-4">
           <button
             onClick={handleRun}
-            disabled={running || !chain || !seedText.trim()}
+            disabled={running || !chain || !seedText.trim() || Boolean(chain?.parameter && !paramValue)}
             className="self-start rounded-lg bg-zinc-900 text-white px-8 py-2 text-sm font-medium
               disabled:opacity-40 hover:bg-zinc-700 transition-all active:scale-95"
           >
