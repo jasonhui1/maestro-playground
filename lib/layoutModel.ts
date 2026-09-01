@@ -1,17 +1,15 @@
 import { ChainDef, AgentOutput } from './types'
 import { extractSection } from './graph'
 
-// A chain says which of its outputs are worth looking at and how they sit together;
-// nothing here reads the node graph. Inferring panels from graph shape discards outputs
-// only the author knows are interesting — a report tapped off a hop is a panel or is
-// noise, and no rule about node kinds can tell which (#66).
-export type LayoutKind = 'timeline' | 'undeclared'
+/** A layout a chain file may name in `view:`. Adding one is a branch here (ADR-0015). */
+export type DeclaredView = 'timeline'
+
+/** What the result view renders: a declared layout, or the run-trace fallback. */
+export type LayoutKind = DeclaredView | 'undeclared'
 
 /**
  * `pending` — the run has not reached this node yet.
- * `empty`   — it ran, and this socket resolved to nothing. A hop that dropped the
- *             section its edge asked for reads as a failure, not as still-loading;
- *             the executor raises the matching warning (#37).
+ * `empty`   — it ran, and this socket resolved to nothing (ADR-0015).
  * `filled`  — there is content.
  */
 export type PanelState = 'pending' | 'empty' | 'filled'
@@ -35,9 +33,8 @@ export interface LayoutModel {
 
 const UNDECLARED: LayoutModel = { kind: 'undeclared', panels: [] }
 
-// `output` is the whole text; any other socket names a markdown section of it, which is
-// what the executor's edges resolve too — so a panel shows what the next hop received,
-// not what the node wrote around it.
+// `output` is the whole text; any other socket names a section of it, resolved the way
+// an edge resolves — so a panel holds what the next hop received (ADR-0015).
 function contentOf(output: AgentOutput | undefined, socket: string | undefined): string {
   if (!output) return ''
   if (!socket || socket === 'output') return output.output
@@ -50,10 +47,10 @@ function lineCount(text: string): number {
 }
 
 /**
- * Project a run's outputs onto the panels its chain declares.
+ * Project a run's outputs onto the panels its chain declares (ADR-0015).
  *
- * A chain with no `view` is not opted in, and gets an empty `undeclared` model the
- * caller renders as the ordinary run trace.
+ * Reads `view` and `outputs` only — never an edge or a node kind. A chain that
+ * declares no layout is not opted in, and the caller renders it as the run trace.
  */
 export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[]): LayoutModel {
   if (chain.view !== 'timeline') return UNDECLARED

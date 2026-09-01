@@ -17,6 +17,13 @@ export type RunEvent =
   | { type: 'run_complete'; runId: string }
   | { type: 'error'; error: string }
 
+// /api/run rejects with either a validation list or a bare message; every caller wants
+// one string. Reads the body, so call it once per failed response.
+export async function runErrorMessage(res: Response): Promise<string> {
+  const body = await res.json().catch(() => ({}))
+  return (body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`
+}
+
 export async function streamRun(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onEvent: (e: RunEvent) => void,

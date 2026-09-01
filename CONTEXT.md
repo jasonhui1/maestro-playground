@@ -90,3 +90,15 @@ Only a **variant** extends the prompt ([ADR-0013](docs/adr/0013-an-agent-file-ma
 Two sources use these modes. A defaults file and an agent file merge by override, per field ([ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md)). An agent file and a call site merge by the mode a marker states: `skills!` overrides the agent file list, `skills+` extends it.
 
 **The prompt supports extend only.** A variant fills a slot in the body; a call site may not. Neither may send a whole new body. A chain that needs a whole new body needs a second agent file instead — otherwise the agent file names an empty shape, and a reader of the agent file learns nothing about the run.
+
+## Declared view
+
+The layout a chain names in its `view:` frontmatter key, and the only way a chain earns a result view ([ADR-0015](docs/adr/0015-a-chain-declares-the-layout-its-result-reads-in.md)). `timeline` is the one that exists. A chain naming no view renders as the ordinary run trace; nothing infers a layout from graph shape, because no rule about node kinds separates a leaf that is a result from a leaf that is scaffolding. _Avoid_: layout kind (that is the builder's output, which also carries `undeclared`), template, presentation mode.
+
+## Panel
+
+One cell of a declared view, named by one of the chain's `outputs:` ports. A panel shows the content on the port's **socket**, resolved the way an edge resolves it — so `socket: summary` holds exactly what the next node received, not what the producer wrote around it. The panel list is a reading order, not a record of what ran: a node may appear twice on different sockets, or not at all. The full record stays in the run log. _Avoid_: card, step, hop (a hop is a node in the run; a panel is a thing on screen).
+
+## Panel state
+
+Which of three things a panel has to say: `pending` (the run has not reached the node), `empty` (the node finished and the socket resolved to nothing), `filled`. The `pending`/`empty` split exists because a hop that dropped the section its edge asked for is a failure, not a slow node — it must not read as still loading. The engine reports the same fact as a **section warning**.

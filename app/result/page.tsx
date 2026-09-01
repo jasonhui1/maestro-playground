@@ -2,8 +2,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { ChainDef, AgentOutput } from '@/lib/types'
-import { streamRun } from '@/lib/runStream'
+import { streamRun, runErrorMessage } from '@/lib/runStream'
 import { applyRunEvent, RunStateMap } from '@/lib/runState'
+import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel } from '@/lib/layoutModel'
 import { Timeline } from '@/components/result/Timeline'
 import { RunTrace } from '@/components/RunTrace'
@@ -62,20 +63,14 @@ export default function ResultPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chainName: chain.name, seedPrompt: seedText }),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setError((body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`)
-        return
-      }
+      if (!res.ok) { setError(await runErrorMessage(res)); return }
       const reader = res.body?.getReader()
       if (!reader) return
       await streamRun(reader, e => {
         if (e.type === 'error') { setError(e.error); return }
         if (e.type === 'run_complete') { setRunId(e.runId); return }
         setStates(prev => applyRunEvent(prev, e))
-        if ((e.type === 'agent_start' || e.type === 'agent_done') && e.kind !== 'loop-end') {
-          setOrder(prev => (prev.includes(e.nodeId) ? prev : [...prev, e.nodeId]))
-        }
+        setOrder(prev => applyOrder(prev, e))
       })
     } finally {
       setRunning(false)

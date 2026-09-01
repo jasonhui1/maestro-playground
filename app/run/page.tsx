@@ -4,7 +4,7 @@ import { ChainSelector } from '@/components/ChainSelector'
 import { TemplateSelector } from '@/components/TemplateSelector'
 import { RunTrace } from '@/components/RunTrace'
 import { ChainDef, TemplateDef } from '@/lib/types'
-import { streamRun } from '@/lib/runStream'
+import { streamRun, runErrorMessage } from '@/lib/runStream'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
 
 export default function RunPage() {
@@ -43,11 +43,7 @@ export default function RunPage() {
       body: JSON.stringify({ chainName: selectedChain, seedPrompt }),
     })
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setRunError((body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`)
-      return
-    }
+    if (!res.ok) { setRunError(await runErrorMessage(res)); return }
 
     const reader = res.body?.getReader()
     if (!reader) return

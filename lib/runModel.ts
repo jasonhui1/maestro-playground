@@ -18,13 +18,20 @@ export function nodeStateFor(map: InstanceRunMap, instance: number, nodeId: stri
 // Views that render a sequence track it alongside the fold (#33).
 export type InstanceOrder = Record<number, string[]>
 
-export function applyInstanceOrder(order: InstanceOrder, instance: number, e: RunEvent): InstanceOrder {
+// The order one instance's events leave behind. Identity is preserved when an event
+// adds nothing, so a caller can hold it in state without re-rendering on every token.
+export function applyOrder(order: string[], e: RunEvent): string[] {
   if (e.type !== 'agent_start' && e.type !== 'agent_done') return order
   // loop-end reports an empty record purely to mark the zone done; it has nothing to show (#33)
   if (e.kind === 'loop-end') return order
+  if (order.includes(e.nodeId)) return order
+  return [...order, e.nodeId]
+}
+
+export function applyInstanceOrder(order: InstanceOrder, instance: number, e: RunEvent): InstanceOrder {
   const prev = order[instance] ?? []
-  if (prev.includes(e.nodeId)) return order
-  return { ...order, [instance]: [...prev, e.nodeId] }
+  const next = applyOrder(prev, e)
+  return next === prev ? order : { ...order, [instance]: next }
 }
 
 export function orderFor(order: InstanceOrder, instance: number): string[] {
