@@ -102,7 +102,7 @@ test('a chain that declares no view is undeclared, whatever its outputs say', ()
   for (const c of [
     chain(),
     chain({ outputs: relayPorts }),
-    chain({ view: 'columns', outputs: relayPorts }),
+    chain({ view: 'not-a-real-view', outputs: relayPorts }),
   ]) {
     assert.deepStrictEqual(buildLayoutModel(c, []), { kind: 'undeclared', panels: [] })
   }
@@ -111,5 +111,40 @@ test('a chain that declares no view is undeclared, whatever its outputs say', ()
 // `view: timeline` with nothing to show is a half-written chain, not an empty timeline.
 test('a timeline with no declared outputs is undeclared', () => {
   const model = buildLayoutModel(chain({ view: 'timeline' }), [output('first', 'x')])
+  assert.deepStrictEqual(model, { kind: 'undeclared', panels: [] })
+})
+
+const columnsPorts: ChainPort[] = [
+  { name: 'luddite', node: 'luddite', socket: 'summary' },
+  { name: 'vc', node: 'vc', socket: 'summary' },
+  { name: 'where they collide', node: 'synthesis', socket: 'output', role: 'join' },
+]
+
+// Branches are peers under `view: columns` — no panel is the "last" one the way a
+// timeline's skeleton is, so only the declared join port carries emphasis (#67, ADR-0016).
+test('a declared columns view marks the role: join port and leaves the branches unmarked', () => {
+  const model = buildLayoutModel(chain({ view: 'columns', outputs: columnsPorts }), [
+    output('luddite', '## Summary\na'),
+    output('vc', '## Summary\nb'),
+    output('synthesis', 'c'),
+  ])
+  assert.strictEqual(model.kind, 'columns')
+  assert.deepStrictEqual(model.panels.map(p => p.name), ['luddite', 'vc', 'where they collide'])
+  assert.deepStrictEqual(model.panels.map(p => p.emphasis), [undefined, undefined, 'join'])
+})
+
+// #67's acceptance criteria: a columns chain with no join port still renders its
+// columns rather than erroring or falling back to the run trace.
+test('a columns view with no role: join port renders its columns with no join panel', () => {
+  const model = buildLayoutModel(chain({ view: 'columns', outputs: relayPorts }), [
+    output('first', '## Summary\na'),
+  ])
+  assert.strictEqual(model.kind, 'columns')
+  assert.strictEqual(model.panels.length, 3)
+  assert.deepStrictEqual(model.panels.map(p => p.emphasis), [undefined, undefined, undefined])
+})
+
+test('a columns view with no declared outputs is undeclared', () => {
+  const model = buildLayoutModel(chain({ view: 'columns' }), [output('first', 'x')])
   assert.deepStrictEqual(model, { kind: 'undeclared', panels: [] })
 })

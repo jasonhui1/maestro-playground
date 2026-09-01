@@ -7,6 +7,7 @@ export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
   node: string      // inner node this port binds to (seed for inputs; any node for outputs)
   socket?: string   // inner output socket (outputs only); defaults to 'output'
+  role?: 'join'     // marks the panel as a layout's converging panel (ADR-0016)
 }
 
 export interface BranchCase {

@@ -8,6 +8,7 @@ import { buildLayoutModel } from '@/lib/layoutModel'
 import { buildRunFrame, SeedSource } from '@/lib/runFrame'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
 import { Timeline } from '@/components/result/Timeline'
+import { Columns } from '@/components/result/Columns'
 import { RunFrame } from '@/components/result/RunFrame'
 import { RunTrace } from '@/components/RunTrace'
 
@@ -170,11 +171,13 @@ export default function ResultPage() {
 
       {frame && model && (
         <RunFrame frame={frame} runId={runId} selectedCount={deck.selected.length}>
-          {model.kind === 'timeline'
-            ? <Timeline panels={model.panels} deck={deck} />
+          {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} />}
+          {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} />}
+          {model.kind === 'undeclared' && (
             // A chain that declares no layout is shown as the run trace it has always
             // had, rather than drawn in a shape it never asked for (#66).
-            : <RunTrace order={order} states={states} />}
+            <RunTrace order={order} states={states} />
+          )}
         </RunFrame>
       )}
     </div>

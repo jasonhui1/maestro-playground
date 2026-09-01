@@ -1,8 +1,8 @@
-import { ChainDef, AgentOutput } from './types'
+import { ChainDef, ChainPort, AgentOutput } from './types'
 import { extractSection } from './graph'
 
 /** A layout a chain file may name in `view:`. Adding one is a branch here (ADR-0015). */
-export type DeclaredView = 'timeline'
+export type DeclaredView = 'timeline' | 'columns'
 
 /** What the result view renders: a declared layout, or the run-trace fallback. */
 export type LayoutKind = DeclaredView | 'undeclared'
@@ -22,8 +22,9 @@ export interface LayoutPanel {
   /** Content volume the view scales the panel by; 0 unless `filled`. */
   lines: number
   state: PanelState
-  /** Set on the panel the reader should land on: a timeline's surviving skeleton. */
-  emphasis?: 'last'
+  /** `'last'` — a timeline's surviving skeleton. `'join'` — a columns chain's
+   *  converging panel, declared by the port rather than inferred from position (ADR-0016). */
+  emphasis?: 'last' | 'join'
 }
 
 export interface LayoutModel {
@@ -46,6 +47,22 @@ function lineCount(text: string): number {
   return trimmed === '' ? 0 : trimmed.split('\n').length
 }
 
+function panelsFor(ports: ChainPort[], outputs: AgentOutput[]): LayoutPanel[] {
+  // Last write wins: a loop-body node reports once per round, and the panel shows
+  // where the node ended up rather than where it started.
+  const byNode = new Map<string, AgentOutput>()
+  for (const o of outputs) if (o.nodeId) byNode.set(o.nodeId, o)
+
+  return ports.map((port): LayoutPanel => {
+    const output = byNode.get(port.node)
+    const text = contentOf(output, port.socket)
+    const state: PanelState = !output ? 'pending' : text.trim() === '' ? 'empty' : 'filled'
+    const panel: LayoutPanel = { name: port.name, text, lines: lineCount(text), state }
+    if (port.role === 'join') panel.emphasis = 'join'
+    return panel
+  })
+}
+
 /**
  * Project a run's outputs onto the panels its chain declares (ADR-0015).
  *
@@ -53,21 +70,18 @@ function lineCount(text: string): number {
  * declares no layout is not opted in, and the caller renders it as the run trace.
  */
 export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[]): LayoutModel {
-  if (chain.view !== 'timeline') return UNDECLARED
   const ports = chain.outputs ?? []
   if (ports.length === 0) return UNDECLARED
 
-  // Last write wins: a loop-body node reports once per round, and the panel shows
-  // where the node ended up rather than where it started.
-  const byNode = new Map<string, AgentOutput>()
-  for (const o of outputs) if (o.nodeId) byNode.set(o.nodeId, o)
+  if (chain.view === 'timeline') {
+    const panels = panelsFor(ports, outputs)
+    panels[panels.length - 1].emphasis = 'last'
+    return { kind: 'timeline', panels }
+  }
 
-  const panels = ports.map((port): LayoutPanel => {
-    const output = byNode.get(port.node)
-    const text = contentOf(output, port.socket)
-    const state: PanelState = !output ? 'pending' : text.trim() === '' ? 'empty' : 'filled'
-    return { name: port.name, text, lines: lineCount(text), state }
-  })
-  panels[panels.length - 1].emphasis = 'last'
-  return { kind: 'timeline', panels }
+  // A columns chain with no `role: join` port renders its columns and nothing
+  // beneath them (ADR-0016) — there is no "last panel" fallback here.
+  if (chain.view === 'columns') return { kind: 'columns', panels: panelsFor(ports, outputs) }
+
+  return UNDECLARED
 }

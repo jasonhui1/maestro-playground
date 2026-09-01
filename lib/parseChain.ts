@@ -50,6 +50,7 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
       ? (data[key] as Record<string, unknown>[]).map(p => ({
           name: String(p.name), node: String(p.node),
           ...(p.socket !== undefined ? { socket: String(p.socket) } : {}),
+          ...(p.role === 'join' ? { role: 'join' as const } : {}),
         }))
       : undefined
 

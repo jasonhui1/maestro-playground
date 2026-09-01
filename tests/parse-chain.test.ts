@@ -40,3 +40,21 @@ edges:
   assert.deepStrictEqual(empty.nodes, [])
   assert.deepStrictEqual(empty.edges, [])
 })
+
+// A port's `role: join` is what marks a columns chain's converging panel (#67,
+// ADR-0016) — dropped on parse, every columns chain on disk would render joinless.
+test('a port carries its declared role through parsing', () => {
+  const raw = `---
+name: five-personas
+view: columns
+outputs:
+  - { name: optimist, node: optimist }
+  - { name: joined, node: synthesizer, role: join }
+---
+`
+  const c = parseChainContent(raw, 'five-personas')
+  assert.deepStrictEqual(c.outputs, [
+    { name: 'optimist', node: 'optimist' },
+    { name: 'joined', node: 'synthesizer', role: 'join' },
+  ])
+})
