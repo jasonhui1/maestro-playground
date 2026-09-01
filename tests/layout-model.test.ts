@@ -10,11 +10,11 @@ function chain(over: Partial<ChainDef> = {}): ChainDef {
   }
 }
 
-function output(nodeId: string, text: string): AgentOutput {
+function output(nodeId: string, text: string, round?: number): AgentOutput {
   return {
     nodeId, agentName: 'Relay', systemPrompt: '', input: '', output: text,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm',
-    timestamp: '', status: 'success',
+    timestamp: '', status: 'success', round,
   }
 }
 
@@ -146,5 +146,70 @@ test('a columns view with no role: join port renders its columns with no join pa
 
 test('a columns view with no declared outputs is undeclared', () => {
   const model = buildLayoutModel(chain({ view: 'columns' }), [output('first', 'x')])
+  assert.deepStrictEqual(model, { kind: 'undeclared', panels: [] })
+})
+
+const sidebarPorts: ChainPort[] = [{ name: 'iteration', node: 'loopBody', socket: 'summary' }]
+
+// The declared port names one node; the loop body reports once per round, so the
+// sidebar model expands that one port into one panel per round (ADR-0016 rule 4).
+test('a declared sidebar view expands one port into one panel per round, in round order', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: sidebarPorts }), [
+    output('loopBody', '## Summary\nround two', 1),
+    output('loopBody', '## Summary\nround one', 0),
+    output('loopBody', '## Summary\nround three', 2),
+  ])
+  assert.strictEqual(model.kind, 'sidebar')
+  assert.deepStrictEqual(model.panels.map(p => p.round), [0, 1, 2])
+  assert.deepStrictEqual(model.panels.map(p => p.text), ['round one', 'round two', 'round three'])
+})
+
+// #68's acceptance criteria: a single-round run is one row, not a shape special-cased
+// away from the loop rendering.
+test('a single-round sidebar run renders one row, not a special-cased shape', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: sidebarPorts }), [
+    output('loopBody', '## Summary\nonly round', 0),
+  ])
+  assert.strictEqual(model.panels.length, 1)
+  assert.strictEqual(model.panels[0].round, 0)
+  assert.strictEqual(model.panels[0].text, 'only round')
+})
+
+// A round with no explicit `round` (a non-loop node reused under `view: sidebar`)
+// is round 0 — the same default the rest of the model uses.
+test('an output with no round is treated as round 0', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: sidebarPorts }), [
+    output('loopBody', '## Summary\nalpha'),
+  ])
+  assert.deepStrictEqual(model.panels.map(p => p.round), [0])
+})
+
+// A round reported more than once (a retry) still collapses to its last write —
+// only the round axis is new, the last-write rule underneath is unchanged.
+test('a round reported more than once shows its last write', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: sidebarPorts }), [
+    output('loopBody', '## Summary\nfirst try', 0),
+    output('loopBody', '## Summary\nsecond try', 0),
+  ])
+  assert.strictEqual(model.panels.length, 1)
+  assert.strictEqual(model.panels[0].text, 'second try')
+})
+
+// A timeline containing a loop-body node keeps ADR-0015's last-write-wins collapse —
+// the sidebar exception is narrow to `view: sidebar` (ADR-0016).
+test('a timeline chain with a loop-body node still shows one panel for it, not N', () => {
+  const model = buildLayoutModel(
+    chain({ view: 'timeline', outputs: [{ name: 'iteration', node: 'loopBody', socket: 'summary' }] }),
+    [
+      output('loopBody', '## Summary\nround one', 0),
+      output('loopBody', '## Summary\nround two', 1),
+    ],
+  )
+  assert.strictEqual(model.panels.length, 1)
+  assert.strictEqual(model.panels[0].text, 'round two')
+})
+
+test('a sidebar view with no declared outputs is undeclared', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar' }), [output('loopBody', 'x', 0)])
   assert.deepStrictEqual(model, { kind: 'undeclared', panels: [] })
 })
