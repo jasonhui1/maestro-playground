@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
-import { buildCompareModel, COMPARE_MODES, CompareSpan } from '../lib/compareModel'
+import { buildCompareModel, CompareSpan } from '../lib/compareModel'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { parseChainContent } from '../lib/parseChain'
 import type { AgentOutput, ChainDef } from '../lib/types'
@@ -70,11 +70,6 @@ test('an empty blob against a full one is all cut, and the reverse all added', (
   assert.strictEqual(textOf(dropped.columns[0].spans, 'cut'), 'words')
   const grown = buildCompareModel([{ name: 'a', text: '' }, { name: 'b', text: 'words' }])!
   assert.strictEqual(textOf(grown.columns[0].spans, 'added'), 'words')
-})
-
-test('only the base mode is built; the shared mode is declared and disabled', () => {
-  assert.deepStrictEqual(COMPARE_MODES.map(m => m.id), ['base', 'shared'])
-  assert.deepStrictEqual(COMPARE_MODES.map(m => m.enabled), [true, false])
 })
 
 // The chain #71 ships: two columns whose whole point is the comparison between them.

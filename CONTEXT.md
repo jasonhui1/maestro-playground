@@ -110,3 +110,7 @@ The panel a compare reads everything else against — the first one ticked, unle
 ## Compare column
 
 One non-base panel in the compare overlay, rendered as its own pairwise diff against the **base**: `cut` for what the base says and this panel does not, `added` for what this panel says instead, `same` for the rest. Columns are independent — a third one changes nothing about the second — which is what lets one overlay serve two panels or five. _Avoid_: diff pane, side.
+
+## Shared reading
+
+The word sequence every ticked panel carries, in order — compare's second mode dims it in all N columns and leaves each panel's divergence bold (#74). Shared means *every* panel, never merely another one: a phrase four of five share is still the fifth's own divergence, which is why the mode needs an N-way alignment rather than N−1 pairwise diffs against a **base**. There is no base in this mode: the alignment folds the panels in name order, so the reading depends on which panels are ticked and never on the order they were ticked. It is *a* subsequence common to all N rather than provably the longest — an exact N-way LCS is not worth its cost here. The insight-chain docs call it 骨架 — what survives every version. _Avoid_: intersection, common diff.
