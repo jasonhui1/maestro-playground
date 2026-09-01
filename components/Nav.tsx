@@ -20,6 +20,12 @@ export default function Nav() {
               Run
             </Link>
             <Link
+              href="/result"
+              className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Result
+            </Link>
+            <Link
               href="/history"
               className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
             >

@@ -109,6 +109,12 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 * **Separated Thinking**: Automatically parses and isolates `<thought>` blocks, displaying the model's reasoning process in a dedicated side-by-side panel.
 * **Parallel Runs**: Fire multiple runs of a chain concurrently to evaluate variance.
 
+### 🖼️ Result View (`/result`)
+* **Declared Layouts**: A chain opts in with `view: timeline` in its frontmatter; its `outputs:` ports become the panels, in the order the file lists them. A chain that declares no `view` renders as the ordinary run trace, so no chain is drawn in a shape it did not ask for.
+* **What Travelled, Not What Was Written**: A panel shows the content on its declared socket — `socket: summary` shows the section the next hop actually received, so a lossy relay's shrink is the picture rather than a caption on it.
+* **Paste or Pick**: The seed comes from a paste box or from any `workspace/context/` file, so the same chain runs against scratch text or a tracked doc.
+* **Normal Runs**: Execution goes through the same `/api/run` as everything else — a result-view run lands in history with full logs.
+
 ### 📜 Run History (`/history`)
 * **Run Trace Graph**: Visualizes the exact executed DAG snapshot. Review skipped paths, active branch routes, and gate decisions.
 * **Node Output Preview**: Collapsible inspection panel showing thought blocks, final outputs, exact cost/latency, and resolved prompts.

@@ -55,5 +55,5 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
 
   // A file with no `name:` is named by its slug — an undefined name reaches the YAML
   // dumper on the next edit and throws (js-yaml cannot represent undefined).
-  return { slug, name: data.name ?? slug, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false, inputs: ports('inputs'), outputs: ports('outputs') }
+  return { slug, name: data.name ?? slug, description: data.description ?? '', nodes, edges, filePath: '', isFavorite: false, inputs: ports('inputs'), outputs: ports('outputs'), view: data.view ? String(data.view) : undefined }
 }

@@ -40,7 +40,7 @@ function omitUndefined<T>(value: T): T {
 }
 
 export function chainToData(
-  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[] },
+  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[]; view?: string },
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): Record<string, unknown> {
@@ -52,11 +52,12 @@ export function chainToData(
   }
   if (meta.inputs && meta.inputs.length) data.inputs = meta.inputs
   if (meta.outputs && meta.outputs.length) data.outputs = meta.outputs
+  if (meta.view) data.view = meta.view
   return omitUndefined(data)
 }
 
 export function serializeChain(
-  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[] },
+  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[]; view?: string },
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): string {

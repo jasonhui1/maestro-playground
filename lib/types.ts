@@ -159,6 +159,8 @@ export interface ChainDef {
   isFavorite?: boolean
   inputs?: ChainPort[]
   outputs?: ChainPort[]
+  /** Result-view layout the chain opts into; its `outputs` are that layout's panels (#66). */
+  view?: string
 }
 
 export interface AgentOutput {

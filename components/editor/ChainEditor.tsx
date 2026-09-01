@@ -76,9 +76,11 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
   }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
-  const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description }), [initialChain])
+  // `view` is not editable here, but every graph change reserializes the whole
+  // frontmatter — left out, a chain drops out of the result view on its next drag (#66).
+  const meta = useMemo(() => ({ name: initialChain.name, description: initialChain.description, view: initialChain.view }), [initialChain])
 
-  const initialMarkdown = useMemo(() => serializeChain({ name: initialChain.name, description: initialChain.description, inputs: initialChain.inputs, outputs: initialChain.outputs }, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
+  const initialMarkdown = useMemo(() => serializeChain({ name: initialChain.name, description: initialChain.description, view: initialChain.view, inputs: initialChain.inputs, outputs: initialChain.outputs }, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
   const { setContent, status, content, getLastSaved } = useAutoSave('chain', slug, initialMarkdown)
 
   // Mirror graph-view autosave status up so the page header can show it (page's own
@@ -120,7 +122,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   // Push every graph change into the autosave pipeline as serialized markdown.
   useEffect(() => {
-    setContent(serializeChain({ name: meta.name, description: meta.description, inputs: iface.inputs, outputs: iface.outputs }, nodes, edges))
+    setContent(serializeChain({ name: meta.name, description: meta.description, view: meta.view, inputs: iface.inputs, outputs: iface.outputs }, nodes, edges))
   }, [meta, nodes, edges, iface, setContent])
 
   const chain: ChainDef = useMemo(() => ({ ...initialChain, nodes, edges }), [initialChain, nodes, edges])
