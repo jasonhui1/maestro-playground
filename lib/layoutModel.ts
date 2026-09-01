@@ -108,3 +108,16 @@ export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[]): Layou
 
   return UNDECLARED
 }
+
+/**
+ * True once the run's own outputs actually landed in a declared panel.
+ *
+ * A chain edited since a run happened (a port's `node` renamed, say) still declares a
+ * `view` and still builds a model, but every panel reads `pending` against outputs that
+ * exist — that's not a live run still in flight, it's a stale mapping. A caller
+ * reopening a past run treats that the same as `undeclared`, rather than showing a
+ * "complete" run stuck in a shape that never filled in (#72).
+ */
+export function isRenderableLayout(model: LayoutModel): boolean {
+  return model.kind !== 'undeclared' && model.panels.some(p => p.state !== 'pending')
+}

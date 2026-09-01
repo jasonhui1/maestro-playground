@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, use, useMemo, useCallback } from 'react'
-import { RunMeta, AgentDef, ChainNode } from '@/lib/types'
+import { RunMeta, AgentDef, ChainDef, ChainNode } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import Link from 'next/link'
@@ -13,11 +13,20 @@ import { buildRunStateMap, runOrderOf, stepIndexOf } from '@/lib/runHistoryState
 import { branchRun } from '@/lib/branchRun'
 import DockSplit from '@/components/workspace/DockSplit'
 import RunDock from '@/components/trace/RunDock'
+import { buildLayoutModel, isRenderableLayout } from '@/lib/layoutModel'
+import { buildRunFrame } from '@/lib/runFrame'
+import { usePanelDeck } from '@/hooks/usePanelDeck'
+import { LayoutModelView } from '@/components/result/LayoutModelView'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
 // Every edit handler a read-only canvas is still required to be handed.
 const noop = () => {}
+
+// The same lookup /api/run uses to resolve a chainName (lib/resolveRunChain.ts).
+function chainForRun(chains: ChainDef[], chainName: string): ChainDef | undefined {
+  return chains.find(c => c.name === chainName) || chains.find(c => c.slug === chainName)
+}
 
 // The page is only a fetch gate: it holds no view state, so RunDetail below can
 // assume a loaded run and derive everything from it without null guards.
@@ -69,16 +78,39 @@ function RunDetail({ run }: { run: RunMeta }) {
   const g = run.graph
 
   const [agents, setAgents] = useState<AgentDef[]>([])
+  const [chains, setChains] = useState<ChainDef[]>([])
+  // Gates the view below on the one fetch classification needs, so a classified run
+  // opens straight into its result view instead of flashing the trace first (#72).
+  const [chainsLoaded, setChainsLoaded] = useState(false)
   const [isBranching, setIsBranching] = useState(false)
   const [seedOpen, setSeedOpen] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'result' | 'trace'>('trace')
+  const deck = usePanelDeck()
 
   useEffect(() => {
     fetch('/api/workspace')
       .then(res => res.json())
-      .then(data => setAgents(data.agents || []))
+      .then(data => {
+        setAgents(data.agents || [])
+        const loaded: ChainDef[] = data.chains || []
+        setChains(loaded)
+        const chain = chainForRun(loaded, run.chainName)
+        const model = chain ? buildLayoutModel(chain, run.agentOutputs) : null
+        if (model && isRenderableLayout(model)) setViewMode('result')
+      })
       .catch(err => console.error('Failed to fetch agents for graph:', err))
-  }, [])
+      .finally(() => setChainsLoaded(true))
+  }, [run.chainName, run.agentOutputs])
+
+  // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
+  // chain's *current* declaration, not what it looked like when the run happened (#72).
+  const resultChain = useMemo(() => chainForRun(chains, run.chainName), [chains, run.chainName])
+  const layoutModel = useMemo(
+    () => (resultChain ? buildLayoutModel(resultChain, run.agentOutputs) : null),
+    [resultChain, run.agentOutputs],
+  )
+  const isClassified = layoutModel !== null && isRenderableLayout(layoutModel)
 
   // A read-only stand-in for the chain the run was executed from, so node kinds can
   // resolve their slots. Empty when the run predates graph capture; buildData is only
@@ -94,6 +126,15 @@ function RunDetail({ run }: { run: RunMeta }) {
 
   const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
   const traceOrder = useMemo(() => runOrderOf(run.agentOutputs), [run.agentOutputs])
+
+  const resultFrame = useMemo(() => (resultChain ? buildRunFrame({
+    chain: resultChain,
+    seed: { kind: 'log' },
+    states: overlay,
+    startedAt: new Date(run.startedAt).getTime(),
+    endedAt: run.completedAt ? new Date(run.completedAt).getTime() : undefined,
+    now: Date.now(),
+  }) : null), [resultChain, overlay, run.startedAt, run.completedAt])
 
   const selectedIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId])
   const canvasIds = useMemo(() => new Set((g?.nodes ?? []).map(n => n.id)), [g])
@@ -149,6 +190,22 @@ function RunDetail({ run }: { run: RunMeta }) {
         <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
         <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
 
+        {isClassified && (
+          <div className="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 shrink-0">
+            {(['result', 'trace'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  viewMode === m ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={() => setSeedOpen(o => !o)}
           title={run.seedPrompt}
@@ -174,6 +231,19 @@ function RunDetail({ run }: { run: RunMeta }) {
       )}
 
       <div className="flex-1 min-h-0">
+        {!chainsLoaded ? (
+          // Waits on the same fetch classification needs, so a classified run never
+          // flashes the trace before landing on its result view (#72).
+          <div className="flex items-center justify-center h-full text-zinc-300">
+            <div className="w-5 h-5 border-2 border-zinc-200 border-t-zinc-800 rounded-full animate-spin" />
+          </div>
+        ) : viewMode === 'result' && layoutModel && resultFrame ? (
+          <div className="h-full overflow-auto">
+            <div className="max-w-6xl mx-auto px-6 py-6">
+              <LayoutModelView model={layoutModel} frame={resultFrame} runId={null} deck={deck} />
+            </div>
+          </div>
+        ) : (
         <DockSplit
           main={g ? (
             <ChainCanvas
@@ -236,6 +306,7 @@ function RunDetail({ run }: { run: RunMeta }) {
             />
           }
         />
+        )}
       </div>
     </div>
   )

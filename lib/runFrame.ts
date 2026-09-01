@@ -1,8 +1,9 @@
 import { ChainDef } from './types'
 import { RunStateMap } from './runState'
 
-/** Where the run's seed came from — the two shapes the result view offers (#66). */
-export type SeedSource = { kind: 'paste' } | { kind: 'file'; name: string }
+/** Where the run's seed came from — the two shapes the result view offers (#66), plus
+ *  `log` for a past run reopened from history, which never recorded which one it was (#72). */
+export type SeedSource = { kind: 'paste' } | { kind: 'file'; name: string } | { kind: 'log' }
 
 /** What is true of every run whatever shape its result reads in (#73). */
 export interface RunFrameModel {
@@ -42,7 +43,7 @@ export function buildRunFrame(input: {
   return {
     chainName: chain.name,
     moment: chain.moment || chain.description,
-    seedSource: seed.kind === 'file' ? seed.name : 'pasted text',
+    seedSource: seed.kind === 'file' ? seed.name : seed.kind === 'log' ? 'the run\'s recorded seed' : 'pasted text',
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
     costUsd: costOf(states),
   }

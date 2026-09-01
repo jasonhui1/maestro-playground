@@ -50,6 +50,13 @@ test('the seed source names the picked file, or says the text was pasted', () =>
   )
 })
 
+// A run reopened from history (#72) never recorded whether its seed was pasted or a
+// file, so the frame names neither rather than guessing.
+test('a run reopened from history names its seed as the log recorded it', () => {
+  const frame = buildRunFrame({ chain: chain(), seed: { kind: 'log' }, states: {}, now: 0 })
+  assert.strictEqual(frame.seedSource, 'the run\'s recorded seed')
+})
+
 // Cost fills in as hops land, so the frame is readable mid-run rather than at the end.
 test('cost sums every node settled so far', () => {
   const frame = buildRunFrame({

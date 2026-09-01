@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildLayoutModel } from '../lib/layoutModel'
+import { buildLayoutModel, isRenderableLayout } from '../lib/layoutModel'
 import type { AgentOutput, ChainDef, ChainPort } from '../lib/types'
 
 function chain(over: Partial<ChainDef> = {}): ChainDef {
@@ -212,4 +212,24 @@ test('a timeline chain with a loop-body node still shows one panel for it, not N
 test('a sidebar view with no declared outputs is undeclared', () => {
   const model = buildLayoutModel(chain({ view: 'sidebar' }), [output('loopBody', 'x', 0)])
   assert.deepStrictEqual(model, { kind: 'undeclared', panels: [] })
+})
+
+// A run reopened from history (#72) reads the chain's *current* declaration, which may
+// no longer match the nodes the run actually populated.
+test('a declared layout whose panels never received any of the run\'s outputs is not renderable', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('renamed-first', 'alpha'),
+  ])
+  assert.strictEqual(isRenderableLayout(model), false)
+})
+
+test('a declared layout is renderable once at least one panel actually filled in', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('first', '## Summary\nalpha'),
+  ])
+  assert.strictEqual(isRenderableLayout(model), true)
+})
+
+test('undeclared is never renderable', () => {
+  assert.strictEqual(isRenderableLayout(buildLayoutModel(chain(), [])), false)
 })

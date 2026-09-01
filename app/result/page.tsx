@@ -7,10 +7,7 @@ import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel } from '@/lib/layoutModel'
 import { buildRunFrame, SeedSource } from '@/lib/runFrame'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
-import { Timeline } from '@/components/result/Timeline'
-import { Columns } from '@/components/result/Columns'
-import { Sidebar } from '@/components/result/Sidebar'
-import { RunFrame } from '@/components/result/RunFrame'
+import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { RunTrace } from '@/components/RunTrace'
 
 type ContextFile = { slug: string; name: string; rawContent?: string }
@@ -207,16 +204,15 @@ export default function ResultPage() {
       </div>
 
       {frame && model && (
-        <RunFrame frame={frame} runId={runId} selectedCount={deck.selected.length}>
-          {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} />}
-          {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} />}
-          {model.kind === 'sidebar' && <Sidebar panels={model.panels} deck={deck} />}
-          {model.kind === 'undeclared' && (
-            // A chain that declares no layout is shown as the run trace it has always
-            // had, rather than drawn in a shape it never asked for (#66).
-            <RunTrace order={order} states={states} />
-          )}
-        </RunFrame>
+        <LayoutModelView
+          model={model}
+          frame={frame}
+          runId={runId}
+          deck={deck}
+          // A chain that declares no layout is shown as the run trace it has always had,
+          // rather than drawn in a shape it never asked for (#66).
+          fallback={<RunTrace order={order} states={states} />}
+        />
       )}
     </div>
   )
