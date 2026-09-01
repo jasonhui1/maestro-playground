@@ -113,6 +113,8 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 * **Declared Layouts**: A chain opts in with `view: timeline` in its frontmatter; its `outputs:` ports become the panels, in the order the file lists them. A chain that declares no `view` renders as the ordinary run trace, so no chain is drawn in a shape it did not ask for.
 * **What Travelled, Not What Was Written**: A panel shows the content on its declared socket — `socket: summary` shows the section the next hop actually received, so a lossy relay's shrink is the picture rather than a caption on it.
 * **Paste or Pick**: The seed comes from a paste box or from any `workspace/context/` file, so the same chain runs against scratch text or a tracked doc.
+* **One Run Frame**: Every layout renders into the same frame — chain name, its `moment:` line (falling back to `description`), the seed's source, elapsed, cost, a link to the full log, and the compare trigger with its selection count. It is up from the moment the run starts, so elapsed and cost fill in as they arrive.
+* **Panels Are Previews**: A panel shows a lead excerpt and its line count at a fixed height; clicking it opens the whole content in a full-width reading pane below the row, and a corner checkbox selects it for compare without opening it. Every layout shares that contract.
 * **Normal Runs**: Execution goes through the same `/api/run` as everything else — a result-view run lands in history with full logs.
 
 ### 📜 Run History (`/history`)

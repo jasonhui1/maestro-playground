@@ -1,12 +1,14 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
 import { ChainDef, AgentOutput } from '@/lib/types'
 import { streamRun, runErrorMessage } from '@/lib/runStream'
 import { applyRunEvent, RunStateMap } from '@/lib/runState'
 import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel } from '@/lib/layoutModel'
+import { buildRunFrame, SeedSource } from '@/lib/runFrame'
+import { usePanelDeck } from '@/hooks/usePanelDeck'
 import { Timeline } from '@/components/result/Timeline'
+import { RunFrame } from '@/components/result/RunFrame'
 import { RunTrace } from '@/components/RunTrace'
 
 type ContextFile = { slug: string; name: string; rawContent?: string }
@@ -23,6 +25,18 @@ export default function ResultPage() {
   const [running, setRunning] = useState(false)
   const [runId, setRunId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The frame and the layout describe the run that started, not the form as it now
+  // stands — the form stays live while a finished result is still on screen (#73).
+  const [run, setRun] = useState<{ chain: ChainDef; seed: SeedSource; startedAt: number } | null>(null)
+  const [endedAt, setEndedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(0)
+  const deck = usePanelDeck()
+
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [running])
 
   useEffect(() => {
     fetch('/api/workspace')
@@ -35,9 +49,9 @@ export default function ResultPage() {
   }, [])
 
   const chain = chains.find(c => c.slug === chainSlug)
-  const seedText = mode === 'paste'
-    ? pasted
-    : contextFiles.find(f => f.slug === fileSlug)?.rawContent ?? ''
+  const seedFile = contextFiles.find(f => f.slug === fileSlug)
+  const seedText = mode === 'paste' ? pasted : seedFile?.rawContent ?? ''
+  const seed: SeedSource = mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }
 
   // The run's completed outputs, keyed the way the layout model reads them. Panels fill
   // in as hops land, so the timeline builds up rather than appearing at the end.
@@ -46,8 +60,12 @@ export default function ResultPage() {
     [states],
   )
   const model = useMemo(
-    () => (chain ? buildLayoutModel(chain, outputs) : null),
-    [chain, outputs],
+    () => (run ? buildLayoutModel(run.chain, outputs) : null),
+    [run, outputs],
+  )
+  const frame = useMemo(
+    () => (run ? buildRunFrame({ ...run, states, endedAt: endedAt ?? undefined, now }) : null),
+    [run, states, endedAt, now],
   )
 
   async function handleRun() {
@@ -56,6 +74,10 @@ export default function ResultPage() {
     setOrder([])
     setRunId(null)
     setError(null)
+    deck.reset()
+    setRun({ chain, seed, startedAt: Date.now() })
+    setEndedAt(null)
+    setNow(Date.now())
     setRunning(true)
     try {
       const res = await fetch('/api/run', {
@@ -74,6 +96,7 @@ export default function ResultPage() {
       })
     } finally {
       setRunning(false)
+      setEndedAt(Date.now())
     }
   }
 
@@ -140,22 +163,19 @@ export default function ResultPage() {
           >
             {running ? 'Running...' : 'Run'}
           </button>
-          {runId && (
-            <Link href={`/history/${runId}`} className="text-xs text-zinc-500 underline underline-offset-4">
-              full log
-            </Link>
-          )}
         </div>
 
         {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">{error}</div>}
       </div>
 
-      {order.length > 0 && model && (
-        model.kind === 'timeline'
-          ? <Timeline panels={model.panels} />
-          // A chain that declares no layout is shown as the run trace it has always
-          // had, rather than drawn in a shape it never asked for (#66).
-          : <RunTrace order={order} states={states} />
+      {frame && model && (
+        <RunFrame frame={frame} runId={runId} selectedCount={deck.selected.length}>
+          {model.kind === 'timeline'
+            ? <Timeline panels={model.panels} deck={deck} />
+            // A chain that declares no layout is shown as the run trace it has always
+            // had, rather than drawn in a shape it never asked for (#66).
+            : <RunTrace order={order} states={states} />}
+        </RunFrame>
       )}
     </div>
   )

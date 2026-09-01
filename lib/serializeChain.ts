@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import { ChainNode, ChainEdge, ChainPort, BranchCase } from './types'
+import { ChainDef, ChainNode, ChainEdge, ChainPort, BranchCase } from './types'
 import { kindOf, FieldCodec } from './nodeKinds'
 
 function serializeFieldValue(value: unknown, codec: FieldCodec): unknown {
@@ -39,8 +39,26 @@ function omitUndefined<T>(value: T): T {
   return out as T
 }
 
+/** Everything a chain file states outside its nodes and edges. */
+export interface ChainMeta {
+  name: string
+  description?: string
+  inputs?: ChainPort[]
+  outputs?: ChainPort[]
+  view?: string
+  moment?: string
+}
+
+// Every writer reserializes the whole frontmatter, so a field it does not itself edit
+// still has to travel through it — left out, a chain drops that declaration on its next
+// save and falls out of the result view (#66, #73).
+export function chainMeta(chain: ChainDef): ChainMeta {
+  const { name, description, inputs, outputs, view, moment } = chain
+  return { name, description, inputs, outputs, view, moment }
+}
+
 export function chainToData(
-  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[]; view?: string },
+  meta: ChainMeta,
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): Record<string, unknown> {
@@ -53,11 +71,12 @@ export function chainToData(
   if (meta.inputs && meta.inputs.length) data.inputs = meta.inputs
   if (meta.outputs && meta.outputs.length) data.outputs = meta.outputs
   if (meta.view) data.view = meta.view
+  if (meta.moment) data.moment = meta.moment
   return omitUndefined(data)
 }
 
 export function serializeChain(
-  meta: { name: string; description?: string; inputs?: ChainPort[]; outputs?: ChainPort[]; view?: string },
+  meta: ChainMeta,
   nodes: ChainNode[],
   edges: ChainEdge[],
 ): string {

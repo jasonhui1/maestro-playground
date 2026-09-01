@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { serializeChain } from '../lib/serializeChain'
+import { serializeChain, chainMeta } from '../lib/serializeChain'
 import { parseChainContent } from '../lib/parseChain'
 
 test('serialize-chain', () => {
@@ -46,4 +46,27 @@ edges:
   const e2 = parseChainContent(empty, 'x')
   assert.deepStrictEqual(e2.nodes, [])
   assert.deepStrictEqual(e2.edges, [])
+})
+
+// The editor reserializes the whole frontmatter on every graph change, so a display-only
+// field the result frame reads has to survive a drag (ADR-0016, #73).
+test('serialize-chain keeps view and moment through a round trip', () => {
+  const raw = `---
+name: telephone-relay
+description: three restatements
+view: timeline
+moment: finalizing a doc, not sure it holds up
+nodes:
+  - { id: seed, kind: seed }
+---
+`
+  const chain = parseChainContent(raw, 'telephone-relay')
+  assert.strictEqual(chain.moment, 'finalizing a doc, not sure it holds up')
+
+  const again = parseChainContent(
+    serializeChain(chainMeta(chain), chain.nodes, chain.edges),
+    'telephone-relay',
+  )
+  assert.strictEqual(again.view, 'timeline')
+  assert.strictEqual(again.moment, 'finalizing a doc, not sure it holds up')
 })

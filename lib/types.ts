@@ -161,6 +161,8 @@ export interface ChainDef {
   outputs?: ChainPort[]
   /** Result-view layout the chain opts into; its `outputs` are that layout's panels (#66). */
   view?: string
+  /** The situation that should make you reach for this chain; display-only (ADR-0016). */
+  moment?: string
 }
 
 export interface AgentOutput {
