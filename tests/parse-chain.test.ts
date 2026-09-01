@@ -58,3 +58,16 @@ outputs:
     { name: 'joined', node: 'synthesizer', role: 'join' },
   ])
 })
+
+// `purpose` groups the picker (#70, ADR-0016); an unrecognized or absent value
+// must fall through to undefined rather than a made-up group.
+test('a declared purpose is parsed; an unrecognized one is dropped', () => {
+  const insight = parseChainContent(`---\nname: x\npurpose: insight\n---\n`, 'x')
+  assert.strictEqual(insight.purpose, 'insight')
+
+  const none = parseChainContent(`---\nname: x\n---\n`, 'x')
+  assert.strictEqual(none.purpose, undefined)
+
+  const bogus = parseChainContent(`---\nname: x\npurpose: not-a-real-purpose\n---\n`, 'x')
+  assert.strictEqual(bogus.purpose, undefined)
+})

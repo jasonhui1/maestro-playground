@@ -52,6 +52,19 @@ export default function ResultPage() {
   }, [])
 
   const chain = chains.find(c => c.slug === chainSlug)
+  // Grouped by declared purpose (#70, ADR-0016): the three purpose headings render
+  // whether or not they have members, and a chain declaring none sits under a plain
+  // fourth heading rather than being forced into a group it never chose.
+  const purposeGroups = useMemo(() => {
+    const groups: { heading: string; purpose: ChainDef['purpose'] }[] = [
+      { heading: '洞見 (insight)', purpose: 'insight' },
+      { heading: '產出 (production)', purpose: 'production' },
+      { heading: '壓力測試 (stress-test)', purpose: 'stress-test' },
+    ]
+    const withPurpose = groups.map(g => ({ heading: g.heading, chains: chains.filter(c => c.purpose === g.purpose) }))
+    const unclassified = { heading: 'Other', chains: chains.filter(c => !c.purpose) }
+    return [...withPurpose, unclassified]
+  }, [chains])
   useEffect(() => { setParamValue('') }, [chainSlug])
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
   const seedText = mode === 'paste' ? pasted : seedFile?.rawContent ?? ''
@@ -138,24 +151,31 @@ export default function ResultPage() {
           </select>
         )}
 
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-3">
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Chain</span>
-          <div className="flex flex-col gap-1">
-            {chains.map(c => (
-              <label key={c.slug} className="flex items-start gap-2 text-sm text-zinc-700 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={chainSlug === c.slug}
-                  onChange={() => setChainSlug(c.slug)}
-                  className="mt-1 accent-zinc-900"
-                />
-                <span>
-                  <span className="font-medium">{c.name}</span>
-                  {c.description && <span className="text-zinc-400"> — {c.description}</span>}
-                </span>
-              </label>
-            ))}
-          </div>
+          {purposeGroups.map(group => (
+            <div key={group.heading} className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-zinc-400">{group.heading}</span>
+              <div className="flex flex-col gap-1">
+                {group.chains.map(c => (
+                  <label key={c.slug} className="flex items-start gap-2 text-sm text-zinc-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={chainSlug === c.slug}
+                      onChange={() => setChainSlug(c.slug)}
+                      className="mt-1 accent-zinc-900"
+                    />
+                    <span>
+                      <span className="font-medium">{c.name}</span>
+                      {(c.moment || c.description) && (
+                        <span className="text-zinc-400"> — {c.moment || c.description}</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {chain?.parameter && (

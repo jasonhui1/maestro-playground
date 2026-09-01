@@ -175,6 +175,8 @@ export interface ChainDef {
   view?: string
   /** The situation that should make you reach for this chain; display-only (ADR-0016). */
   moment?: string
+  /** Which picker heading this chain groups under; unset means the fourth, unlabeled heading (ADR-0016). */
+  purpose?: 'insight' | 'production' | 'stress-test'
   /** At most one dropdown beside the paste-text box; absent means no dropdown (#69). */
   parameter?: ChainParameter
 }
