@@ -102,3 +102,11 @@ One cell of a declared view, named by one of the chain's `outputs:` ports. A pan
 ## Panel state
 
 Which of three things a panel has to say: `pending` (the run has not reached the node), `empty` (the node finished and the socket resolved to nothing), `filled`. The `pending`/`empty` split exists because a hop that dropped the section its edge asked for is a failure, not a slow node — it must not read as still loading. The engine reports the same fact as a **section warning**.
+
+## Base
+
+The panel a compare reads everything else against — the first one ticked, unless the overlay's base picker names another. It renders untouched: with more than one column there is no set of strikethroughs on the base that is true of all of them, so every diff mark lives in a column instead (#71). _Avoid_: original, left side (there is no fixed side; the base is a role, not a position).
+
+## Compare column
+
+One non-base panel in the compare overlay, rendered as its own pairwise diff against the **base**: `cut` for what the base says and this panel does not, `added` for what this panel says instead, `same` for the rest. Columns are independent — a third one changes nothing about the second — which is what lets one overlay serve two panels or five. _Avoid_: diff pane, side.

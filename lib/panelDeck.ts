@@ -23,6 +23,14 @@ export function toggleSelection(selected: number[], index: number): number[] {
   return selected.includes(index) ? selected.filter(i => i !== index) : [...selected, index]
 }
 
+/** The order compare reads the ticked panels in. An unticked base falls back to the
+ *  first selection, so dropping it from the overlay header re-bases (#71). */
+export function compareOrder(selected: number[], base: number | null): number[] {
+  const head = base !== null && selected.includes(base) ? base : selected[0]
+  if (head === undefined) return []
+  return [head, ...selected.filter(i => i !== head)]
+}
+
 /** What a layout needs to render the shared contract; owned by the result page. */
 export interface PanelDeck {
   open: number | null

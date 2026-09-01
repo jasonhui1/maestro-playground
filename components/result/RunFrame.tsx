@@ -18,8 +18,8 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, children }: {
   /** Absent until the run completes — the log has no id to link to before then. */
   runId?: string | null
   selectedCount: number
-  /** Left out until the compare overlay lands (#71); the trigger then reads as disabled. */
-  onCompare?: () => void
+  /** Opens the compare overlay; the trigger needs two panels ticked before it fires. */
+  onCompare: () => void
   children: ReactNode
 }) {
   return (
@@ -37,7 +37,7 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, children }: {
           <button
             type="button"
             onClick={onCompare}
-            disabled={!onCompare || selectedCount < 2}
+            disabled={selectedCount < 2}
             className="rounded-lg border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700
               disabled:opacity-40 hover:bg-zinc-50 transition-colors"
           >

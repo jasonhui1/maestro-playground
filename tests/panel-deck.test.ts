@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { previewOf, toggleSelection } from '../lib/panelDeck'
+import { compareOrder, previewOf, toggleSelection } from '../lib/panelDeck'
 
 test('a preview is the lead of the content, and says so when there is more', () => {
   const long = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n')
@@ -22,4 +22,12 @@ test('selection keeps the order panels were ticked in', () => {
 
   selected = toggleSelection(selected, 2)
   assert.deepStrictEqual(selected, [0])
+})
+
+test('compare reads the base first, and re-bases when the base is unticked', () => {
+  assert.deepStrictEqual(compareOrder([2, 0, 3], null), [2, 0, 3])
+  assert.deepStrictEqual(compareOrder([2, 0, 3], 3), [3, 2, 0])
+  // The base was ticked off from the overlay header; the first survivor takes over.
+  assert.deepStrictEqual(compareOrder([2, 0], 3), [2, 0])
+  assert.deepStrictEqual(compareOrder([], 1), [])
 })

@@ -115,6 +115,7 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 * **Paste or Pick**: The seed comes from a paste box or from any `workspace/context/` file, so the same chain runs against scratch text or a tracked doc.
 * **One Run Frame**: Every layout renders into the same frame — chain name, its `moment:` line (falling back to `description`), the seed's source, elapsed, cost, a link to the full log, and the compare trigger with its selection count. It is up from the moment the run starts, so elapsed and cost fill in as they arrive.
 * **Panels Are Previews**: A panel shows a lead excerpt and its line count at a fixed height; clicking it opens the whole content in a full-width reading pane below the row, and a corner checkbox selects it for compare without opening it. Every layout shares that contract.
+* **Compare Overlay**: Tick two or more panels and Compare opens a full-screen overlay: the first ticked panel is the base, rendered untouched, and every other ticked panel is a column showing what it cut from the base and what it put there instead. The panel chips and the base picker live in the overlay header, so a side is swapped without closing it. It reads panel text and nothing else about the run, so timeline, columns and sidebar all mount it unchanged.
 * **Normal Runs**: Execution goes through the same `/api/run` as everything else — a result-view run lands in history with full logs.
 
 ### 📜 Run History (`/history`)
