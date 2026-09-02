@@ -14,9 +14,9 @@ function formatElapsed(ms: number): string {
  * run whatever shape it reads in; the region beside it is the only thing that varies.
  *
  * The run's identity lives in a narrow rail rather than a band across the top, so the
- * output starts at the fold and keeps the page (chosen on screen, 2026-09-02). The rail
- * stays put while the output scrolls: it is reference, and reference that scrolls away
- * has to be scrolled back to.
+ * output starts at the fold and keeps the page (#65). The rail stays put while the
+ * output scrolls: it is reference, and reference that scrolls away has to be scrolled
+ * back to.
  */
 export function RunFrame({ frame, runId, selectedCount, onCompare, actions, children }: {
   frame: RunFrameModel

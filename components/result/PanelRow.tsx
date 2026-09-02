@@ -1,7 +1,8 @@
 'use client'
 import type { LayoutPanel } from '@/lib/layoutModel'
-import type { PanelDeck } from '@/lib/panelDeck'
+import { handleFor, type PanelDeck } from '@/lib/panelDeck'
 import type { PanelFit } from '@/lib/panelFit'
+import { TYPE } from '@/lib/resultType'
 import { Panel } from '@/components/result/Panel'
 import { PanelIndex } from '@/components/result/PanelIndex'
 
@@ -19,48 +20,38 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
   offsetOf: (rowIndex: number) => number
 }) {
   const maxLines = Math.max(1, ...panels.map(p => p.lines))
+  const handleAt = (rowIndex: number) => handleFor(deck, offsetOf(rowIndex))
 
   if (fit === 'index') {
     return (
       // Wraps rather than shrinking: a fifteen-panel chain gets a second row of entries
       // instead of fifteen unreadable slivers.
-      <div className="grid gap-x-1 gap-y-1 border-y border-zinc-200"
+      <div className="grid gap-1 border-y border-zinc-200"
         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(13rem, 1fr))' }}>
         {panels.map((panel, i) => (
-          <PanelIndex
-            key={`${panel.name}-${i}`}
-            panel={panel}
-            open={deck.open === offsetOf(i)}
-            selected={deck.selected.includes(offsetOf(i))}
-            share={panel.lines / maxLines}
-            onOpen={() => deck.openPanel(deck.open === offsetOf(i) ? null : offsetOf(i))}
-            onToggleSelect={() => deck.toggleSelect(offsetOf(i))}
-          />
+          <PanelIndex key={`${panel.name}-${i}`} panel={panel} handle={handleAt(i)} share={panel.lines / maxLines} />
         ))}
       </div>
     )
   }
 
   if (fit === 'focus') {
-    // Two panels at full measure; the rest wait as names. The open panel is the second
+    // Two panels at full measure; the rest wait as names. The open panel takes the second
     // seat, so swapping one in is a click and never costs the reference panel.
-    const openIndex = deck.open !== null ? panels.findIndex((_, i) => offsetOf(i) === deck.open) : -1
-    const second = openIndex > 0 ? openIndex : panels.length > 1 ? 1 : -1
+    const openRow = deck.open !== null ? panels.findIndex((_, i) => offsetOf(i) === deck.open) : -1
+    const second = openRow > 0 ? openRow : panels.length > 1 ? 1 : -1
     const seated = [0, second].filter(i => i >= 0)
     const waiting = panels.map((panel, i) => ({ panel, i })).filter(({ i }) => !seated.includes(i))
 
     return (
-      <div className="flex items-stretch gap-0">
+      <div className="flex items-stretch">
         {seated.map(i => (
           <Panel
             key={`${panels[i].name}-${i}`}
             panel={panels[i]}
-            open={deck.open === offsetOf(i)}
-            selected={deck.selected.includes(offsetOf(i))}
-            onOpen={() => deck.openPanel(deck.open === offsetOf(i) ? null : offsetOf(i))}
-            onToggleSelect={() => deck.toggleSelect(offsetOf(i))}
+            handle={handleAt(i)}
             style={{ flex: '1 1 0%' }}
-            className="px-5 first:pl-0 border-l border-zinc-200 first:border-l-0"
+            className="px-5 first:pl-0 min-w-[24rem] border-l border-zinc-200 first:border-l-0"
           />
         ))}
         {waiting.length > 0 && (
@@ -70,12 +61,11 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
                 key={`${panel.name}-${i}`}
                 type="button"
                 onClick={() => deck.openPanel(offsetOf(i))}
-                className="text-left text-[11px] uppercase tracking-[0.14em] text-zinc-400
-                  hover:text-zinc-900 py-1 truncate outline-none rounded
-                  focus-visible:ring-2 focus-visible:ring-zinc-900"
+                className={`text-left ${TYPE.label} text-zinc-400 hover:text-zinc-900 py-1 truncate
+                  outline-none rounded focus-visible:ring-2 focus-visible:ring-zinc-900`}
               >
                 {panel.name}
-                <span className="ml-2 font-mono text-[10px] normal-case tracking-normal">{panel.lines}</span>
+                <span className={`ml-2 ${TYPE.metric} normal-case tracking-normal`}>{panel.lines}</span>
               </button>
             ))}
           </div>
@@ -84,18 +74,17 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
     )
   }
 
+  // `spread`: an equal share each, down to a floor. Past the floor the row scrolls
+  // rather than shrinking panels to a width nothing reads at.
   return (
-    <div className="flex items-stretch gap-0 divide-x divide-zinc-200">
+    <div className="flex items-stretch divide-x divide-zinc-200 overflow-x-auto">
       {panels.map((panel, i) => (
         <Panel
           key={`${panel.name}-${i}`}
           panel={panel}
-          open={deck.open === offsetOf(i)}
-          selected={deck.selected.includes(offsetOf(i))}
-          onOpen={() => deck.openPanel(deck.open === offsetOf(i) ? null : offsetOf(i))}
-          onToggleSelect={() => deck.toggleSelect(offsetOf(i))}
+          handle={handleAt(i)}
           style={{ flex: '1 1 0%' }}
-          className="px-5 first:pl-0 last:pr-0"
+          className="px-5 first:pl-0 last:pr-0 min-w-[13rem]"
         />
       ))}
     </div>

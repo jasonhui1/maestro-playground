@@ -103,6 +103,10 @@ One cell of a declared view, named by one of the chain's `outputs:` ports. A pan
 
 Which of three things a panel has to say: `pending` (the run has not reached the node), `empty` (the node finished and the socket resolved to nothing), `filled`. The `pending`/`empty` split exists because a hop that dropped the section its edge asked for is a failure, not a slow node — it must not read as still loading. The engine reports the same fact as a **section warning**.
 
+## Fit
+
+How N **panels** share one row, chosen by the reader rather than declared by the chain: `spread` gives every panel an equal share of the row down to a floor, `index` reduces each to a name, lead line and volume mark and hands the reading to the pane below at full measure, `focus` seats two at full measure and leaves the rest as names to swap in. A fit changes nothing about which panels exist or in what order — that stays the **declared view**'s answer (ADR-0015) — only how many of them a screen can hold at a readable measure (#65). A `sidebar` view takes no fit: it is a list beside a pane, not a row. _Avoid_: density, mode, view (a view is declared by the chain; a fit is picked while reading).
+
 ## Base
 
 The panel a compare reads everything else against — the first one ticked, unless the overlay's base picker names another. It renders untouched: with more than one column there is no set of strikethroughs on the base that is true of all of them, so every diff mark lives in a column instead (#71). _Avoid_: original, left side (there is no fixed side; the base is a role, not a position).

@@ -6,10 +6,10 @@ import { PanelRow } from '@/components/result/PanelRow'
 import { ReadingPane } from '@/components/result/ReadingPane'
 
 /** Branch panels as equal-width columns; `role: join` panels as a full-width row beneath (#67). */
-export function Columns({ panels, deck, fit = 'spread' }: {
+export function Columns({ panels, deck, fit }: {
   panels: LayoutPanel[]
   deck: PanelDeck
-  fit?: PanelFit
+  fit: PanelFit
 }) {
   const branchIdx = panels.map((panel, i) => ({ panel, i })).filter(({ panel }) => panel.emphasis !== 'join')
   const joinIdx = panels.map((panel, i) => ({ panel, i })).filter(({ panel }) => panel.emphasis === 'join')
@@ -24,7 +24,7 @@ export function Columns({ panels, deck, fit = 'spread' }: {
           panels={branchIdx.map(b => b.panel)}
           deck={deck}
           fit={fit}
-         
+
           offsetOf={i => branchIdx[i].i}
         />
       )}
@@ -34,7 +34,7 @@ export function Columns({ panels, deck, fit = 'spread' }: {
             panels={joinIdx.map(j => j.panel)}
             deck={deck}
             fit={fit}
-           
+
             offsetOf={i => joinIdx[i].i}
           />
         </div>

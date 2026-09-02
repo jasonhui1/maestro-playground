@@ -32,7 +32,9 @@ function Column<K extends string>({ name, spans, label, spanClass }: {
         <span className="text-xs font-semibold text-zinc-700 truncate">{name}</span>
         {label && <span className="text-[10px] uppercase tracking-widest text-zinc-400">{label}</span>}
       </div>
-      <pre className="flex-1 overflow-auto p-4 text-xs leading-relaxed whitespace-pre-wrap font-sans text-zinc-800">
+      {/* Mono, like every other place the output shows: two columns only align if their
+          characters do (vision.md, #65). */}
+      <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-800">
         {spans.map((span, i) => (
           <span key={i} className={spanClass[span.kind]}>{span.text}</span>
         ))}

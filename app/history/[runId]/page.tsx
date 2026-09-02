@@ -244,9 +244,8 @@ function RunDetail({ run }: { run: RunMeta }) {
           </div>
         ) : viewMode === 'result' && layoutModel && resultFrame ? (
           <div className="h-full overflow-auto">
-            <div className="w-full px-6 py-4">
-              {/* Both treatments are built; the choice is made on screen (2026-09-02). The
-                  rail absorbs the switch so it costs no band above the output. */}
+            <div className="w-full max-w-[120rem] mx-auto px-6 py-4">
+              {/* The rail absorbs the fit switch, so it costs no band above the output (#65). */}
               <LayoutModelView
                 model={layoutModel}
                 frame={resultFrame}

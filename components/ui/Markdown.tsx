@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 
 // Agent output is markdown by convention, so every surface that shows it renders through
 // here — one type scale, one table style. Raw HTML stays off: model output is untrusted.
-/** `output` renders agent prose in the mono face — it is content, not UI (vision.md). */
+/** `output` renders agent prose in the mono face — it is content, not UI (#65). */
 export function Markdown({ children, className = '', tone = 'ui' }: {
   children: string
   className?: string

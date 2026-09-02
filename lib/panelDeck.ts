@@ -46,3 +46,29 @@ export interface PanelDeck {
   openPanel: (index: number | null) => void
   toggleSelect: (index: number) => void
 }
+
+/** One panel's slice of the deck. Every panel renderer takes this rather than the whole
+ *  deck plus an index, so none of them re-derives open/selected from a raw number. */
+export interface PanelHandle {
+  open: boolean
+  selected: boolean
+  onOpen: () => void
+  onToggleSelect: () => void
+}
+
+export function handleFor(deck: PanelDeck, index: number): PanelHandle {
+  return {
+    open: deck.open === index,
+    selected: deck.selected.includes(index),
+    onOpen: () => deck.openPanel(deck.open === index ? null : index),
+    onToggleSelect: () => deck.toggleSelect(index),
+  }
+}
+
+/** Lines a panel shows before the reader opens it. Wider than a card's excerpt: a
+ *  column has the height for a lead that is worth reading on its own. */
+export const PANEL_PREVIEW_LINES = 24
+
+/** Said of a socket that resolved to nothing after its node finished (ADR-0015); one
+ *  wording, because a timeline column and an index entry are the same event. */
+export const EMPTY_PANEL_COPY = 'nothing survived — this hop dropped the section the chain asked it for'

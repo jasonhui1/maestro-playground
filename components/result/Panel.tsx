@@ -1,8 +1,10 @@
 'use client'
 import type { CSSProperties } from 'react'
 import type { LayoutPanel } from '@/lib/layoutModel'
-import { previewOf } from '@/lib/panelDeck'
+import { previewOf, PANEL_PREVIEW_LINES, EMPTY_PANEL_COPY, type PanelHandle } from '@/lib/panelDeck'
+import { TYPE } from '@/lib/resultType'
 import { Markdown } from '@/components/ui/Markdown'
+import { CopyButton } from '@/components/result/CopyButton'
 
 /**
  * One panel of a result layout (#73): a column of the output's opening lines that opens
@@ -10,17 +12,15 @@ import { Markdown } from '@/components/ui/Markdown'
  * without opening it. A gutter rule separates it from its neighbours — a border would
  * make content look like the chrome around it.
  */
-export function Panel({ panel, open, selected, onOpen, onToggleSelect, style, className = '' }: {
+export function Panel({ panel, handle, style, className = '' }: {
   panel: LayoutPanel
-  open: boolean
-  selected: boolean
-  onOpen: () => void
-  onToggleSelect: () => void
+  handle: PanelHandle
   style?: CSSProperties
   className?: string
 }) {
+  const { open, selected, onOpen, onToggleSelect } = handle
   const emphasised = panel.emphasis !== undefined
-  const preview = previewOf(panel.text, 24)
+  const preview = previewOf(panel.text, PANEL_PREVIEW_LINES)
 
   return (
     <div
@@ -37,22 +37,24 @@ export function Panel({ panel, open, selected, onOpen, onToggleSelect, style, cl
         className="absolute inset-0 z-0 cursor-pointer rounded-xl outline-none
           focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
       />
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={onToggleSelect}
-        aria-label={`select ${panel.name} for compare`}
-        className="absolute top-1 right-0 z-20 accent-zinc-900 cursor-pointer opacity-0
-          group-hover:opacity-100 focus-visible:opacity-100 checked:opacity-100
-          focus-visible:ring-2 focus-visible:ring-zinc-900"
-      />
+      <div className="absolute top-0 right-0 z-20 flex items-center gap-2 opacity-0
+        group-hover:opacity-100 focus-within:opacity-100 has-[:checked]:opacity-100">
+        {panel.state === 'filled' && <CopyButton text={panel.text} label={`copy ${panel.name}`} />}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`select ${panel.name} for compare`}
+          className="accent-zinc-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-900"
+        />
+      </div>
       <div className="relative z-10 h-full pr-6 flex flex-col gap-2 pointer-events-none">
         <div className="flex items-baseline justify-between gap-2 pb-2 border-b border-zinc-200">
-          <span className={`truncate text-[11px] uppercase tracking-[0.14em]
+          <span className={`truncate ${TYPE.label}
             ${emphasised ? 'text-zinc-900 font-semibold' : 'text-zinc-400 font-medium'}`}>
             {panel.name}
           </span>
-          <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+          <span className={`${TYPE.metric} text-zinc-400 shrink-0`}>
             {panel.lines ? `${panel.lines} ln` : '—'}
           </span>
         </div>
@@ -62,19 +64,17 @@ export function Panel({ panel, open, selected, onOpen, onToggleSelect, style, cl
             <Markdown tone="output">{preview.lead}</Markdown>
             {preview.truncated && (
               // A hard clip stops mid-row and reads as a rendering fault; the fade says
-              // there is more without spending a line on saying so.
+              // there is more. It ends in the page's own colour, or it draws a band.
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-b from-transparent to-zinc-50" />
             )}
           </div>
         )}
-        {panel.state === 'pending' && <span className="text-xs text-zinc-300 italic">waiting</span>}
-        {panel.state === 'empty' && (
-          <span className="text-xs text-amber-600">
-            nothing survived — this hop dropped the section the chain asked it for
-          </span>
-        )}
+        {panel.state === 'pending' && <span className={`${TYPE.ui} text-zinc-300 italic`}>waiting</span>}
+        {panel.state === 'empty' && <span className={`${TYPE.ui} text-amber-600`}>{EMPTY_PANEL_COPY}</span>}
         {panel.state === 'filled' && preview.truncated && (
-          <span className="mt-auto text-[10px] text-zinc-400">{open ? 'close' : `read all ${panel.lines} lines`}</span>
+          <span className={`mt-auto ${TYPE.metric} text-zinc-400`}>
+            {open ? 'close' : `read all ${panel.lines} lines`}
+          </span>
         )}
       </div>
     </div>

@@ -18,6 +18,9 @@ export const PANEL_FITS: { id: PanelFit; label: string }[] = [
   { id: 'focus', label: 'focus' },
 ]
 
+/** The fit a result reads in until the reader picks another. */
+export const DEFAULT_FIT: PanelFit = 'spread'
+
 export const FIT_STORAGE_KEY = 'maestro:panel-fit'
 
 export function isPanelFit(value: unknown): value is PanelFit {

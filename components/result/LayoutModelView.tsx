@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import type { LayoutModel } from '@/lib/layoutModel'
 import type { RunFrameModel } from '@/lib/runFrame'
 import type { PanelDeck } from '@/lib/panelDeck'
-import type { PanelFit } from '@/lib/panelFit'
+import { DEFAULT_FIT, type PanelFit } from '@/lib/panelFit'
 import { RunFrame } from '@/components/result/RunFrame'
 import { Timeline } from '@/components/result/Timeline'
 import { Columns } from '@/components/result/Columns'
@@ -14,7 +14,7 @@ import { CompareOverlay } from '@/components/result/CompareOverlay'
  *  run reopened from history (#72) share this instead of each switching on it. The
  *  compare overlay is mounted here rather than per layout, so every layout gets it
  *  from the same selection (#71). */
-export function LayoutModelView({ model, frame, runId, deck, fallback, fit = 'spread', actions }: {
+export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEFAULT_FIT, actions }: {
   model: LayoutModel
   frame: RunFrameModel
   runId?: string | null
@@ -38,6 +38,7 @@ export function LayoutModelView({ model, frame, runId, deck, fallback, fit = 'sp
     >
       {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} fit={fit} />}
       {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} fit={fit} />}
+      {/* `sidebar` is a list beside a pane, not a row of panels, so no fit applies. */}
       {model.kind === 'sidebar' && <Sidebar panels={model.panels} deck={deck} />}
       {model.kind === 'undeclared' && fallback}
       {comparing && (

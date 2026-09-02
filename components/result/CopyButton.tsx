@@ -1,11 +1,15 @@
 'use client'
-import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Copy } from 'lucide-react'
+import { useToastStore } from '@/hooks/store/useToastStore'
 
 /** Copies the source text the engine carried, not the rendered markdown — what lands in
- *  the editor is what the next hop received (vision.md: easy to copy). */
-export function CopyButton({ text, label = 'copy' }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false)
+ *  the editor is what the next hop received (#65). */
+export function CopyButton({ text, label, className = '' }: {
+  text: string
+  label: string
+  className?: string
+}) {
+  const addToast = useToastStore(state => state.addToast)
 
   return (
     <button
@@ -13,12 +17,12 @@ export function CopyButton({ text, label = 'copy' }: { text: string; label?: str
       aria-label={label}
       onClick={async () => {
         await navigator.clipboard.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
+        addToast('copied', 'success')
       }}
-      className="text-zinc-400 hover:text-zinc-900 outline-none rounded focus-visible:ring-2 focus-visible:ring-zinc-900"
+      className={`text-zinc-400 hover:text-zinc-900 outline-none rounded
+        focus-visible:ring-2 focus-visible:ring-zinc-900 ${className}`}
     >
-      {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+      <Copy size={14} />
     </button>
   )
 }

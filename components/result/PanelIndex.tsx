@@ -1,21 +1,21 @@
 'use client'
 import type { LayoutPanel } from '@/lib/layoutModel'
-import { leadLineOf } from '@/lib/panelDeck'
+import { leadLineOf, EMPTY_PANEL_COPY, type PanelHandle } from '@/lib/panelDeck'
+import { TYPE } from '@/lib/resultType'
+import { CopyButton } from '@/components/result/CopyButton'
 
 /**
  * A panel as an entry in an index rather than a column of prose: its name, the line it
  * opens with, and how much it says. Reading happens in the pane below at full measure,
  * so the entry stays legible whether the chain declared three panels or fifteen.
  */
-export function PanelIndex({ panel, open, selected, share, onOpen, onToggleSelect }: {
+export function PanelIndex({ panel, handle, share }: {
   panel: LayoutPanel
-  open: boolean
-  selected: boolean
+  handle: PanelHandle
   /** This panel's volume against the largest in the set, 0–1. */
   share: number
-  onOpen: () => void
-  onToggleSelect: () => void
 }) {
+  const { open, selected, onOpen, onToggleSelect } = handle
   const emphasised = panel.emphasis !== undefined
   const lead = panel.state === 'filled' ? leadLineOf(panel.text) : ''
 
@@ -32,19 +32,21 @@ export function PanelIndex({ panel, open, selected, share, onOpen, onToggleSelec
         className="absolute inset-0 z-0 cursor-pointer outline-none rounded
           focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-inset"
       />
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={onToggleSelect}
-        aria-label={`select ${panel.name} for compare`}
-        className="absolute top-3 right-2 z-20 accent-zinc-900 cursor-pointer opacity-0
-          group-hover:opacity-100 focus-visible:opacity-100 checked:opacity-100
-          focus-visible:ring-2 focus-visible:ring-zinc-900"
-      />
+      <div className="absolute top-3 right-2 z-20 flex items-center gap-2 opacity-0
+        group-hover:opacity-100 focus-within:opacity-100 has-[:checked]:opacity-100">
+        {panel.state === 'filled' && <CopyButton text={panel.text} label={`copy ${panel.name}`} />}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`select ${panel.name} for compare`}
+          className="accent-zinc-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-900"
+        />
+      </div>
 
       <div className="relative z-10 flex flex-col gap-2 pointer-events-none pr-5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className={`truncate text-[11px] uppercase tracking-[0.14em]
+          <span className={`truncate ${TYPE.label}
             ${emphasised || open ? 'text-zinc-900 font-semibold' : 'text-zinc-400 font-medium'}`}>
             {panel.name}
           </span>
@@ -52,7 +54,7 @@ export function PanelIndex({ panel, open, selected, share, onOpen, onToggleSelec
 
         {panel.state === 'filled' && (
           <>
-            <span className={`text-[13px] font-mono leading-snug line-clamp-3
+            <span className={`${TYPE.body} font-mono line-clamp-3
               ${open ? 'text-zinc-900' : 'text-zinc-600'}`}>
               {lead}
             </span>
@@ -65,15 +67,13 @@ export function PanelIndex({ panel, open, selected, share, onOpen, onToggleSelec
                   style={{ width: `${Math.max(share * 100, 4)}%` }}
                 />
               </div>
-              <span className="text-[10px] font-mono text-zinc-400 shrink-0">{panel.lines} ln</span>
+              <span className={`${TYPE.metric} text-zinc-400 shrink-0`}>{panel.lines} ln</span>
             </div>
           </>
         )}
-        {panel.state === 'pending' && <span className="text-xs text-zinc-300 italic">waiting</span>}
+        {panel.state === 'pending' && <span className={`${TYPE.ui} text-zinc-300 italic`}>waiting</span>}
         {panel.state === 'empty' && (
-          <span className="text-xs text-amber-600 leading-snug">
-            nothing survived — this hop dropped the section the chain asked it for
-          </span>
+          <span className={`${TYPE.ui} text-amber-600 leading-snug`}>{EMPTY_PANEL_COPY}</span>
         )}
       </div>
     </div>

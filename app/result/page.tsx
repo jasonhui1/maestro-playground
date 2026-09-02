@@ -66,7 +66,7 @@ export default function ResultPage() {
       { heading: '壓力測試 (stress-test)', purpose: 'stress-test' },
     ]
     const withPurpose = groups.map(g => ({ heading: g.heading, chains: chains.filter(c => c.purpose === g.purpose) }))
-    const unclassified = { heading: 'Other', chains: chains.filter(c => !c.purpose) }
+    const unclassified = { heading: 'unclassified', chains: chains.filter(c => !c.purpose) }
     return [...withPurpose, unclassified]
   }, [chains])
   useEffect(() => { setParamValue('') }, [chainSlug])
@@ -139,8 +139,10 @@ export default function ResultPage() {
     </button>
   )
 
+  // Full width up to a maximum: the panels want the room, but past this the row stops
+  // being one field of view (#65).
   return (
-    <div className="w-full px-6 py-4 flex flex-col gap-6">
+    <div className="w-full max-w-[120rem] mx-auto px-6 py-4 flex flex-col gap-6">
       {!collapsed && (
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-2xl font-semibold text-zinc-800">Result view</h1>
@@ -226,7 +228,8 @@ export default function ResultPage() {
             onClick={handleRun}
             disabled={running || !chain || !seedText.trim() || Boolean(chain?.parameter && !paramValue)}
             className="self-start rounded-lg bg-zinc-900 text-white px-8 py-2 text-sm font-medium
-              disabled:opacity-40 hover:bg-zinc-700 transition-all active:scale-95"
+              disabled:opacity-40 hover:bg-zinc-700 transition-colors outline-none
+              focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
           >
             {running ? 'Running...' : 'Run'}
           </button>
