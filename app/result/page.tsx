@@ -7,6 +7,9 @@ import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel } from '@/lib/layoutModel'
 import { buildRunFrame, SeedSource } from '@/lib/runFrame'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
+import { usePanelFit } from '@/hooks/usePanelFit'
+import { PANEL_FITS } from '@/lib/panelFit'
+import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { RunTrace } from '@/components/RunTrace'
 
@@ -31,6 +34,10 @@ export default function ResultPage() {
   const [endedAt, setEndedAt] = useState<number | null>(null)
   const [now, setNow] = useState(0)
   const deck = usePanelDeck()
+  const [fit, setFit] = usePanelFit()
+  // The form is the whole screen until a run exists, and a single line afterwards —
+  // the result starts at the top of the fold rather than below 600px of controls.
+  const [formOpen, setFormOpen] = useState(true)
 
   useEffect(() => {
     if (!running) return
@@ -89,6 +96,7 @@ export default function ResultPage() {
     setRunId(null)
     setError(null)
     deck.reset()
+    setFormOpen(false)
     setRun({ chain, seed, startedAt: Date.now() })
     setEndedAt(null)
     setNow(Date.now())
@@ -114,11 +122,35 @@ export default function ResultPage() {
     }
   }
 
-  return (
-    <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-zinc-800">Result view</h1>
+  const collapsed = Boolean(run) && !formOpen
 
-      <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6">
+  // The rail already names the chain and the seed, so under that treatment the page
+  // spends no title, no restate bar, and no top padding above the output.
+  const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={fit} onChange={setFit} />
+
+  const changeButton = (
+    <button
+      type="button"
+      onClick={() => setFormOpen(true)}
+      className="rounded-lg border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-700
+        hover:bg-zinc-50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+    >
+      change
+    </button>
+  )
+
+  return (
+    <div className="w-full px-6 py-4 flex flex-col gap-6">
+      {!collapsed && (
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-2xl font-semibold text-zinc-800">Result view</h1>
+          {switches}
+        </div>
+      )}
+
+      {/* The rail names the chain and the seed, so a collapsed form restates nothing. */}
+      {collapsed ? null : (
+      <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6 max-w-4xl">
         <div className="flex items-center gap-4">
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Input</span>
           {(['paste', 'file'] as const).map(m => (
@@ -202,6 +234,7 @@ export default function ResultPage() {
 
         {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">{error}</div>}
       </div>
+      )}
 
       {frame && model && (
         <LayoutModelView
@@ -212,6 +245,8 @@ export default function ResultPage() {
           // A chain that declares no layout is shown as the run trace it has always had,
           // rather than drawn in a shape it never asked for (#66).
           fallback={<RunTrace order={order} states={states} />}
+          fit={fit}
+          actions={<div className="flex flex-col items-start gap-3">{changeButton}{switches}</div>}
         />
       )}
     </div>

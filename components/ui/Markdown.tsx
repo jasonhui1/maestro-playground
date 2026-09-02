@@ -4,9 +4,15 @@ import remarkGfm from 'remark-gfm'
 
 // Agent output is markdown by convention, so every surface that shows it renders through
 // here — one type scale, one table style. Raw HTML stays off: model output is untrusted.
-export function Markdown({ children, className = '' }: { children: string; className?: string }) {
+/** `output` renders agent prose in the mono face — it is content, not UI (vision.md). */
+export function Markdown({ children, className = '', tone = 'ui' }: {
+  children: string
+  className?: string
+  tone?: 'ui' | 'output'
+}) {
   return (
-    <div className={`text-sm text-zinc-700 leading-relaxed break-words ${className}`}>
+    <div className={`text-sm text-zinc-700 leading-relaxed break-words
+      ${tone === 'output' ? 'font-mono text-[13px] leading-[1.7]' : ''} ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

@@ -11,45 +11,70 @@ function formatElapsed(ms: number): string {
 
 /**
  * The one frame every result layout renders into (#73). It carries what is true of any
- * run whatever shape it reads in; the region below it is the only thing that varies.
+ * run whatever shape it reads in; the region beside it is the only thing that varies.
+ *
+ * The run's identity lives in a narrow rail rather than a band across the top, so the
+ * output starts at the fold and keeps the page (chosen on screen, 2026-09-02). The rail
+ * stays put while the output scrolls: it is reference, and reference that scrolls away
+ * has to be scrolled back to.
  */
-export function RunFrame({ frame, runId, selectedCount, onCompare, children }: {
+export function RunFrame({ frame, runId, selectedCount, onCompare, actions, children }: {
   frame: RunFrameModel
   /** Absent until the run completes — the log has no id to link to before then. */
   runId?: string | null
   selectedCount: number
   /** Opens the compare overlay; the trigger needs two panels ticked before it fires. */
   onCompare: () => void
+  /** Page-level controls the rail absorbs, so the page spends no band above the output. */
+  actions?: ReactNode
   children: ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-4">
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-lg font-semibold text-zinc-800 truncate">{frame.chainName}</span>
-          {frame.moment && <span className="text-sm text-zinc-500">{frame.moment}</span>}
-          <span className="text-xs text-zinc-400">seed: {frame.seedSource}</span>
-        </div>
+    <div className="flex items-stretch gap-6">
+      <aside className="w-40 shrink-0 border-r border-zinc-200">
+        <div className="sticky top-14 flex flex-col gap-5 pr-5 py-1 text-xs max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-sm font-semibold text-zinc-800 break-words">{frame.chainName}</span>
+            {frame.moment && <span className="text-zinc-400 leading-snug">{frame.moment}</span>}
+          </div>
 
-        <div className="flex items-center gap-4 text-xs text-zinc-500">
-          <span className="font-mono">{formatElapsed(frame.elapsedMs)}</span>
-          <span className="font-mono">${frame.costUsd.toFixed(4)}</span>
-          <button
-            type="button"
-            onClick={onCompare}
-            disabled={selectedCount < 2}
-            className="rounded-lg border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700
-              disabled:opacity-40 hover:bg-zinc-50 transition-colors"
-          >
-            Compare{selectedCount > 0 ? ` (${selectedCount})` : ''}
-          </button>
-          {runId && (
-            <Link href={`/history/${runId}`} className="underline underline-offset-4">full log</Link>
-          )}
-        </div>
-      </div>
+          <dl className="flex flex-col gap-2 text-zinc-400">
+            <div className="flex flex-col">
+              <dt className="text-[10px] uppercase tracking-[0.14em]">seed</dt>
+              <dd className="text-zinc-600 break-words">{frame.seedSource}</dd>
+            </div>
+            <div className="flex flex-col">
+              <dt className="text-[10px] uppercase tracking-[0.14em]">elapsed</dt>
+              <dd className="font-mono text-zinc-600">{formatElapsed(frame.elapsedMs)}</dd>
+            </div>
+            <div className="flex flex-col">
+              <dt className="text-[10px] uppercase tracking-[0.14em]">cost</dt>
+              <dd className="font-mono text-zinc-600">${frame.costUsd.toFixed(4)}</dd>
+            </div>
+          </dl>
 
-      {children}
+          <div className="flex flex-col items-start gap-3">
+            <button
+              type="button"
+              onClick={onCompare}
+              disabled={selectedCount < 2}
+              className="rounded-lg border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700
+                disabled:opacity-40 hover:bg-zinc-50 transition-colors outline-none
+                focus-visible:ring-2 focus-visible:ring-zinc-900"
+            >
+              Compare{selectedCount > 0 ? ` (${selectedCount})` : ''}
+            </button>
+            {runId && (
+              <Link href={`/history/${runId}`} className="text-zinc-400 underline underline-offset-4 hover:text-zinc-700">
+                full log
+              </Link>
+            )}
+            {actions}
+          </div>
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   )
 }

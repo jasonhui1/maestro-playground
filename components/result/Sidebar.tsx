@@ -16,22 +16,28 @@ export function Sidebar({ panels, deck }: { panels: LayoutPanel[]; deck: PanelDe
         {panels.map((panel, i) => (
           <div
             key={`${panel.name}-${i}`}
-            onClick={() => deck.openPanel(deck.open === i ? null : i)}
-            role="button"
-            aria-pressed={deck.open === i}
-            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+            className={`flex items-center gap-2 rounded-lg pr-2 text-sm transition-colors ${
               deck.open === i ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-50'
             }`}
           >
             <input
               type="checkbox"
               checked={deck.selected.includes(i)}
-              onClick={e => e.stopPropagation()}
               onChange={() => deck.toggleSelect(i)}
               aria-label={`select ${panel.name} for compare`}
-              className="accent-zinc-900 cursor-pointer"
+              className="ml-2 accent-zinc-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-900"
             />
-            <span className="truncate">{panel.name}</span>
+            {/* A real button, so the list is reachable by keyboard like every other
+                layout's panels — a div with onClick was not. */}
+            <button
+              type="button"
+              onClick={() => deck.openPanel(deck.open === i ? null : i)}
+              aria-pressed={deck.open === i}
+              className="flex-1 min-w-0 text-left truncate py-1.5 cursor-pointer outline-none rounded
+                focus-visible:ring-2 focus-visible:ring-zinc-900"
+            >
+              {panel.name}
+            </button>
           </div>
         ))}
         {panels.length === 0 && (

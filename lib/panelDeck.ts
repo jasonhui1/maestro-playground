@@ -23,6 +23,14 @@ export function toggleSelection(selected: number[], index: number): number[] {
   return selected.includes(index) ? selected.filter(i => i !== index) : [...selected, index]
 }
 
+/** The first line worth showing as a panel's label in an index — a heading if the
+ *  output opens with one, otherwise its first line of prose, with the markdown marks
+ *  stripped so it sits on one line. */
+export function leadLineOf(text: string): string {
+  const line = text.trim().split('\n').find(l => l.trim() !== '') ?? ''
+  return line.replace(/^#{1,6}\s*/, '').replace(/^[-*+]\s*/, '').replace(/[*_`]/g, '').trim()
+}
+
 /** The order compare reads the ticked panels in. An unticked base falls back to the
  *  first selection, so dropping it from the overlay header re-bases (#71). */
 export function compareOrder(selected: number[], base: number | null): number[] {

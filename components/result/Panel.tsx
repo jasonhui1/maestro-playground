@@ -5,9 +5,10 @@ import { previewOf } from '@/lib/panelDeck'
 import { Markdown } from '@/components/ui/Markdown'
 
 /**
- * One panel of any result layout (#73). A preview — a lead excerpt and its line count
- * at a fixed height — that opens full-width on click, with a corner checkbox selecting
- * it for compare without opening it.
+ * One panel of a result layout (#73): a column of the output's opening lines that opens
+ * full-width in the reading pane on click, with a checkbox selecting it for compare
+ * without opening it. A gutter rule separates it from its neighbours — a border would
+ * make content look like the chrome around it.
  */
 export function Panel({ panel, open, selected, onOpen, onToggleSelect, style, className = '' }: {
   panel: LayoutPanel
@@ -19,42 +20,51 @@ export function Panel({ panel, open, selected, onOpen, onToggleSelect, style, cl
   className?: string
 }) {
   const emphasised = panel.emphasis !== undefined
-  const preview = previewOf(panel.text)
+  const preview = previewOf(panel.text, 24)
 
   return (
     <div
       style={style}
-      className={`relative h-40 rounded-xl border overflow-hidden ${
-        emphasised ? 'border-zinc-900 bg-white shadow-md' : 'border-zinc-200 bg-zinc-50/60'
-      } ${open ? 'ring-2 ring-zinc-900/20' : ''} ${className}`}
+      className={`relative group min-h-[16rem] bg-transparent ${open ? 'ring-1 ring-zinc-900/15' : ''} ${className}`}
     >
-      {/* The whole card opens the panel, but the excerpt is rendered markdown — a button
+      {/* The whole panel opens it, but the excerpt is rendered markdown — a button
           wrapping it would nest a link inside a button, so the target sits behind it. */}
       <button
         type="button"
         onClick={onOpen}
         aria-expanded={open}
         aria-label={`${open ? 'close' : 'open'} ${panel.name}`}
-        className="absolute inset-0 z-0 cursor-pointer"
+        className="absolute inset-0 z-0 cursor-pointer rounded-xl outline-none
+          focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
       />
       <input
         type="checkbox"
         checked={selected}
         onChange={onToggleSelect}
         aria-label={`select ${panel.name} for compare`}
-        className="absolute top-3 right-3 z-20 accent-zinc-900 cursor-pointer"
+        className="absolute top-1 right-0 z-20 accent-zinc-900 cursor-pointer opacity-0
+          group-hover:opacity-100 focus-visible:opacity-100 checked:opacity-100
+          focus-visible:ring-2 focus-visible:ring-zinc-900"
       />
-      <div className="relative z-10 h-full p-4 pr-9 flex flex-col gap-2 pointer-events-none">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className={`text-xs font-semibold truncate ${emphasised ? 'text-zinc-900' : 'text-zinc-500'}`}>
+      <div className="relative z-10 h-full pr-6 flex flex-col gap-2 pointer-events-none">
+        <div className="flex items-baseline justify-between gap-2 pb-2 border-b border-zinc-200">
+          <span className={`truncate text-[11px] uppercase tracking-[0.14em]
+            ${emphasised ? 'text-zinc-900 font-semibold' : 'text-zinc-400 font-medium'}`}>
             {panel.name}
           </span>
-          <span className="text-[10px] font-mono text-zinc-400 shrink-0">{panel.lines || '—'}</span>
+          <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+            {panel.lines ? `${panel.lines} ln` : '—'}
+          </span>
         </div>
         {panel.state === 'filled' && (
           // The excerpt is a lead, not the content: the whole of it reads in the pane below.
-          <div className="min-h-0 overflow-hidden">
-            <Markdown>{preview.lead}</Markdown>
+          <div className="min-h-0 relative">
+            <Markdown tone="output">{preview.lead}</Markdown>
+            {preview.truncated && (
+              // A hard clip stops mid-row and reads as a rendering fault; the fade says
+              // there is more without spending a line on saying so.
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-b from-transparent to-zinc-50" />
+            )}
           </div>
         )}
         {panel.state === 'pending' && <span className="text-xs text-zinc-300 italic">waiting</span>}

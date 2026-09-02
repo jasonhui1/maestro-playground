@@ -14,7 +14,9 @@
    the old prefers-color-scheme rule silently override the app's Tailwind
    classes. Base styles now live inside Tailwind's own `base` layer instead. */
 @layer base {
+  /* The loaded face, not the platform fallback: layout.tsx wires Geist into
+     --font-sans via @theme, and a bare Arial here silently beat it app-wide. */
   body {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--font-sans);
   }
 }

@@ -2,6 +2,8 @@
 import { X } from 'lucide-react'
 import type { LayoutPanel } from '@/lib/layoutModel'
 import { Markdown } from '@/components/ui/Markdown'
+import { CopyButton } from '@/components/result/CopyButton'
+import { READING_MEASURE } from '@/lib/panelFit'
 
 /** Where an opened panel's whole content reads: full width, beneath its row (#73). */
 export function ReadingPane({ panel, onClose }: { panel: LayoutPanel; onClose: () => void }) {
@@ -11,14 +13,26 @@ export function ReadingPane({ panel, onClose }: { panel: LayoutPanel; onClose: (
         <span className="text-sm font-semibold text-zinc-900">{panel.name}</span>
         <div className="flex items-center gap-3">
           <span className="text-[10px] font-mono text-zinc-400">{panel.lines} lines</span>
-          <button type="button" onClick={onClose} aria-label="close" className="text-zinc-400 hover:text-zinc-900">
+          {panel.state === 'filled' && <CopyButton text={panel.text} label={`copy ${panel.name}`} />}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="close"
+            className="text-zinc-400 hover:text-zinc-900 outline-none rounded focus-visible:ring-2 focus-visible:ring-zinc-900"
+          >
             <X size={14} />
           </button>
         </div>
       </div>
       {panel.state === 'filled'
-        ? <Markdown>{panel.text}</Markdown>
-        : <span className="text-xs text-zinc-400 italic">nothing on this socket yet</span>}
+        // The pane is where prose gets its measure back; the row above cannot give it
+        // one at five panels, and the craft floor puts it at 65–75 characters.
+        ? <div style={{ maxWidth: READING_MEASURE }}><Markdown tone="output">{panel.text}</Markdown></div>
+        // `empty` means the node already finished and this socket resolved to nothing,
+        // so "yet" belongs only to a panel the run has not reached.
+        : <span className="text-xs text-zinc-400 italic">
+            {panel.state === 'pending' ? 'nothing on this socket yet' : 'nothing on this socket'}
+          </span>}
     </div>
   )
 }

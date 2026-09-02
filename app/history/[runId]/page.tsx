@@ -16,6 +16,9 @@ import RunDock from '@/components/trace/RunDock'
 import { buildLayoutModel, isRenderableLayout } from '@/lib/layoutModel'
 import { buildRunFrame } from '@/lib/runFrame'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
+import { usePanelFit } from '@/hooks/usePanelFit'
+import { PANEL_FITS } from '@/lib/panelFit'
+import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
@@ -87,6 +90,8 @@ function RunDetail({ run }: { run: RunMeta }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'result' | 'trace'>('trace')
   const deck = usePanelDeck()
+  const [fit, setFit] = usePanelFit()
+  const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={fit} onChange={setFit} />
 
   useEffect(() => {
     fetch('/api/workspace')
@@ -239,8 +244,17 @@ function RunDetail({ run }: { run: RunMeta }) {
           </div>
         ) : viewMode === 'result' && layoutModel && resultFrame ? (
           <div className="h-full overflow-auto">
-            <div className="max-w-6xl mx-auto px-6 py-6">
-              <LayoutModelView model={layoutModel} frame={resultFrame} runId={null} deck={deck} />
+            <div className="w-full px-6 py-4">
+              {/* Both treatments are built; the choice is made on screen (2026-09-02). The
+                  rail absorbs the switch so it costs no band above the output. */}
+              <LayoutModelView
+                model={layoutModel}
+                frame={resultFrame}
+                runId={null}
+                deck={deck}
+                actions={switches}
+                fit={fit}
+              />
             </div>
           </div>
         ) : (
