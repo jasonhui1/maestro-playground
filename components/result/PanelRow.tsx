@@ -2,6 +2,7 @@
 import type { LayoutPanel } from '@/lib/layoutModel'
 import { handleFor, type PanelDeck } from '@/lib/panelDeck'
 import type { PanelFit } from '@/lib/panelFit'
+import type { RunStatus } from '@/lib/runFrame'
 import { TYPE } from '@/lib/resultType'
 import { Panel } from '@/components/result/Panel'
 import { PanelIndex } from '@/components/result/PanelIndex'
@@ -11,11 +12,12 @@ import { PanelIndex } from '@/components/result/PanelIndex'
  * columns differ in what the panels *mean*, not in how N of them fit across a screen,
  * so the three fits live here rather than in each layout.
  */
-export function PanelRow({ panels, deck, fit, offsetOf }: {
+export function PanelRow({ panels, deck, fit, status, offsetOf }: {
   /** The panels of this row, in order. */
   panels: LayoutPanel[]
   deck: PanelDeck
   fit: PanelFit
+  status: RunStatus
   /** Maps a row position to its index in the whole model, which is what the deck keys on. */
   offsetOf: (rowIndex: number) => number
 }) {
@@ -29,7 +31,7 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
       <div className="grid gap-1 border-y border-zinc-200"
         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(13rem, 1fr))' }}>
         {panels.map((panel, i) => (
-          <PanelIndex key={`${panel.name}-${i}`} panel={panel} handle={handleAt(i)} share={panel.lines / maxLines} />
+          <PanelIndex key={`${panel.name}-${i}`} panel={panel} handle={handleAt(i)} status={status} share={panel.lines / maxLines} />
         ))}
       </div>
     )
@@ -50,6 +52,7 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
             key={`${panels[i].name}-${i}`}
             panel={panels[i]}
             handle={handleAt(i)}
+            status={status}
             style={{ flex: '1 1 0%' }}
             className="px-5 first:pl-0 min-w-[24rem] border-l border-zinc-200 first:border-l-0"
           />
@@ -83,6 +86,7 @@ export function PanelRow({ panels, deck, fit, offsetOf }: {
           key={`${panel.name}-${i}`}
           panel={panel}
           handle={handleAt(i)}
+          status={status}
           style={{ flex: '1 1 0%' }}
           className="px-5 first:pl-0 last:pr-0 min-w-[13rem]"
         />

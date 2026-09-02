@@ -34,10 +34,74 @@ export const COMPARE_MODES = [
 
 export type CompareMode = (typeof COMPARE_MODES)[number]['id']
 
+/**
+ * Two panels are usually one text and its rewrite, which a base diff reads well. Past
+ * two they are usually independent takes, where the pairwise marks multiply and the
+ * agreement is the finding — so shared leads (#65). The reader can still switch.
+ */
+export function defaultCompareMode(selectedCount: number): CompareMode {
+  return selectedCount > 2 ? 'shared' : 'base'
+}
+
+/**
+ * Above this share of characters in common, a replaced line is a rewrite of the line it
+ * replaced rather than a different line in its place. Judged on the pair alone.
+ *
+ * High, because English prose shares characters generously: measured on this repo's own
+ * cases, a one-word reversal scores 0.95, but two independently written personas score
+ * 0.57 and two restatements of one sentence 0.49. Only near-verbatim edits separate from
+ * ordinary prose, so only they are refined.
+ */
+const REWRITE_SIMILARITY = 0.8
+
+type Diff = [number, string]
+type Dmp = InstanceType<typeof diff_match_patch>
+
+/** How much of the longer text the two hold in common, 0–1. */
+function similarity(dmp: Dmp, a: string, b: string): number {
+  const longer = Math.max(a.length, b.length)
+  if (longer === 0) return 1
+  const common = (dmp.diff_main(a, b) as Diff[])
+    .filter(([op]) => op !== DIFF_DELETE && op !== DIFF_INSERT)
+    .reduce((n: number, [, text]) => n + text.length, 0)
+  return common / longer
+}
+
+/**
+ * Refine a line-level diff where, and only where, a line was rewritten.
+ *
+ * Line granularity is what the fan-out chains need — five personas, or an argument and
+ * its opposite, share no whole lines, and a character diff of two independently written
+ * texts renders as alternating speckle rather than a reading. But it is too coarse for
+ * the chains that rewrite one text: "worth its cost" against "not worth its cost" is one
+ * word, and marking the whole line hides which word.
+ *
+ * So: align by line, then look at each replaced block. If what was removed and what
+ * arrived are mostly the same characters, the line was edited and the marks re-cut at
+ * character level; otherwise it was replaced, and the block stands (#65).
+ */
+function refineRewrites(dmp: Dmp, diffs: Diff[]): Diff[] {
+  const out: Diff[] = []
+  for (let i = 0; i < diffs.length; i++) {
+    const [op, text] = diffs[i]
+    const next = diffs[i + 1]
+    const isReplacement = op === DIFF_DELETE && next?.[0] === DIFF_INSERT
+    if (isReplacement && similarity(dmp, text, next[1]) >= REWRITE_SIMILARITY) {
+      out.push(...(dmp.diff_main(text, next[1]) as Diff[]))
+      i++
+      continue
+    }
+    out.push([op, text])
+  }
+  return out
+}
+
 function diffAgainst(base: string, source: CompareSource): CompareColumn {
   const dmp = new diff_match_patch()
-  const diffs = dmp.diff_main(base, source.text)
-  dmp.diff_cleanupSemantic(diffs)
+  const packed = dmp.diff_linesToChars_(base, source.text)
+  const lineDiffs = dmp.diff_main(packed.chars1, packed.chars2, false)
+  dmp.diff_charsToLines_(lineDiffs, packed.lineArray)
+  const diffs = refineRewrites(dmp, lineDiffs as Diff[])
   return {
     name: source.name,
     spans: diffs.map(([op, text]): CompareSpan => ({

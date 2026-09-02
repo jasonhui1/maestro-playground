@@ -30,7 +30,7 @@ export default function ResultPage() {
   const [error, setError] = useState<string | null>(null)
   // The frame and the layout describe the run that started, not the form as it now
   // stands — the form stays live while a finished result is still on screen (#73).
-  const [run, setRun] = useState<{ chain: ChainDef; seed: SeedSource; startedAt: number } | null>(null)
+  const [run, setRun] = useState<{ chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string } | null>(null)
   const [endedAt, setEndedAt] = useState<number | null>(null)
   const [now, setNow] = useState(0)
   const deck = usePanelDeck()
@@ -72,7 +72,10 @@ export default function ResultPage() {
   useEffect(() => { setParamValue('') }, [chainSlug])
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
   const seedText = mode === 'paste' ? pasted : seedFile?.rawContent ?? ''
-  const seed: SeedSource = mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }
+  const seed: SeedSource = useMemo(
+    () => (mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }),
+    [mode, seedFile?.name],
+  )
 
   // The run's completed outputs, keyed the way the layout model reads them. Panels fill
   // in as hops land, so the timeline builds up rather than appearing at the end.
@@ -80,13 +83,35 @@ export default function ResultPage() {
     () => Object.entries(states).flatMap(([nodeId, s]) => (s.result ? [{ ...s.result, nodeId }] : [])),
     [states],
   )
+  // Before a run there is nothing to project, but the chain has already declared its
+  // panels — so picking one shows the shape the result will read in, all `pending`.
+  const preview = chain ?? null
   const model = useMemo(
-    () => (run ? buildLayoutModel(run.chain, outputs) : null),
-    [run, outputs],
+    () => (run ? buildLayoutModel(run.chain, outputs) : preview ? buildLayoutModel(preview, []) : null),
+    [run, outputs, preview],
+  )
+  const previewFrame = useMemo(
+    () => (!run && preview ? buildRunFrame({
+      chain: preview,
+      seed,
+      states: {},
+      now: 0,
+      parameter: preview.parameter && paramValue ? { name: preview.parameter.name, value: paramValue } : undefined,
+    }) : null),
+    [run, preview, seed, paramValue],
   )
   const frame = useMemo(
-    () => (run ? buildRunFrame({ ...run, states, endedAt: endedAt ?? undefined, now }) : null),
-    [run, states, endedAt, now],
+    () => (run ? buildRunFrame({
+      ...run,
+      states,
+      endedAt: endedAt ?? undefined,
+      now,
+      parameter: run.chain.parameter && run.paramValue
+        ? { name: run.chain.parameter.name, value: run.paramValue }
+        : undefined,
+      requestError: error ?? undefined,
+    }) : null),
+    [run, states, endedAt, now, error],
   )
 
   async function handleRun() {
@@ -97,7 +122,7 @@ export default function ResultPage() {
     setError(null)
     deck.reset()
     setFormOpen(false)
-    setRun({ chain, seed, startedAt: Date.now() })
+    setRun({ chain, seed, startedAt: Date.now(), paramValue })
     setEndedAt(null)
     setNow(Date.now())
     setRunning(true)
@@ -235,14 +260,13 @@ export default function ResultPage() {
           </button>
         </div>
 
-        {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">{error}</div>}
       </div>
       )}
 
-      {frame && model && (
+      {(frame ?? previewFrame) && model && (
         <LayoutModelView
           model={model}
-          frame={frame}
+          frame={(frame ?? previewFrame)!}
           runId={runId}
           deck={deck}
           // A chain that declares no layout is shown as the run trace it has always had,

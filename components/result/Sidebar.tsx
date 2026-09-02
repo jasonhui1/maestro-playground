@@ -2,12 +2,13 @@
 import type { LayoutPanel } from '@/lib/layoutModel'
 import type { PanelDeck } from '@/lib/panelDeck'
 import { ReadingPane } from '@/components/result/ReadingPane'
+import type { RunStatus } from '@/lib/runFrame'
 
 // A vertical list, not a row: N iterations scroll down rather than forcing the
 // horizontal scroll the rejected stacked-cards shape had (#68). The detail pane is
 // the same `ReadingPane` every other layout opens a panel into (#73) — sidebar just
 // keeps the list on screen beside it instead of beneath it.
-export function Sidebar({ panels, deck }: { panels: LayoutPanel[]; deck: PanelDeck }) {
+export function Sidebar({ panels, deck, status }: { panels: LayoutPanel[]; deck: PanelDeck; status: RunStatus }) {
   const open = deck.open !== null ? panels[deck.open] : undefined
 
   return (
@@ -47,7 +48,7 @@ export function Sidebar({ panels, deck }: { panels: LayoutPanel[]; deck: PanelDe
 
       {open ? (
         <div className="flex-1 min-w-0">
-          <ReadingPane panel={open} onClose={() => deck.openPanel(null)} />
+          <ReadingPane panel={open} status={status} onClose={() => deck.openPanel(null)} />
         </div>
       ) : (
         <div className="flex-1 min-w-0 rounded-xl border border-zinc-200 bg-zinc-50/60 p-5">

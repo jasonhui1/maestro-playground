@@ -10,9 +10,11 @@ export type LayoutKind = DeclaredView | 'undeclared'
 /**
  * `pending` — the run has not reached this node yet.
  * `empty`   — it ran, and this socket resolved to nothing (ADR-0015).
+ * `errored` — the node failed; nothing reached this socket because nothing was produced.
+ * `skipped` — control flow went the other way and the node never ran.
  * `filled`  — there is content.
  */
-export type PanelState = 'pending' | 'empty' | 'filled'
+export type PanelState = 'pending' | 'empty' | 'errored' | 'skipped' | 'filled'
 
 export interface LayoutPanel {
   /** The chain's public name for this output, shown as the panel's label. */
@@ -25,6 +27,8 @@ export interface LayoutPanel {
   /** `'last'` — a timeline's surviving skeleton. `'join'` — a columns chain's
    *  converging panel, declared by the port rather than inferred from position (ADR-0016). */
   emphasis?: 'last' | 'join'
+  /** Why the node failed, when `state` is `errored` — the engine's own message. */
+  error?: string
   /** Set under `view: sidebar` only — the loop round this panel is (ADR-0016 rule 4). */
   round?: number
 }
@@ -49,20 +53,34 @@ function lineCount(text: string): number {
   return trimmed === '' ? 0 : trimmed.split('\n').length
 }
 
+/**
+ * What a panel has to say about its node, read from the node's own outcome before its
+ * text. A hop that crashed and a hop that dropped the section its edge asked for are
+ * different events, and only the second one is `empty` (ADR-0015).
+ */
+function stateOf(output: AgentOutput | undefined, text: string): PanelState {
+  if (!output) return 'pending'
+  if (output.status === 'error') return 'errored'
+  if (output.status === 'skipped') return 'skipped'
+  return text.trim() === '' ? 'empty' : 'filled'
+}
+
+function panelFor(port: ChainPort, output: AgentOutput | undefined, name = port.name): LayoutPanel {
+  const text = contentOf(output, port.socket)
+  const state = stateOf(output, text)
+  const panel: LayoutPanel = { name, text, lines: lineCount(text), state }
+  if (state === 'errored' && output?.error) panel.error = output.error
+  if (port.role === 'join') panel.emphasis = 'join'
+  return panel
+}
+
 function panelsFor(ports: ChainPort[], outputs: AgentOutput[]): LayoutPanel[] {
   // Last write wins: a loop-body node reports once per round, and the panel shows
   // where the node ended up rather than where it started.
   const byNode = new Map<string, AgentOutput>()
   for (const o of outputs) if (o.nodeId) byNode.set(o.nodeId, o)
 
-  return ports.map((port): LayoutPanel => {
-    const output = byNode.get(port.node)
-    const text = contentOf(output, port.socket)
-    const state: PanelState = !output ? 'pending' : text.trim() === '' ? 'empty' : 'filled'
-    const panel: LayoutPanel = { name: port.name, text, lines: lineCount(text), state }
-    if (port.role === 'join') panel.emphasis = 'join'
-    return panel
-  })
+  return ports.map(port => panelFor(port, byNode.get(port.node)))
 }
 
 // A loop-body node reports once per round; under `view: sidebar` each round is its
@@ -75,12 +93,10 @@ function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[]): LayoutPan
       if (o.nodeId !== port.node) continue
       byRound.set(o.round ?? 0, o)
     }
-    return [...byRound.keys()].sort((a, b) => a - b).map((round): LayoutPanel => {
-      const output = byRound.get(round)
-      const text = contentOf(output, port.socket)
-      const state: PanelState = text.trim() === '' ? 'empty' : 'filled'
-      return { name: `${port.name} · round ${round + 1}`, text, lines: lineCount(text), state, round }
-    })
+    return [...byRound.keys()].sort((a, b) => a - b).map((round): LayoutPanel => ({
+      ...panelFor(port, byRound.get(round), `${port.name} · round ${round + 1}`),
+      round,
+    }))
   })
 }
 

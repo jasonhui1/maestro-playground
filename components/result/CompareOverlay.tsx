@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { LayoutPanel } from '@/lib/layoutModel'
 import { compareOrder, type PanelDeck } from '@/lib/panelDeck'
-import { buildCompareModel, buildSharedModel, COMPARE_MODES } from '@/lib/compareModel'
+import { buildCompareModel, buildSharedModel, COMPARE_MODES, defaultCompareMode } from '@/lib/compareModel'
 import type { CompareMode, SharedSpanKind, SpanKind } from '@/lib/compareModel'
 
 const SPAN_CLASS: Record<SpanKind, string> = {
@@ -55,7 +55,7 @@ export function CompareOverlay({ panels, deck, onClose }: {
   deck: PanelDeck
   onClose: () => void
 }) {
-  const [mode, setMode] = useState<CompareMode>('base')
+  const [mode, setMode] = useState<CompareMode>(() => defaultCompareMode(deck.selected.length))
   const [baseIndex, setBaseIndex] = useState<number | null>(null)
 
   useEffect(() => {

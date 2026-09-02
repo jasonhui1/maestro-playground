@@ -2,6 +2,8 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import type { RunFrameModel } from '@/lib/runFrame'
+import { RUN_STATUS_LABEL, RUN_STATUS_TONE } from '@/lib/panelCopy'
+import { TYPE } from '@/lib/resultType'
 
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -34,21 +36,38 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, actions, chil
       <aside className="w-40 shrink-0 border-r border-zinc-200">
         <div className="sticky top-14 flex flex-col gap-5 pr-5 py-1 text-xs max-h-[calc(100vh-4rem)] overflow-y-auto">
           <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-sm font-semibold text-zinc-800 break-words">{frame.chainName}</span>
+            <span className={`${TYPE.title} text-zinc-800 break-words`}>{frame.chainName}</span>
             {frame.moment && <span className="text-zinc-400 leading-snug">{frame.moment}</span>}
+            <span className={`${TYPE.ui} font-medium ${RUN_STATUS_TONE[frame.status]}`}>
+              {RUN_STATUS_LABEL[frame.status]}
+            </span>
           </div>
+
+          {/* The failure sits with the result it explains. It used to render in the launch
+              form, hundreds of pixels above panels that went on reading "waiting". */}
+          {frame.error && (
+            <p className="text-red-600 leading-snug break-words border-l-2 border-red-200 pl-2">
+              {frame.error}
+            </p>
+          )}
 
           <dl className="flex flex-col gap-2 text-zinc-400">
             <div className="flex flex-col">
-              <dt className="text-[10px] uppercase tracking-[0.14em]">seed</dt>
+              <dt className={TYPE.label}>seed</dt>
               <dd className="text-zinc-600 break-words">{frame.seedSource}</dd>
             </div>
+            {frame.parameter && (
+              <div className="flex flex-col">
+                <dt className={TYPE.label}>{frame.parameter.name}</dt>
+                <dd className="text-zinc-600 break-words">{frame.parameter.value}</dd>
+              </div>
+            )}
             <div className="flex flex-col">
-              <dt className="text-[10px] uppercase tracking-[0.14em]">elapsed</dt>
+              <dt className={TYPE.label}>elapsed</dt>
               <dd className="font-mono text-zinc-600">{formatElapsed(frame.elapsedMs)}</dd>
             </div>
             <div className="flex flex-col">
-              <dt className="text-[10px] uppercase tracking-[0.14em]">cost</dt>
+              <dt className={TYPE.label}>cost</dt>
               <dd className="font-mono text-zinc-600">${frame.costUsd.toFixed(4)}</dd>
             </div>
           </dl>

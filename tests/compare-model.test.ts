@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
-import { buildCompareModel, CompareSpan } from '../lib/compareModel'
+import { buildCompareModel, defaultCompareMode, CompareSpan } from '../lib/compareModel'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { parseChainContent } from '../lib/parseChain'
 import type { AgentOutput, ChainDef } from '../lib/types'
@@ -23,6 +23,8 @@ test('the base reads exactly as it was produced, carrying no diff marks', () => 
   assert.deepStrictEqual(model.base.spans, [{ kind: 'same', text: 'Ship it in Q1. The team is ready.' }])
 })
 
+// Marks are line-shaped (#65): two independently written takes share stray letters but
+// no lines, and a character diff of them renders as speckle rather than a reading.
 test('each column carries what it cut from the base and what it put there instead', () => {
   const model = buildCompareModel([
     { name: 'optimist', text: 'Ship it in Q1. The team is ready.' },
@@ -30,8 +32,8 @@ test('each column carries what it cut from the base and what it put there instea
   ])!
   const [skeptic] = model.columns
   assert.strictEqual(skeptic.name, 'skeptic')
-  assert.strictEqual(textOf(skeptic.spans, 'cut'), '1The team is ready')
-  assert.strictEqual(textOf(skeptic.spans, 'added'), '3Hiring comes first')
+  assert.strictEqual(textOf(skeptic.spans, 'cut'), 'Ship it in Q1. The team is ready.')
+  assert.strictEqual(textOf(skeptic.spans, 'added'), 'Ship it in Q3. Hiring comes first.')
   // Dropping the additions rebuilds the base; dropping the cuts rebuilds the column.
   assert.strictEqual(
     skeptic.spans.filter(s => s.kind !== 'added').map(s => s.text).join(''),
@@ -41,6 +43,23 @@ test('each column carries what it cut from the base and what it put there instea
     skeptic.spans.filter(s => s.kind !== 'cut').map(s => s.text).join(''),
     'Ship it in Q3. Hiring comes first.',
   )
+})
+
+test('a shared line survives while the lines around it are marked', () => {
+  const model = buildCompareModel([
+    { name: 'optimist', text: 'Ship it in Q1.\nThe team is ready.\nRevenue follows.' },
+    { name: 'skeptic', text: 'Hold until Q3.\nThe team is ready.\nHiring comes first.' },
+  ])!
+  const [skeptic] = model.columns
+  assert.strictEqual(textOf(skeptic.spans, 'same'), 'The team is ready.\n')
+  assert.strictEqual(textOf(skeptic.spans, 'cut'), 'Ship it in Q1.\nRevenue follows.')
+  assert.strictEqual(textOf(skeptic.spans, 'added'), 'Hold until Q3.\nHiring comes first.')
+})
+
+test('the mode a compare opens in follows how many panels are ticked', () => {
+  assert.strictEqual(defaultCompareMode(2), 'base')
+  assert.strictEqual(defaultCompareMode(3), 'shared')
+  assert.strictEqual(defaultCompareMode(5), 'shared')
 })
 
 // The point of the plain base (#71): a third column changes nothing about the

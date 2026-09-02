@@ -69,6 +69,3 @@ export function handleFor(deck: PanelDeck, index: number): PanelHandle {
  *  column has the height for a lead that is worth reading on its own. */
 export const PANEL_PREVIEW_LINES = 24
 
-/** Said of a socket that resolved to nothing after its node finished (ADR-0015); one
- *  wording, because a timeline column and an index entry are the same event. */
-export const EMPTY_PANEL_COPY = 'nothing survived — this hop dropped the section the chain asked it for'

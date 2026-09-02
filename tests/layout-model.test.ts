@@ -233,3 +233,45 @@ test('a declared layout is renderable once at least one panel actually filled in
 test('undeclared is never renderable', () => {
   assert.strictEqual(isRenderableLayout(buildLayoutModel(chain(), [])), false)
 })
+
+// A hop that crashed and a hop that dropped the section its edge asked for are different
+// events, and the view used to tell the first one the second one's story (#65).
+function failed(nodeId: string, error: string): AgentOutput {
+  return { ...output(nodeId, ''), status: 'error', error }
+}
+
+test('a node that errored reads as errored, carrying the engine message', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('first', '## Summary\nintact'),
+    failed('second', 'the provider returned 500'),
+  ])
+  assert.strictEqual(model.panels[1].state, 'errored')
+  assert.strictEqual(model.panels[1].error, 'the provider returned 500')
+  // Still pending: the run never reached it, which is not the same as it failing.
+  assert.strictEqual(model.panels[2].state, 'pending')
+})
+
+test('a node the branch skipped reads as skipped, not as empty', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    { ...output('second', ''), status: 'skipped' },
+  ])
+  assert.strictEqual(model.panels[1].state, 'skipped')
+  assert.strictEqual(model.panels[1].error, undefined)
+})
+
+test('a node that succeeded with an unresolvable socket is still empty', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('first', 'prose with no Summary heading at all'),
+  ])
+  assert.strictEqual(model.panels[0].state, 'empty')
+})
+
+test('a loop round that errored reads as errored on its own row', () => {
+  const ports: ChainPort[] = [{ name: 'draft', node: 'body', socket: 'output' }]
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: ports }), [
+    output('body', 'round one', 0),
+    { ...output('body', '', 1), status: 'error', error: 'context length exceeded' },
+  ])
+  assert.deepStrictEqual(model.panels.map(p => p.state), ['filled', 'errored'])
+  assert.strictEqual(model.panels[1].error, 'context length exceeded')
+})

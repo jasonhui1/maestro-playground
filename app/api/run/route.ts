@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     runId,
     chainName: runTitle,
     seedPrompt,
+    parameter: chain.parameter && paramValue ? { name: chain.parameter.name, value: paramValue } : undefined,
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],

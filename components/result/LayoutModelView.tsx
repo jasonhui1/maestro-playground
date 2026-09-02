@@ -36,10 +36,10 @@ export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEF
       selectedCount={deck.selected.length}
       onCompare={() => setComparing(true)}
     >
-      {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} fit={fit} />}
-      {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} fit={fit} />}
+      {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} fit={fit} status={frame.status} />}
+      {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} fit={fit} status={frame.status} />}
       {/* `sidebar` is a list beside a pane, not a row of panels, so no fit applies. */}
-      {model.kind === 'sidebar' && <Sidebar panels={model.panels} deck={deck} />}
+      {model.kind === 'sidebar' && <Sidebar panels={model.panels} deck={deck} status={frame.status} />}
       {model.kind === 'undeclared' && fallback}
       {comparing && (
         <CompareOverlay panels={model.panels} deck={deck} onClose={() => setComparing(false)} />

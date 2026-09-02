@@ -136,8 +136,12 @@ function RunDetail({ run }: { run: RunMeta }) {
     chain: resultChain,
     seed: { kind: 'log' },
     states: overlay,
+    parameter: run.parameter,
     startedAt: new Date(run.startedAt).getTime(),
-    endedAt: run.completedAt ? new Date(run.completedAt).getTime() : undefined,
+    // A reopened run has settled whatever its log says; without an end it would read
+    // as still running forever.
+    endedAt: new Date(run.completedAt ?? run.startedAt).getTime(),
+    requestError: run.status === 'error' ? 'this run failed — see the full log' : undefined,
     now: Date.now(),
   }) : null), [resultChain, overlay, run.startedAt, run.completedAt])
 

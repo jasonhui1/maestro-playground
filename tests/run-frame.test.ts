@@ -97,3 +97,52 @@ test('elapsed runs against the clock while the run is live, and freezes when it 
   const notStarted = buildRunFrame({ chain: chain(), seed: paste, states: {}, now: 9999 })
   assert.strictEqual(notStarted.elapsedMs, 0)
 })
+
+// The frame used to carry no status at all, so a run that died looked exactly like one
+// still working: a stopped counter and panels reading "waiting" (#65).
+test('a run is running until it has an end', () => {
+  const frame = buildRunFrame({ chain: chain(), seed: paste, states: {}, startedAt: 0, now: 5_000 })
+  assert.strictEqual(frame.status, 'running')
+  assert.strictEqual(frame.error, undefined)
+})
+
+test('a settled run with no failure is done', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, startedAt: 0, endedAt: 5_000, now: 9_000,
+    states: states({ first: { status: 'success', result: output(0.001) } }),
+  })
+  assert.strictEqual(frame.status, 'done')
+})
+
+test('a node failure fails the run and the frame carries its message', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, startedAt: 0, endedAt: 5_000, now: 9_000,
+    states: states({ first: { status: 'error', result: { ...output(0), status: 'error', error: 'the provider returned 500' } } }),
+  })
+  assert.strictEqual(frame.status, 'failed')
+  assert.strictEqual(frame.error, 'the provider returned 500')
+})
+
+// A request that never reached a node has no node state to read the failure from.
+test('a request error fails the run on its own', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, states: {}, startedAt: 0, endedAt: 1_000, now: 1_000,
+    requestError: 'Invalid chain',
+  })
+  assert.strictEqual(frame.status, 'failed')
+  assert.strictEqual(frame.error, 'Invalid chain')
+})
+
+test('the frame echoes the parameter the run was launched with', () => {
+  const frame = buildRunFrame({
+    chain: chain({ parameter: { name: 'target audience', options: ['a compiler'], node: 'audience' } }),
+    seed: paste, states: {}, now: 0,
+    parameter: { name: 'target audience', value: 'a compiler' },
+  })
+  assert.deepStrictEqual(frame.parameter, { name: 'target audience', value: 'a compiler' })
+})
+
+test('a run launched without a parameter says nothing about one', () => {
+  const frame = buildRunFrame({ chain: chain(), seed: paste, states: {}, now: 0 })
+  assert.strictEqual(frame.parameter, undefined)
+})

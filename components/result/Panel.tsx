@@ -1,7 +1,9 @@
 'use client'
 import type { CSSProperties } from 'react'
 import type { LayoutPanel } from '@/lib/layoutModel'
-import { previewOf, PANEL_PREVIEW_LINES, EMPTY_PANEL_COPY, type PanelHandle } from '@/lib/panelDeck'
+import { previewOf, PANEL_PREVIEW_LINES, type PanelHandle } from '@/lib/panelDeck'
+import { noticeFor } from '@/lib/panelCopy'
+import type { RunStatus } from '@/lib/runFrame'
 import { TYPE } from '@/lib/resultType'
 import { Markdown } from '@/components/ui/Markdown'
 import { CopyButton } from '@/components/result/CopyButton'
@@ -12,15 +14,17 @@ import { CopyButton } from '@/components/result/CopyButton'
  * without opening it. A gutter rule separates it from its neighbours — a border would
  * make content look like the chrome around it.
  */
-export function Panel({ panel, handle, style, className = '' }: {
+export function Panel({ panel, handle, status, style, className = '' }: {
   panel: LayoutPanel
   handle: PanelHandle
+  status: RunStatus
   style?: CSSProperties
   className?: string
 }) {
   const { open, selected, onOpen, onToggleSelect } = handle
   const emphasised = panel.emphasis !== undefined
   const preview = previewOf(panel.text, PANEL_PREVIEW_LINES)
+  const notice = noticeFor(panel, status)
 
   return (
     <div
@@ -69,8 +73,7 @@ export function Panel({ panel, handle, style, className = '' }: {
             )}
           </div>
         )}
-        {panel.state === 'pending' && <span className={`${TYPE.ui} text-zinc-300 italic`}>waiting</span>}
-        {panel.state === 'empty' && <span className={`${TYPE.ui} text-amber-600`}>{EMPTY_PANEL_COPY}</span>}
+        {notice && <span className={`${TYPE.ui} ${notice.tone}`}>{notice.text}</span>}
         {panel.state === 'filled' && preview.truncated && (
           <span className={`mt-auto ${TYPE.metric} text-zinc-400`}>
             {open ? 'close' : `read all ${panel.lines} lines`}

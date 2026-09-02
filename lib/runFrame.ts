@@ -5,12 +5,24 @@ import { RunStateMap } from './runState'
  *  `log` for a past run reopened from history, which never recorded which one it was (#72). */
 export type SeedSource = { kind: 'paste' } | { kind: 'file'; name: string } | { kind: 'log' }
 
+/**
+ * `running` — at least one node is still working, or none has finished.
+ * `done`    — the run settled and no node failed.
+ * `failed`  — the run settled and a node failed, or the request itself errored.
+ */
+export type RunStatus = 'running' | 'done' | 'failed'
+
 /** What is true of every run whatever shape its result reads in (#73). */
 export interface RunFrameModel {
   chainName: string
   /** The situation that should make you reach for this chain; `description` when unstated (ADR-0016). */
   moment: string
   seedSource: string
+  /** The dropdown the chain declared and what it was set to, when it declared one (#65). */
+  parameter?: { name: string; value: string }
+  status: RunStatus
+  /** Why the run failed — the engine's message, or the request error. */
+  error?: string
   elapsedMs: number
   costUsd: number
 }
@@ -22,6 +34,14 @@ function costOf(states: RunStateMap): number {
     if (s.rounds.length > 0) return sum + s.rounds.reduce((r, x) => r + x.metrics.costUsd, 0)
     return sum + (s.result?.costUsd ?? 0)
   }, 0)
+}
+
+/** The first failure the run reported, whichever node carried it. */
+function failureOf(states: RunStateMap): string | undefined {
+  for (const s of Object.values(states)) {
+    if (s.status === 'error') return s.result?.error || 'the run failed'
+  }
+  return undefined
 }
 
 /**
@@ -38,13 +58,28 @@ export function buildRunFrame(input: {
   startedAt?: number
   endedAt?: number
   now: number
+  /** The chain's declared dropdown and its value. A live run reads it from the chain it
+   *  is about to run; a reopened run reads it from the log, which recorded both (#65). */
+  parameter?: { name: string; value: string }
+  /** A failure the run never got far enough to report through a node. */
+  requestError?: string
 }): RunFrameModel {
-  const { chain, seed, states, startedAt, endedAt, now } = input
-  return {
+  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError } = input
+  const nodeFailure = failureOf(states)
+  const error = requestError ?? nodeFailure
+  // A run is live until it has an end: `endedAt` is what the caller sets when the
+  // stream closes, however it closed.
+  const status: RunStatus = endedAt === undefined ? 'running' : error ? 'failed' : 'done'
+
+  const frame: RunFrameModel = {
     chainName: chain.name,
     moment: chain.moment || chain.description,
     seedSource: seed.kind === 'file' ? seed.name : seed.kind === 'log' ? 'the run\'s recorded seed' : 'pasted text',
+    status,
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
     costUsd: costOf(states),
   }
+  if (error) frame.error = error
+  if (parameter) frame.parameter = parameter
+  return frame
 }

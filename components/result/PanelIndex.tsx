@@ -1,6 +1,8 @@
 'use client'
 import type { LayoutPanel } from '@/lib/layoutModel'
-import { leadLineOf, EMPTY_PANEL_COPY, type PanelHandle } from '@/lib/panelDeck'
+import { leadLineOf, type PanelHandle } from '@/lib/panelDeck'
+import { noticeFor } from '@/lib/panelCopy'
+import type { RunStatus } from '@/lib/runFrame'
 import { TYPE } from '@/lib/resultType'
 import { CopyButton } from '@/components/result/CopyButton'
 
@@ -9,15 +11,17 @@ import { CopyButton } from '@/components/result/CopyButton'
  * opens with, and how much it says. Reading happens in the pane below at full measure,
  * so the entry stays legible whether the chain declared three panels or fifteen.
  */
-export function PanelIndex({ panel, handle, share }: {
+export function PanelIndex({ panel, handle, status, share }: {
   panel: LayoutPanel
   handle: PanelHandle
+  status: RunStatus
   /** This panel's volume against the largest in the set, 0–1. */
   share: number
 }) {
   const { open, selected, onOpen, onToggleSelect } = handle
   const emphasised = panel.emphasis !== undefined
   const lead = panel.state === 'filled' ? leadLineOf(panel.text) : ''
+  const notice = noticeFor(panel, status)
 
   return (
     <div
@@ -71,10 +75,7 @@ export function PanelIndex({ panel, handle, share }: {
             </div>
           </>
         )}
-        {panel.state === 'pending' && <span className={`${TYPE.ui} text-zinc-300 italic`}>waiting</span>}
-        {panel.state === 'empty' && (
-          <span className={`${TYPE.ui} text-amber-600 leading-snug`}>{EMPTY_PANEL_COPY}</span>
-        )}
+        {notice && <span className={`${TYPE.ui} ${notice.tone} leading-snug`}>{notice.text}</span>}
       </div>
     </div>
   )
