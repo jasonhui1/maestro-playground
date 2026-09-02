@@ -25,7 +25,7 @@ function ChainList({ rows, selected, onSelect }: {
 }) {
   return (
     <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
-      {rows.map(({ chain, note, pinned }) => (
+      {rows.map(({ chain, note, pinned, panels }) => (
         <label
           key={chain.slug}
           className="flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5 cursor-pointer
@@ -44,8 +44,11 @@ function ChainList({ rows, selected, onSelect }: {
           <span className="flex min-w-0 flex-col">
             <span className="text-sm text-zinc-800">{chain.name}</span>
             <span className={`${TYPE.ui} leading-snug text-zinc-500`}>{note}</span>
-            {pinned.length > 0 && (
-              <span className={`${TYPE.ui} leading-snug text-zinc-600`}>{reads(pinned)}</span>
+            {(pinned.length > 0 || !panels) && (
+              <span className={`${TYPE.ui} leading-snug text-zinc-600`}>
+                {[pinned.length > 0 ? reads(pinned) : null, panels ? null : 'runs as a trace']
+                  .filter(Boolean).join(' · ')}
+              </span>
             )}
           </span>
         </label>
@@ -175,22 +178,16 @@ export function LaunchForm({
         {groups.shown === 0 ? (
           <p className="text-sm text-zinc-600">no chain matches “{query}” — clear the filter to see all {groups.total}.</p>
         ) : (
-          <>
-            {groups.panels.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <span className={`${TYPE.ui} text-zinc-600`}>reads in this view</span>
-                <ChainList rows={groups.panels} selected={chainSlug} onSelect={pick} />
-              </div>
-            )}
-            {groups.trace.length > 0 && (
-              <div className="flex flex-col gap-1">
-                {/* Named by what comes back, so a chain declaring no view is not offered
-                    as though it drew panels (ADR-0015). */}
-                <span className={`${TYPE.ui} text-zinc-600`}>runs as a trace — these chains declare no view</span>
-                <ChainList rows={groups.trace} selected={chainSlug} onSelect={pick} />
-              </div>
-            )}
-          </>
+          groups.groups.map(group => (
+            <div key={group.heading} className="flex flex-col gap-1">
+              <span className={`${TYPE.ui} text-zinc-600`}>{group.heading}</span>
+              {group.rows.length === 0 ? (
+                <p className={`${TYPE.ui} px-2 text-zinc-500`}>no chain declares this yet</p>
+              ) : (
+                <ChainList rows={group.rows} selected={chainSlug} onSelect={pick} />
+              )}
+            </div>
+          ))
         )}
       </fieldset>
     </form>

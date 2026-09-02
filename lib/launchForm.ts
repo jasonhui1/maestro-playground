@@ -33,22 +33,37 @@ export interface ChainRow {
   note: string
   /** The files it reads in place of a seed; empty when the run supplies one. */
   pinned: string[]
+  /** False when the chain declares no layout — the run trace is what comes back. */
+  panels: boolean
+}
+
+export interface PurposeGroup {
+  heading: string
+  rows: ChainRow[]
 }
 
 export interface ChainGroups {
-  /** Chains that draw the panels they declare. */
-  panels: ChainRow[]
-  /** Chains declaring no layout — the run trace is what comes back. */
-  trace: ChainRow[]
+  groups: PurposeGroup[]
   total: number
   shown: number
 }
+
+/** The four picker headings, rendered whether or not they have members; a chain
+ *  declaring no purpose sits under the fourth rather than inside one it never chose
+ *  (ADR-0016 rule 1). */
+const PURPOSE_HEADINGS: { heading: string; purpose?: ChainDef['purpose'] }[] = [
+  { heading: '洞見 (insight)', purpose: 'insight' },
+  { heading: '產出 (production)', purpose: 'production' },
+  { heading: '壓力測試 (stress-test)', purpose: 'stress-test' },
+  { heading: 'unclassified' },
+]
 
 function rowFor(chain: ChainDef): ChainRow {
   return {
     chain,
     note: chain.moment || chain.description,
     pinned: declaresSeed(chain) ? [] : pinnedFiles(chain),
+    panels: drawsPanels(chain),
   }
 }
 
@@ -59,15 +74,17 @@ function matches(chain: ChainDef, query: string): boolean {
     .some(field => (field ?? '').toLowerCase().includes(q))
 }
 
-/** The picker's two groups, filtered by what the reader typed. */
+/** The picker's purpose groups, filtered by what the reader typed. */
 export function groupChains(chains: ChainDef[], query = ''): ChainGroups {
-  const panels: ChainRow[] = []
-  const trace: ChainRow[] = []
-  for (const chain of chains) {
-    if (!matches(chain, query)) continue
-    ;(drawsPanels(chain) ? panels : trace).push(rowFor(chain))
+  const rows = chains.filter(c => matches(c, query)).map(rowFor)
+  return {
+    groups: PURPOSE_HEADINGS.map(({ heading, purpose }) => ({
+      heading,
+      rows: rows.filter(r => (purpose ? r.chain.purpose === purpose : !r.chain.purpose)),
+    })),
+    total: chains.length,
+    shown: rows.length,
   }
-  return { panels, trace, total: chains.length, shown: panels.length + trace.length }
 }
 
 /** Why Run is unavailable, named as the thing that is missing. A disabled control
