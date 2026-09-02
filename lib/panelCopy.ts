@@ -17,7 +17,7 @@ const NOTICE: Record<Exclude<PanelState, 'filled'>, PanelNotice> = {
   empty: { text: 'nothing survived — this hop dropped the section the chain asked it for', tone: 'text-amber-600' },
   errored: { text: 'this hop failed', tone: 'text-red-600' },
   skipped: { text: 'skipped — the branch went the other way', tone: 'text-zinc-400' },
-  pending: { text: 'waiting', tone: 'text-zinc-300' },
+  pending: { text: 'waiting', tone: 'text-zinc-500' },
 }
 
 /**

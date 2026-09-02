@@ -3,14 +3,15 @@
 /** A labelled row of mutually exclusive options, shared by the result page and a run
  *  reopened from history so the two surfaces cannot drift. */
 export function OptionSwitch<T extends string>({ label, options, value, onChange }: {
-  label: string
+  /** Absent where the group already sits under a heading that names it. */
+  label?: string
   options: { id: T; label: string }[]
   value: T
   onChange: (next: T) => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1 text-xs">
-      <span className="text-zinc-400 mr-1">{label}</span>
+      {label && <span className="text-zinc-500 mr-1">{label}</span>}
       {options.map(o => (
         <button
           key={o.id}

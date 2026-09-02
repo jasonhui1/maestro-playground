@@ -2,8 +2,13 @@ import { ChainDef } from './types'
 import { RunStateMap } from './runState'
 
 /** Where the run's seed came from — the two shapes the result view offers (#66), plus
- *  `log` for a past run reopened from history, which never recorded which one it was (#72). */
-export type SeedSource = { kind: 'paste' } | { kind: 'file'; name: string } | { kind: 'log' }
+ *  `log` for a past run reopened from history, which never recorded which one it was (#72),
+ *  and `pinned` for a chain that declares no seed node and reads its own files instead. */
+export type SeedSource =
+  | { kind: 'paste' }
+  | { kind: 'file'; name: string }
+  | { kind: 'log' }
+  | { kind: 'pinned'; files: string[] }
 
 /**
  * `running` — at least one node is still working, or none has finished.
@@ -34,6 +39,15 @@ function costOf(states: RunStateMap): number {
     if (s.rounds.length > 0) return sum + s.rounds.reduce((r, x) => r + x.metrics.costUsd, 0)
     return sum + (s.result?.costUsd ?? 0)
   }, 0)
+}
+
+function describeSeed(seed: SeedSource): string {
+  switch (seed.kind) {
+    case 'file': return seed.name
+    case 'log': return 'the run\'s recorded seed'
+    case 'pinned': return seed.files.length > 0 ? `${seed.files.join(', ')} (pinned by the chain)` : 'the files the chain pins'
+    case 'paste': return 'pasted text'
+  }
 }
 
 /** The first failure the run reported, whichever node carried it. */
@@ -74,7 +88,7 @@ export function buildRunFrame(input: {
   const frame: RunFrameModel = {
     chainName: chain.name,
     moment: chain.moment || chain.description,
-    seedSource: seed.kind === 'file' ? seed.name : seed.kind === 'log' ? 'the run\'s recorded seed' : 'pasted text',
+    seedSource: describeSeed(seed),
     status,
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
     costUsd: costOf(states),

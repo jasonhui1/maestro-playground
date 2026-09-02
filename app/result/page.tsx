@@ -6,28 +6,29 @@ import { applyRunEvent, RunStateMap } from '@/lib/runState'
 import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel } from '@/lib/layoutModel'
 import { buildRunFrame, SeedSource } from '@/lib/runFrame'
+import { declaresSeed, pinnedFiles } from '@/lib/launchForm'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
 import { usePanelFit } from '@/hooks/usePanelFit'
+import { useLaunchMemory } from '@/hooks/useLaunchMemory'
 import { PANEL_FITS } from '@/lib/panelFit'
+import { CONTROL } from '@/lib/resultControls'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
+import { LaunchForm, ContextFile } from '@/components/result/LaunchForm'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { RunTrace } from '@/components/RunTrace'
-
-type ContextFile = { slug: string; name: string; rawContent?: string }
 
 export default function ResultPage() {
   const [chains, setChains] = useState<ChainDef[]>([])
   const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
-  const [chainSlug, setChainSlug] = useState('')
-  const [mode, setMode] = useState<'paste' | 'file'>('paste')
-  const [pasted, setPasted] = useState('')
-  const [fileSlug, setFileSlug] = useState('')
-  const [paramValue, setParamValue] = useState('')
+  // The chain, the seed and the parameter are the session; they survive a reload (#65).
+  const [launch, setLaunch] = useLaunchMemory()
+  const { chainSlug, mode, pasted, fileSlug, paramValue } = launch
   const [states, setStates] = useState<RunStateMap>({})
   const [order, setOrder] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [runId, setRunId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   // The frame and the layout describe the run that started, not the form as it now
   // stands — the form stays live while a finished result is still on screen (#73).
   const [run, setRun] = useState<{ chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string } | null>(null)
@@ -52,30 +53,17 @@ export default function ResultPage() {
         setChains(data.chains ?? [])
         setContextFiles(data.context ?? [])
       })
-      .catch(() => setError('Could not load the workspace'))
+      .catch(() => setLoadError('Could not load the workspace'))
   }, [])
 
   const chain = chains.find(c => c.slug === chainSlug)
-  // Grouped by declared purpose (#70, ADR-0016): the three purpose headings render
-  // whether or not they have members, and a chain declaring none sits under a plain
-  // fourth heading rather than being forced into a group it never chose.
-  const purposeGroups = useMemo(() => {
-    const groups: { heading: string; purpose: ChainDef['purpose'] }[] = [
-      { heading: '洞見 (insight)', purpose: 'insight' },
-      { heading: '產出 (production)', purpose: 'production' },
-      { heading: '壓力測試 (stress-test)', purpose: 'stress-test' },
-    ]
-    const withPurpose = groups.map(g => ({ heading: g.heading, chains: chains.filter(c => c.purpose === g.purpose) }))
-    const unclassified = { heading: 'unclassified', chains: chains.filter(c => !c.purpose) }
-    return [...withPurpose, unclassified]
-  }, [chains])
-  useEffect(() => { setParamValue('') }, [chainSlug])
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
-  const seedText = mode === 'paste' ? pasted : seedFile?.rawContent ?? ''
-  const seed: SeedSource = useMemo(
-    () => (mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }),
-    [mode, seedFile?.name],
-  )
+  const supplied = !chain || declaresSeed(chain)
+  const seedText = supplied ? (mode === 'paste' ? pasted : seedFile?.rawContent ?? '') : ''
+  const seed: SeedSource = useMemo(() => {
+    if (chain && !declaresSeed(chain)) return { kind: 'pinned', files: pinnedFiles(chain) }
+    return mode === 'paste' ? { kind: 'paste' } : { kind: 'file', name: seedFile?.name ?? 'a file' }
+  }, [chain, mode, seedFile?.name])
 
   // The run's completed outputs, keyed the way the layout model reads them. Panels fill
   // in as hops land, so the timeline builds up rather than appearing at the end.
@@ -83,23 +71,7 @@ export default function ResultPage() {
     () => Object.entries(states).flatMap(([nodeId, s]) => (s.result ? [{ ...s.result, nodeId }] : [])),
     [states],
   )
-  // Before a run there is nothing to project, but the chain has already declared its
-  // panels — so picking one shows the shape the result will read in, all `pending`.
-  const preview = chain ?? null
-  const model = useMemo(
-    () => (run ? buildLayoutModel(run.chain, outputs) : preview ? buildLayoutModel(preview, []) : null),
-    [run, outputs, preview],
-  )
-  const previewFrame = useMemo(
-    () => (!run && preview ? buildRunFrame({
-      chain: preview,
-      seed,
-      states: {},
-      now: 0,
-      parameter: preview.parameter && paramValue ? { name: preview.parameter.name, value: paramValue } : undefined,
-    }) : null),
-    [run, preview, seed, paramValue],
-  )
+  const model = useMemo(() => (run ? buildLayoutModel(run.chain, outputs) : null), [run, outputs])
   const frame = useMemo(
     () => (run ? buildRunFrame({
       ...run,
@@ -157,8 +129,7 @@ export default function ResultPage() {
     <button
       type="button"
       onClick={() => setFormOpen(true)}
-      className="rounded-lg border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-700
-        hover:bg-zinc-50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+      className={CONTROL.secondary}
     >
       change
     </button>
@@ -169,104 +140,23 @@ export default function ResultPage() {
   return (
     <div className="w-full max-w-[120rem] mx-auto px-6 py-4 flex flex-col gap-6">
       {!collapsed && (
-        <div className="flex items-baseline justify-between gap-4">
-          <h1 className="text-2xl font-semibold text-zinc-800">Result view</h1>
-          {switches}
-        </div>
+        <LaunchForm
+          chains={chains}
+          contextFiles={contextFiles}
+          launch={launch}
+          onChange={setLaunch}
+          seedText={seedText}
+          running={running}
+          loadError={loadError}
+          onRun={handleRun}
+          onCancel={run ? () => setFormOpen(false) : undefined}
+        />
       )}
 
-      {/* The rail names the chain and the seed, so a collapsed form restates nothing. */}
-      {collapsed ? null : (
-      <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6 max-w-4xl">
-        <div className="flex items-center gap-4">
-          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Input</span>
-          {(['paste', 'file'] as const).map(m => (
-            <label key={m} className="flex items-center gap-1.5 text-sm text-zinc-700 cursor-pointer">
-              <input type="radio" checked={mode === m} onChange={() => setMode(m)} className="accent-zinc-900" />
-              {m === 'paste' ? 'Paste text' : 'Pick a file'}
-            </label>
-          ))}
-        </div>
-
-        {mode === 'paste' ? (
-          <textarea
-            rows={6}
-            value={pasted}
-            onChange={e => setPasted(e.target.value)}
-            placeholder="Paste the text you want to put through the chain..."
-            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm resize-y focus:ring-2 focus:ring-zinc-900 outline-none"
-          />
-        ) : (
-          <select
-            value={fileSlug}
-            onChange={e => setFileSlug(e.target.value)}
-            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 outline-none"
-          >
-            <option value="">Choose a context file…</option>
-            {contextFiles.map(f => <option key={f.slug} value={f.slug}>{f.name}</option>)}
-          </select>
-        )}
-
-        <div className="flex flex-col gap-3">
-          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Chain</span>
-          {purposeGroups.map(group => (
-            <div key={group.heading} className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-zinc-400">{group.heading}</span>
-              <div className="flex flex-col gap-1">
-                {group.chains.map(c => (
-                  <label key={c.slug} className="flex items-start gap-2 text-sm text-zinc-700 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={chainSlug === c.slug}
-                      onChange={() => setChainSlug(c.slug)}
-                      className="mt-1 accent-zinc-900"
-                    />
-                    <span>
-                      <span className="font-medium">{c.name}</span>
-                      {(c.moment || c.description) && (
-                        <span className="text-zinc-400"> — {c.moment || c.description}</span>
-                      )}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {chain?.parameter && (
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">{chain.parameter.name}</span>
-            <select
-              value={paramValue}
-              onChange={e => setParamValue(e.target.value)}
-              className="self-start rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 outline-none"
-            >
-              <option value="">Choose {chain.parameter.name}…</option>
-              {chain.parameter.options.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-        )}
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleRun}
-            disabled={running || !chain || !seedText.trim() || Boolean(chain?.parameter && !paramValue)}
-            className="self-start rounded-lg bg-zinc-900 text-white px-8 py-2 text-sm font-medium
-              disabled:opacity-40 hover:bg-zinc-700 transition-colors outline-none
-              focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
-          >
-            {running ? 'Running...' : 'Run'}
-          </button>
-        </div>
-
-      </div>
-      )}
-
-      {(frame ?? previewFrame) && model && (
+      {frame && model && (
         <LayoutModelView
           model={model}
-          frame={(frame ?? previewFrame)!}
+          frame={frame}
           runId={runId}
           deck={deck}
           // A chain that declares no layout is shown as the run trace it has always had,
