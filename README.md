@@ -130,6 +130,31 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 
 ---
 
+## 🔌 API
+
+Endpoints an external client (e.g. the Obsidian plugin, `jasonhui1/obsidian-chain-runner`)
+can consume without reimplementing Maestro's chain/run logic.
+
+* **`GET /api/workspace`** — the full workspace: `{ agents, skills, chains, templates, tools, context, defaultsRaw }`.
+  Each `chains[]` entry is a `ChainDef`, including the fields a chain-picker needs:
+  `slug`, `name`, `purpose` (`'insight' | 'production' | 'stress-test'`, the picker's
+  heading group), `moment` (display-only subheading), and `parameter` (`{ name, options, node }`,
+  the chain's declared dropdown).
+* **`GET /api/runs`** — list of `RunMeta` across all runs, with optional query filters.
+* **`GET /api/runs/:runId`** — a single run's `RunMeta` (chain name, seed prompt, status, `agentOutputs`, etc). 404 JSON `{ error }` if the run doesn't exist.
+* **`GET /api/runs/:runId/layout`** — the `LayoutModel` (`{ kind, panels }`) the result view
+  renders for that run — the same structure-driven timeline/columns/sidebar projection
+  `lib/layoutModel.ts` computes, so a client never re-derives it from run meta + chain
+  definition. `kind` is `'timeline' | 'columns' | 'sidebar' | 'undeclared'` (the chain
+  declares no `view`, or the run's chain can no longer be resolved). Each panel carries
+  `name`, `text`, `lines`, `state` (`'pending' | 'empty' | 'errored' | 'skipped' | 'filled'`),
+  and optionally `emphasis`, `error`, `round`. A run still in progress returns panels in
+  `pending` state for nodes not yet reached. 404 JSON `{ error }` if the run doesn't exist.
+* **`GET /api/runs/:runId/export?format=markdown|json`** — the run rendered as a single document.
+* **`POST /api/run`** — start a run (SSE stream of `AgentOutput` events). Body: `{ chainName }` / `{ agentName }` / `{ chain, slug }` (inline graph), plus optional `seedPrompt` and `parameter`.
+
+---
+
 ## 🛠️ Getting Started
 
 ### Prerequisites

@@ -11,6 +11,11 @@ export type ResolvedRun =
   | { chain: ChainDef; title: string; kind: 'inline' | 'chain' | 'agent' }
   | { error: string; status: number }
 
+/** A run's chain by name, falling back to slug — the lookup a run's chainName is resolved by. */
+export function findChainForRun(chains: ChainDef[], chainName: string): ChainDef | undefined {
+  return chains.find(c => c.name === chainName) || chains.find(c => c.slug === chainName)
+}
+
 export function resolveRunChain(
   body: RunChainBody,
   ws: { agents: AgentDef[]; chains: ChainDef[] },
@@ -27,7 +32,7 @@ export function resolveRunChain(
     }
   }
   if (body.chainName) {
-    const found = ws.chains.find(c => c.name === body.chainName) || ws.chains.find(c => c.slug === body.chainName)
+    const found = findChainForRun(ws.chains, body.chainName)
     if (!found) return { error: 'Chain not found', status: 404 }
     return { kind: 'chain', title: found.name, chain: found }
   }

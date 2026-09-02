@@ -14,6 +14,7 @@ import { branchRun } from '@/lib/branchRun'
 import DockSplit from '@/components/workspace/DockSplit'
 import RunDock from '@/components/trace/RunDock'
 import { buildLayoutModel, isRenderableLayout } from '@/lib/layoutModel'
+import { findChainForRun } from '@/lib/resolveRunChain'
 import { buildRunFrame } from '@/lib/runFrame'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
 import { usePanelFit } from '@/hooks/usePanelFit'
@@ -25,11 +26,6 @@ type Fetched = { runId: string; run?: RunMeta; error?: string }
 
 // Every edit handler a read-only canvas is still required to be handed.
 const noop = () => {}
-
-// The same lookup /api/run uses to resolve a chainName (lib/resolveRunChain.ts).
-function chainForRun(chains: ChainDef[], chainName: string): ChainDef | undefined {
-  return chains.find(c => c.name === chainName) || chains.find(c => c.slug === chainName)
-}
 
 // The page is only a fetch gate: it holds no view state, so RunDetail below can
 // assume a loaded run and derive everything from it without null guards.
@@ -100,7 +96,7 @@ function RunDetail({ run }: { run: RunMeta }) {
         setAgents(data.agents || [])
         const loaded: ChainDef[] = data.chains || []
         setChains(loaded)
-        const chain = chainForRun(loaded, run.chainName)
+        const chain = findChainForRun(loaded, run.chainName)
         const model = chain ? buildLayoutModel(chain, run.agentOutputs) : null
         if (model && isRenderableLayout(model)) setViewMode('result')
       })
@@ -110,7 +106,7 @@ function RunDetail({ run }: { run: RunMeta }) {
 
   // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
   // chain's *current* declaration, not what it looked like when the run happened (#72).
-  const resultChain = useMemo(() => chainForRun(chains, run.chainName), [chains, run.chainName])
+  const resultChain = useMemo(() => findChainForRun(chains, run.chainName), [chains, run.chainName])
   const layoutModel = useMemo(
     () => (resultChain ? buildLayoutModel(resultChain, run.agentOutputs) : null),
     [resultChain, run.agentOutputs],
