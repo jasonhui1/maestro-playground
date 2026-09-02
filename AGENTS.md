@@ -15,9 +15,7 @@ When asked to brainstorm or idea generation, don't plan for implementation detai
 
 Always provide before/ after examples with purposed solutions. Define a core concept/ jargon list for your purposed solution.
 
-When asked for clarification/ feel confused/ try to understand, drop all the abstractions and just walk through one run as example. Always speak with an example to show visual examples along with text if possible.
-
-Design decisions follow **walkthrough-then-confirm**: present a proposal as a concrete walkthrough (one run, traced end to end, showing each decision at the moment it acts), then WAIT for my explicit confirmation before recording it as settled in any doc (design maps, vision.md, plans). Never mark a decision settled in the same message that first proposes it. When I push back or ask "why", treat it as the design conversation, not an obstacle — the pushback often improves the design.
+Always speak with an example to show visual examples along with text if possible.
 
 ## Agent skills
 
