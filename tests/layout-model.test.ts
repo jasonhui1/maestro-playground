@@ -42,6 +42,15 @@ test('a declared timeline projects run outputs onto the panels the chain names',
   assert.deepStrictEqual(model.panels.map(p => p.state), ['filled', 'filled', 'filled'])
 })
 
+// A live view overlays tokens onto the panel that is writing, and token events carry a
+// nodeId — so the panel has to name its node rather than be matched by label (ADR-0017).
+test('a panel names the node its port binds to', () => {
+  const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('first', 'alpha'),
+  ])
+  assert.deepStrictEqual(model.panels.map(p => p.node), ['first', 'second', 'third'])
+})
+
 // Panel order is the chain's declaration, not the run's arrival order or the graph's.
 test('panels follow the declared order, whatever order the outputs arrived in', () => {
   const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [

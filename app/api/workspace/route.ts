@@ -3,12 +3,13 @@ import { loadWorkspace, resolveEntityPath, resolveFolderPath, sanitizeSlug, sani
 import { createWorkspaceEntity, createWorkspaceFolder, saveWorkspaceEntity } from '@/lib/fs/save'
 import { buildChainFromTemplate } from '@/lib/fs/forkChain'
 import { chainToData } from '@/lib/serializeChain'
+import { CAPABILITIES } from '@/lib/capabilities'
 import fs from 'fs'
 
 export async function GET() {
   try {
     const workspace = loadWorkspace()
-    return NextResponse.json(workspace)
+    return NextResponse.json({ ...workspace, capabilities: CAPABILITIES })
   } catch (err: unknown) {
     const error = err as Error
     return NextResponse.json({ error: error.message }, { status: 500 })

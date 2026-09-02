@@ -6,6 +6,7 @@ import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput, AgentDef, ChainDef } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
+import { buildLayoutModel } from '@/lib/layoutModel'
 import { nanoid } from 'nanoid'
 import path from 'path'
 
@@ -57,6 +58,14 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const send = (data: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
 
+      // The panels a client draws, rebuilt from the outputs so far and sent on every
+      // hop — a view drawing mid-run reads the same projection the finished run does,
+      // rather than porting the rule (#76). Replayed branch outputs seed it: the
+      // executor hands those straight to the graph without an onDone.
+      const soFar: AgentOutput[] = [...((branchOutputs as AgentOutput[]) ?? [])]
+      const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(theChain, soFar) })
+      sendLayout()
+
       let step = 0
       const stepOf = new Map<string, number>()
       const nameOf = new Map<string, string>()
@@ -87,6 +96,8 @@ export async function POST(req: NextRequest) {
               writeAgentLog(runId, s, output)
               loggedOf.set(nodeId, { step: s, output })
               send({ type: 'agent_done', agentName: output.agentName, nodeId, step: s, output, kind: kindById.get(nodeId) })
+              soFar.push({ ...output, nodeId })
+              sendLayout()
             },
             onToolEvent: (nodeId, event) => {
               send({ ...event, nodeId, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })

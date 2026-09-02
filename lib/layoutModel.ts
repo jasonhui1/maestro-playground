@@ -19,6 +19,9 @@ export type PanelState = 'pending' | 'empty' | 'errored' | 'skipped' | 'filled'
 export interface LayoutPanel {
   /** The chain's public name for this output, shown as the panel's label. */
   name: string
+  /** The inner node this panel's port binds to — what a live token event is keyed by,
+   *  so a streaming view can overlay tokens without matching on the display name (#76). */
+  node: string
   /** What travelled on this socket — the same text the engine handed downstream. */
   text: string
   /** Content volume the view scales the panel by; 0 unless `filled`. */
@@ -68,7 +71,7 @@ function stateOf(output: AgentOutput | undefined, text: string): PanelState {
 function panelFor(port: ChainPort, output: AgentOutput | undefined, name = port.name): LayoutPanel {
   const text = contentOf(output, port.socket)
   const state = stateOf(output, text)
-  const panel: LayoutPanel = { name, text, lines: lineCount(text), state }
+  const panel: LayoutPanel = { name, node: port.node, text, lines: lineCount(text), state }
   if (state === 'errored' && output?.error) panel.error = output.error
   if (port.role === 'join') panel.emphasis = 'join'
   return panel

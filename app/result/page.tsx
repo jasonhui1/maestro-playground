@@ -4,7 +4,7 @@ import { ChainDef, AgentOutput } from '@/lib/types'
 import { streamRun, runErrorMessage } from '@/lib/runStream'
 import { applyRunEvent, RunStateMap } from '@/lib/runState'
 import { applyOrder } from '@/lib/runModel'
-import { buildLayoutModel } from '@/lib/layoutModel'
+import { buildLayoutModel, LayoutModel } from '@/lib/layoutModel'
 import { buildRunFrame, SeedSource } from '@/lib/runFrame'
 import { declaresSeed, pinnedFiles } from '@/lib/launchForm'
 import { usePanelDeck } from '@/hooks/usePanelDeck'
@@ -33,6 +33,11 @@ export default function ResultPage() {
   // stands — the form stays live while a finished result is still on screen (#73).
   const [run, setRun] = useState<{ chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string } | null>(null)
   const [endedAt, setEndedAt] = useState<number | null>(null)
+  // The engine's own projection, sent per hop. It reads the outputs as an array, so a
+  // loop body's earlier rounds survive; the local build below keys by node and can only
+  // show the last write (#76). Null until the first frame, and for a run that never
+  // streamed one (a branch replayed from history).
+  const [streamedModel, setStreamedModel] = useState<LayoutModel | null>(null)
   const [now, setNow] = useState(0)
   const deck = usePanelDeck()
   const [fit, setFit] = usePanelFit()
@@ -71,7 +76,8 @@ export default function ResultPage() {
     () => Object.entries(states).flatMap(([nodeId, s]) => (s.result ? [{ ...s.result, nodeId }] : [])),
     [states],
   )
-  const model = useMemo(() => (run ? buildLayoutModel(run.chain, outputs) : null), [run, outputs])
+  const localModel = useMemo(() => (run ? buildLayoutModel(run.chain, outputs) : null), [run, outputs])
+  const model = streamedModel ?? localModel
   const frame = useMemo(
     () => (run ? buildRunFrame({
       ...run,
@@ -91,6 +97,7 @@ export default function ResultPage() {
     setStates({})
     setOrder([])
     setRunId(null)
+    setStreamedModel(null)
     setError(null)
     deck.reset()
     setFormOpen(false)
@@ -108,6 +115,7 @@ export default function ResultPage() {
       const reader = res.body?.getReader()
       if (!reader) return
       await streamRun(reader, e => {
+        if (e.type === 'layout') { setStreamedModel(e.model); return }
         if (e.type === 'error') { setError(e.error); return }
         if (e.type === 'run_complete') { setRunId(e.runId); return }
         setStates(prev => applyRunEvent(prev, e))

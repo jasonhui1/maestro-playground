@@ -1,5 +1,6 @@
 import { AgentOutput, ChainNode } from './types'
 import type { SectionWarning } from './sectionWarning'
+import type { LayoutModel } from './layoutModel'
 
 // Optional: a replayed branch output can carry a synthetic nodeId absent from
 // the graph, so its kind is unknowable (#35).
@@ -14,6 +15,9 @@ export type RunEvent =
   | { type: 'tool_result'; nodeId: string; step?: number; kind?: NodeKind; turn: number; name: string; result: string; latencyMs: number; isError: boolean }
   // nodeId is the producer: the warning lands on the output that lacked the section (#37).
   | { type: 'section_missing'; nodeId: string; step?: number; kind?: NodeKind; warning: SectionWarning }
+  // The panels as they stand, re-sent whenever a hop lands. The engine owns the
+  // projection so a streaming view never re-implements it (#76).
+  | { type: 'layout'; model: LayoutModel }
   | { type: 'run_complete'; runId: string }
   | { type: 'error'; error: string }
 

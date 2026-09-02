@@ -1,10 +1,15 @@
 {
-  "latestVersion": 1,
+  "latestVersion": 2,
   "versions": [
     {
       "version": 1,
       "timestamp": "2026-09-01T15:57:44.827Z",
       "hash": "1d4084c1682a41f1fbf06be3d6e8be43"
+    },
+    {
+      "version": 2,
+      "timestamp": "2026-09-02T15:23:47.124Z",
+      "hash": "5a41ffdb2092b1c017c1484c7d6e40cb"
     }
   ]
 }

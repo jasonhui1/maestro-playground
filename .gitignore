@@ -49,6 +49,7 @@ next-env.d.ts
 
 workspace/context
 workspace/skills
+workspace/.versions
 
 .superpowers/
 docs/maestro/
