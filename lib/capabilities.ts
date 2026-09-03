@@ -8,6 +8,11 @@
 export const CAPABILITIES = {
   /** `/api/run` streams `{ type: 'layout', model }` frames, and every panel carries `node`. */
   runLayoutFrames: true,
+  /** `/api/run` emits `{ type: 'run_start', runId }` as the first event of the stream. */
+  runStartEvent: true,
+  /** A failed run streams a final `layout` frame — pending panels `errored`, each
+   *  carrying the message — before its `error` event. */
+  runFailureFrame: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

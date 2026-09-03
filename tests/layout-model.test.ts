@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildLayoutModel, isRenderableLayout } from '../lib/layoutModel'
+import { buildLayoutModel, failLayoutModel, isRenderableLayout } from '../lib/layoutModel'
 import type { AgentOutput, ChainDef, ChainPort } from '../lib/types'
 
 function chain(over: Partial<ChainDef> = {}): ChainDef {
@@ -283,4 +283,28 @@ test('a loop round that errored reads as errored on its own row', () => {
   ])
   assert.deepStrictEqual(model.panels.map(p => p.state), ['filled', 'errored'])
   assert.strictEqual(model.panels[1].error, 'context length exceeded')
+})
+
+test('a run that died before a hop leaves every panel errored, carrying its message', () => {
+  const live = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [])
+  const model = failLayoutModel(live, 'ANTHROPIC_API_KEY is not set')
+  assert.deepStrictEqual(model.panels.map(p => p.state), ['errored', 'errored', 'errored'])
+  assert.ok(model.panels.every(p => p.error === 'ANTHROPIC_API_KEY is not set'))
+})
+
+test('a failure frame leaves settled panels alone and keeps each node its own message', () => {
+  const live = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [
+    output('first', '## Summary\nintact'),
+    failed('second', 'the provider returned 500'),
+  ])
+  const model = failLayoutModel(live, 'the run was aborted')
+  assert.deepStrictEqual(model.panels.map(p => p.state), ['filled', 'errored', 'errored'])
+  assert.strictEqual(model.panels[1].error, 'the provider returned 500')
+  assert.strictEqual(model.panels[2].error, 'the run was aborted')
+})
+
+test('a chain with no declared layout has no panels to fail', () => {
+  const model = failLayoutModel(buildLayoutModel(chain(), []), 'boom')
+  assert.strictEqual(model.kind, 'undeclared')
+  assert.deepStrictEqual(model.panels, [])
 })

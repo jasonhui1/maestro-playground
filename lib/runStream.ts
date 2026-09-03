@@ -7,6 +7,7 @@ import type { LayoutModel } from './layoutModel'
 type NodeKind = ChainNode['kind']
 
 export type RunEvent =
+  | { type: 'run_start'; runId: string }
   | { type: 'agent_start'; nodeId: string; agentName: string; step: number; kind?: NodeKind }
   | { type: 'token'; nodeId: string; agentName?: string; token: string; tokenType?: string; step?: number; kind?: NodeKind; turn?: number }
   | { type: 'agent_done'; nodeId: string; agentName: string; step: number; output: AgentOutput; kind?: NodeKind }

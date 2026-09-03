@@ -10,7 +10,8 @@ export type LayoutKind = DeclaredView | 'undeclared'
 /**
  * `pending` — the run has not reached this node yet.
  * `empty`   — it ran, and this socket resolved to nothing (ADR-0015).
- * `errored` — the node failed; nothing reached this socket because nothing was produced.
+ * `errored` — nothing reached this socket because nothing was produced: the node
+ *              failed, or the run died before reaching it (#77).
  * `skipped` — control flow went the other way and the node never ran.
  * `filled`  — there is content.
  */
@@ -126,6 +127,26 @@ export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[]): Layou
   if (chain.view === 'sidebar') return { kind: 'sidebar', panels: panelsForSidebar(ports, outputs) }
 
   return UNDECLARED
+}
+
+/**
+ * The same panels, as a failed run leaves them: everything still `pending` moves to
+ * `errored` carrying the run's message.
+ *
+ * A run that dies before a hop produces no output to derive a panel state from, so
+ * without this the last frame a client holds says `pending` forever and it has to read
+ * the run-level error to know better — which is the client inferring panel meaning, the
+ * thing the projection exists to prevent (#77). The distinction between "this node
+ * failed" and "the run never got there" stays legible in the message rather than in a
+ * separate state, because a new `PanelState` is silent on arrival to an older client.
+ */
+export function failLayoutModel(model: LayoutModel, error: string): LayoutModel {
+  return {
+    kind: model.kind,
+    panels: model.panels.map(p =>
+      p.state === 'pending' ? { ...p, state: 'errored' as const, error } : p
+    ),
+  }
 }
 
 /**

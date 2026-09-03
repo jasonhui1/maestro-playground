@@ -6,7 +6,7 @@ import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput, AgentDef, ChainDef } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
-import { buildLayoutModel } from '@/lib/layoutModel'
+import { buildLayoutModel, failLayoutModel } from '@/lib/layoutModel'
 import { nanoid } from 'nanoid'
 import path from 'path'
 
@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+
+      send({ type: 'run_start', runId })
 
       // The panels a client draws, rebuilt from the outputs so far and sent on every
       // hop — a view drawing mid-run reads the same projection the finished run does,
@@ -121,6 +123,9 @@ export async function POST(req: NextRequest) {
         send({ type: 'run_complete', runId })
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
+        // The panels first, then the run-level event: a client draws the frame it is
+        // sent rather than copying this message onto panels itself (#77).
+        send({ type: 'layout', model: failLayoutModel(buildLayoutModel(theChain, soFar), errorMessage) })
         send({ type: 'error', error: errorMessage })
         updateRunMeta(runId, { status: 'error' })
       } finally {
