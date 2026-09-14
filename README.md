@@ -151,12 +151,7 @@ can consume without reimplementing Maestro's chain/run logic.
   and optionally `emphasis`, `error`, `round`. A run still in progress returns panels in
   `pending` state for nodes not yet reached. 404 JSON `{ error }` if the run doesn't exist.
 * **`GET /api/runs/:runId/export?format=markdown|json`** — the run rendered as a single document.
-* **`POST /api/run`** — start a run (SSE stream of `AgentOutput` events). Body: `{ chainName }` / `{ agentName }` / `{ chain, slug }` (inline graph), plus optional `seedPrompt` and `parameter`.
-* **`PUT /api/context/:slug`** — write a context file wholesale. Body is the raw text,
-  written as-is to `workspace/context/<slug>.md` (created if missing, overwritten if
-  not). `slug` must be a single path segment — a `/`, `\`, or empty slug 400s. Exists
-  so a client outside the vault (e.g. the Obsidian plugin editing the canon file) never
-  needs the full workspace entity API just to overwrite one context file.
+* **`POST /api/run`** — start a run (SSE stream of `AgentOutput` events). Body: `{ chainName }` / `{ agentName }` / `{ chain, slug }` (inline graph), plus optional `seedPrompt`, `parameter`, and `context` — a `{ [contextFile]: text }` map. Any `context` node whose `file` is a key in that map uses the supplied text instead of reading `workspace/context/<file>.md`, so a client holding the live copy elsewhere (e.g. a canon note in an Obsidian vault) never needs this repo to keep its own synced copy. A `context` node whose file is neither overridden nor found on disk still injects `[context <file> not found]`, same as before this existed.
 
 ---
 

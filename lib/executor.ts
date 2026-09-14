@@ -24,8 +24,12 @@ export interface RunCallbacks {
   onWarning?: (warning: SectionWarning) => void
 }
 
-function makeContextReader(workspacePath: string) {
+// A request-supplied value wins over the workspace file (#79 follow-up): a client
+// that already holds the live copy (e.g. a vault note) shouldn't need this repo to
+// carry its own synced copy just to run a chain.
+function makeContextReader(workspacePath: string, overrides: Record<string, string> = {}) {
   return (file: string): string => {
+    if (file in overrides) return overrides[file].trim()
     const p = findBySlug(path.join(workspacePath, 'context'), file)
     if (!p) return `[context ${file} not found]`
     const { content } = matter(fs.readFileSync(p, 'utf-8'))
@@ -51,12 +55,13 @@ export async function runChainGraph(
   tools: ToolDef[] = [],
   depth = 0,
   paramValue = '',
+  contextOverrides: Record<string, string> = {},
 ): Promise<AgentOutput[]> {
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
-  const readContext = makeContextReader(workspacePath)
+  const readContext = makeContextReader(workspacePath, contextOverrides)
 
   const nodeOutputs = new Map<string, AgentOutput>()
 
@@ -308,7 +313,7 @@ export async function runChainGraph(
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
           },
-          runFn, innerStart, chains, tools, depth + 1, paramValue,
+          runFn, innerStart, chains, tools, depth + 1, paramValue, contextOverrides,
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()

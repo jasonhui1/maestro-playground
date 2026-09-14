@@ -12,7 +12,7 @@ import path from 'path'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs, paramValue } = body
+  const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs, paramValue, context } = body
 
   const workspace = loadWorkspace()
   const { agents, skills, chains, tools } = workspace
@@ -117,6 +117,7 @@ export async function POST(req: NextRequest) {
           tools,
           0,
           typeof paramValue === 'string' ? paramValue : '',
+          context && typeof context === 'object' ? context : {},
         )
 
         updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs: results })
