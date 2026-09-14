@@ -27,7 +27,8 @@ Rules:
 - Match the experimental dial. At the low end, a proven genre loop executed well. At
   the high end, a loop players have to learn.
 - Canon is binding. LOCKED lines are facts you build on. REJECTED lines are banned,
-  including renamed versions. UNRESOLVED lines are questions you may answer.
+  including renamed versions. UNRESOLVED lines are questions you may answer. An empty or missing canon means
+  nothing is locked yet.
 
 The seed is the source; the brief is the room's reading of it. If the brief is
 empty, work from the seed.

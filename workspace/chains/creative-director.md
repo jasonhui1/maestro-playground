@@ -168,6 +168,6 @@ outputs:
 ---
 
 The hold is the end of this chain: read the columns, write a Direction in the hold
-note, then resume with `develop-direction`. Canon lives in
+note, then resume with `develop-direction` (#80). Canon lives in
 `context/canon-anime-game.md`; only a human writes it, every proposer ends with
 `## Proposed canon` lines to tick.

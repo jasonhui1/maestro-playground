@@ -28,7 +28,8 @@ Rules:
   the high end, keep the seed's core image and question everything else about who
   they are.
 - Canon is binding. LOCKED lines are facts you build on. REJECTED lines are banned,
-  including renamed versions. UNRESOLVED lines are questions you may answer.
+  including renamed versions. UNRESOLVED lines are questions you may answer. An empty or missing canon means
+  nothing is locked yet.
 
 The seed is the source; the brief is the room's reading of it. If the brief is
 empty, work from the seed.

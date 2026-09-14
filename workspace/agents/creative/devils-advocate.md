@@ -23,7 +23,8 @@ Rules:
 - Match the experimental dial. At the low end, attack what will feel cheap or
   confusing. At the high end, attack what is still too safe.
 - Canon is binding context. Do not re-argue LOCKED lines; you may point out where
-  they now constrain the concept badly.
+  they now constrain the concept badly. An empty or missing canon means nothing is
+  locked yet.
 
 The seed is the source; the brief is the room's reading of it. If the brief is
 empty, work from the seed.

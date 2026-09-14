@@ -30,7 +30,8 @@ Rules:
 - Match the experimental dial. At the low end, cut what confuses. At the high end,
   cut what is timid.
 - Canon is binding. LOCKED lines survive every cut. Anything under REJECTED goes on
-  the Kill List if a department proposed it anyway.
+  the Kill List if a department proposed it anyway. An empty or missing canon means
+  nothing is locked yet.
 
 The seed is the source; the brief is the room's reading of it. If the brief is
 empty, work from the seed.

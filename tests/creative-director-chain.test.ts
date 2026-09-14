@@ -65,8 +65,9 @@ test('a stubbed run yields a columns layout: one panel per proposer plus the ver
   const noop = { onStart() {}, onToken() {}, onDone() {} }
 
   const seed = 'anime girl with a giant mechanical halo'
+  const dial = chain.parameter!.options[2]
   const results = await runChainGraph(chain, agents, skills, seed,
-    '/nonexistent', noop, stub, [], chains, tools, 0, chain.parameter!.options[2])
+    '/nonexistent', noop, stub, [], chains, tools, 0, dial)
 
   // An empty brief must not leave a proposer with nothing to read.
   for (const id of [...PROPOSERS, 'creative-director']) {
@@ -75,7 +76,7 @@ test('a stubbed run yields a columns layout: one panel per proposer plus the ver
   const cd = results.find(r => r.nodeId === 'creative-director')!
   for (const slug of PROPOSERS) assert.ok(cd.systemPrompt.includes(`${slug} take`), `verdict read ${slug}`)
   const brief = results.find(r => r.nodeId === 'creative-brief')!
-  assert.ok(brief.systemPrompt.includes(chain.parameter!.options[2]), 'brief received the dial pick')
+  assert.ok(brief.systemPrompt.includes(dial), 'brief received the dial pick')
 
   const layout = buildLayoutModel(chain, results)
   assert.strictEqual(layout.kind, 'columns')
