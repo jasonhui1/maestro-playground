@@ -43,8 +43,9 @@ follows. If not, nothing was built into the engine.
   an approximate chat.
 - **rerun-downstream**: a new run that replays every output except the revised
   node's and its descendants, so only those execute again.
-- **canon**: `workspace/context/canon-<project>.md`. LOCKED / UNRESOLVED / REJECTED
-  sections. Wired into every specialist as a `context` node.
+- **canon**: a vault note, LOCKED / UNRESOLVED / REJECTED sections. Wired into
+  every specialist as a `context` node; the plugin sends its text on
+  `POST /api/run` rather than this repo holding a synced copy (#79).
 - **side quest**: sending one proposal into another chain from a hold. The main
   chain is untouched.
 
@@ -58,8 +59,8 @@ follows. If not, nothing was built into the engine.
    can compute descendants of a node without loading the chain file.
 3. **Layout panels.** `GET /api/runs/:id/layout` gives named panels with text and
    state. The hold note is rendered from this.
-4. **Context files.** A `context` node injects a file whole. Canon is a context
-   file, no new kind.
+4. **Context files.** A `context` node injects text whole — a request-supplied
+   override if given, else a workspace file. Canon is a context node, no new kind.
 5. **Thought stored per node.** `thought` is in each node's log and in
    `RunMeta.agentOutputs`. The hold note can show it read-only.
 6. **Agent-only runs.** `POST /api/run { agentName, seedPrompt }` runs one agent.
@@ -153,14 +154,19 @@ block as seed. Canon file gains `halo = burden` under LOCKED.
 Used as is: `GET /api/workspace`, `POST /api/run` (chain, agent, and
 `branchOutputs` forms), `GET /api/runs/:id`, `GET /api/runs/:id/layout`.
 
-Added, one endpoint, because the plugin must write the canon file and the
-workspace is not guaranteed to be inside the vault:
+Decided (#79): the workspace is not guaranteed to be inside the vault, so canon
+lives in the vault permanently rather than being synced into this repo — a
+synced copy would just go stale the moment the plugin forgot to push it.
+Extended instead of adding an endpoint: `POST /api/run` takes an optional
+`context: { [file]: text }` map. A `context` node whose `file` matches a key
+uses that text; falls back to `workspace/context/<file>.md` (then the usual
+`[context ... not found]` placeholder) when the key is absent, so every other
+context file's behavior is unchanged. The plugin reads the canon note itself
+and includes its text on every run — no write path into this repo is needed.
 
-- `PUT /api/context/:slug` with a text body. Writes `workspace/context/<slug>.md`.
-  Rejects slugs that are not a single path segment. Nothing else changes.
-
-Open: if the workspace directory is inside the vault, the plugin can edit the
-canon file directly and this endpoint is unnecessary. Decide before building it.
+An earlier draft of this doc specified `PUT /api/context/:slug` for the plugin
+to push canon into `workspace/context/`. Built, then removed once the run
+request could carry the text directly instead.
 
 ## Rerun-downstream, the one rule the plugin must get right
 
