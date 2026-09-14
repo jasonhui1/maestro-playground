@@ -152,6 +152,11 @@ can consume without reimplementing Maestro's chain/run logic.
   `pending` state for nodes not yet reached. 404 JSON `{ error }` if the run doesn't exist.
 * **`GET /api/runs/:runId/export?format=markdown|json`** — the run rendered as a single document.
 * **`POST /api/run`** — start a run (SSE stream of `AgentOutput` events). Body: `{ chainName }` / `{ agentName }` / `{ chain, slug }` (inline graph), plus optional `seedPrompt` and `parameter`.
+* **`PUT /api/context/:slug`** — write a context file wholesale. Body is the raw text,
+  written as-is to `workspace/context/<slug>.md` (created if missing, overwritten if
+  not). `slug` must be a single path segment — a `/`, `\`, or empty slug 400s. Exists
+  so a client outside the vault (e.g. the Obsidian plugin editing the canon file) never
+  needs the full workspace entity API just to overwrite one context file.
 
 ---
 

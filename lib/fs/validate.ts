@@ -33,6 +33,17 @@ export function validateAgentFrontmatter(data: Record<string, unknown>): Validat
   return { valid: false, error: forbiddenAgentFieldMessage(stated) }
 }
 
+// Rejects a decoded %2F before it reaches resolveEntityPath's silent path.basename (#79).
+export function validateContextSlug(slug: string): ValidationResult {
+  if (!slug || slug.trim() === '') {
+    return { valid: false, error: 'Slug is required' }
+  }
+  if (slug.includes('/') || slug.includes('\\')) {
+    return { valid: false, error: 'Slug must be a single path segment' }
+  }
+  return { valid: true }
+}
+
 export function validateContext(filename: string, content: string): ValidationResult {
   if (!filename || filename.trim() === '') {
     return { valid: false, error: 'Filename is required' }
