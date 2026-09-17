@@ -204,6 +204,7 @@ export interface AgentOutput {
   toolTurns?: number            // assistant messages that carried tool_calls
   warnings?: SectionWarning[]   // sections downstream edges asked this output for and did not find (#37)
   chosen?: string               // a hold's answer: the candidate heading picked (#96)
+  conversation?: ChatMessage[]  // the human's turns with this node after it ran (#97)
 }
 
 export type HoldCandidate = MarkdownSection

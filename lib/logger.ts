@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { RunMeta, AgentOutput, ToolCallRecord } from './types'
+import { RunMeta, AgentOutput, ToolCallRecord, ChatMessage } from './types'
 import { getWorkspacePath } from './fs/workspace'
 import { groupToolCallsByTurn } from './tools/logFormat'
 import { sectionWarningText } from './sectionWarning'
@@ -55,6 +55,21 @@ function renderWarnings(warnings: SectionWarning[]): string {
   return ['## Warnings', '', ...warnings.map(w => `- ${sectionWarningText(w)}`), ''].join('\n')
 }
 
+// Thought is shown quoted, never replayed (#97).
+function renderConversation(messages: ChatMessage[], agentName: string): string {
+  const lines: string[] = ['## Conversation', '']
+  let turn = 0
+  for (const m of messages) {
+    if (m.role === 'user') {
+      lines.push(`### Turn ${++turn}`, '', `**human:** ${m.content}`, '')
+    } else if (m.role === 'assistant') {
+      if (m.thought) lines.push(m.thought.split('\n').map(l => `> ${l}`).join('\n'), '')
+      lines.push(`**${agentName}:** ${m.content}`, '')
+    }
+  }
+  return lines.join('\n')
+}
+
 export function getRunDir(runId: string): string {
   const safeRunId = path.basename(runId)
   return path.join(getWorkspacePath(), 'logs', safeRunId)
@@ -104,8 +119,11 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     ...(output.toolCalls?.length ? [renderToolLoop(output.toolCalls)] : []),
     ...(output.warnings?.length ? [renderWarnings(output.warnings)] : []),
   ]
-  const body = preamble.length
-    ? `${preamble.join('\n')}\n## Output\n\n${output.output}`
+  const conversation = output.conversation?.length
+    ? `\n\n${renderConversation(output.conversation, output.agentName)}`
+    : ''
+  const body = preamble.length || conversation
+    ? `${preamble.join('\n')}${preamble.length ? '\n' : ''}## Output\n\n${output.output}${conversation}`
     : output.output
 
   const fileContent = matter.stringify(body, frontmatter)
@@ -119,6 +137,15 @@ export function nextStep(runId: string): number {
     .filter((m): m is RegExpExecArray => m !== null)
     .map(m => Number(m[1]))
   return steps.length ? Math.max(...steps) + 1 : 0
+}
+
+/** The step of a node's latest log in a run, if it has one. */
+export function latestStepOf(runId: string, nodeId: string): number | undefined {
+  const steps = fs.readdirSync(getRunDir(runId))
+    .map(f => /^(\d+)-(.*)\.md$/.exec(f))
+    .filter((m): m is RegExpExecArray => m !== null && m[2] === path.basename(nodeId))
+    .map(m => Number(m[1]))
+  return steps.length ? Math.max(...steps) : undefined
 }
 
 export function updateRunMeta(runId: string, updates: Partial<RunMeta>) {

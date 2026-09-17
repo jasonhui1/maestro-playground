@@ -54,6 +54,8 @@ A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates 
 
 **Resume** answers the open hold and continues the same run: the hold's output is the Direction, led by a `PICK:` line when the human chose one of the decider's `## Candidate N` sections or wrote their own concept instead (#96); every earlier output is replayed, and only what follows the hold executes. Its step logs join the same folder after the last one there; the earlier logs and the run's version pins stay as written (#94). _Avoid_: restart, continue (a resume is a replay, not a woken process).
 
+**Conversation** is the human's turns with one proposer (an `agent` or `decider` node with output in the run), kept on that node's record and in its log under `## Conversation`. Each turn continues the node's own transcript, rebuilt from its record without thought or tool turns; a reply changes nothing in the run (#97). _Avoid_: chat run (no new run is made).
+
 ## Static vs dynamic width
 
 **Static** width means the N producers into a `join` are known when you read the chain file. That is all v1 supports, and it is what keeps the tier-1 promise: the graph is fixed before the run starts. **Dynamic** width — one producer spawned per runtime item — is deliberately not built.
