@@ -60,7 +60,8 @@ export async function POST(
 
   if (hold.resolvedAt) {
     const answer = answerHold(hold, direction, pick)
-    return forkRun(meta, hold.nodeId, { output: answer.output, hold: answer.record }, context)
+    const fork = forkRun(meta, hold.nodeId, { output: answer.output, hold: answer.record }, context)
+    return 'error' in fork ? refusalResponse(fork) : fork
   }
   if (meta.status !== 'waiting') {
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting` }, { status: 409 })

@@ -11,8 +11,8 @@ export interface Promotion {
   source: AgentOutput
   /** The promoted reply as the node's new output. */
   revision: AgentOutput
-  /** Records the rerun replays: everything but the node's descendants. */
-  kept: AgentOutput[]
+  /** The node's descendants: what a rerun drops and executes again. */
+  downstream: Set<string>
   /** An answered hold lies downstream: rerunning in place would ask it again, so this forks (#99). */
   forks: boolean
 }
@@ -60,6 +60,5 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
     timestamp: new Date().toISOString(),
   }
   const flaggedOutputs = meta.agentOutputs.map((o, i) => (i === target.index ? source : o))
-  const kept = flaggedOutputs.filter(o => !o.nodeId || !downstream.has(o.nodeId))
-  return { flaggedOutputs, source, revision, kept, forks }
+  return { flaggedOutputs, source, revision, downstream, forks }
 }

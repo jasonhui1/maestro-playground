@@ -1,4 +1,4 @@
-import { ChainDef, ChainNode, ChainEdge } from './types'
+import { AgentOutput, ChainDef, ChainNode, ChainEdge } from './types'
 
 // All ancestors of targetId (incl. itself), with any touched loop zone fully included.
 export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: ChainNode[]; edges: ChainEdge[] } {
@@ -51,4 +51,9 @@ export function downstreamIds(graph: { nodes: ChainNode[]; edges: ChainEdge[] },
     if (zone) for (const n of graph.nodes) if (n.zone === zone) reach(n.id)
   }
   return found
+}
+
+// Every record not written by one of `nodeIds`; records with no node stay.
+export function withoutNodes(outputs: AgentOutput[], nodeIds: Set<string>): AgentOutput[] {
+  return outputs.filter(o => !o.nodeId || !nodeIds.has(o.nodeId))
 }
