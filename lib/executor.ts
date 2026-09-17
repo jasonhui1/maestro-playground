@@ -22,6 +22,9 @@ export interface RunCallbacks {
   onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
   // Carries both endpoints, so it takes no separate nodeId (#37).
   onWarning?: (warning: SectionWarning) => void
+  // Stand-in for #89's hold arm (superseded by #91's real hold kind); records
+  // nothing and stops the wavefront after the current wave, not immediately.
+  shouldHold?: (nodeId: string) => boolean
 }
 
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
@@ -252,6 +255,7 @@ export async function runChainGraph(
     }
   }
 
+  let held = false
   const processMainNode = async (nodeId: string): Promise<void> => {
     const node = nodeById.get(nodeId)
     if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
@@ -265,6 +269,8 @@ export async function runChainGraph(
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       return // out-edges remain dead
     }
+
+    if (callbacks.shouldHold?.(node.id)) { held = true; return }
 
     if (node.kind === 'agent' || node.kind === 'decider') {
       const agent = node.agent ? agentBySlug.get(node.agent) : undefined
@@ -388,6 +394,7 @@ export async function runChainGraph(
       await Promise.allSettled(ready.slice(i, i + MAX_CONCURRENCY).map(processUnit))
     }
     for (const u of ready) doneUnits.add(u)
+    if (held) break // #89: a held unit's descendants must never reach `ready`
   }
 
   const results: AgentOutput[] = []
