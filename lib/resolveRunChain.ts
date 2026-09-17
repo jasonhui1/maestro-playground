@@ -1,4 +1,4 @@
-import { AgentDef, ChainDef, ChainNode, ChainEdge } from './types'
+import { AgentDef, ChainDef, ChainNode, ChainEdge, RunMeta } from './types'
 
 export interface RunChainBody {
   chainName?: string
@@ -49,4 +49,15 @@ export function resolveRunChain(
     }
   }
   return { error: 'No chain or agent specified', status: 400 }
+}
+
+/**
+ * The chain a resume continues: the graph the run started with, with the live
+ * file's declared view and parameter when the chain still exists (#94).
+ */
+export function resumeRunChain(meta: RunMeta, chains: ChainDef[]): ChainDef | undefined {
+  if (!meta.graph) return undefined
+  const live = findChainForRun(chains, meta.chainName)
+  const base: ChainDef = live ?? { slug: 'inline', name: meta.chainName, description: '', nodes: [], edges: [], filePath: '' }
+  return { ...base, nodes: meta.graph.nodes, edges: meta.graph.edges }
 }

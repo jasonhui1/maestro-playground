@@ -111,6 +111,15 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
   fs.writeFileSync(path.join(dir, filename), fileContent)
 }
 
+/** The step after the highest one logged; a run's outputs can outnumber its step logs. */
+export function nextStep(runId: string): number {
+  const steps = fs.readdirSync(getRunDir(runId))
+    .map(f => /^(\d+)-.*\.md$/.exec(f))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map(m => Number(m[1]))
+  return steps.length ? Math.max(...steps) + 1 : 0
+}
+
 export function updateRunMeta(runId: string, updates: Partial<RunMeta>) {
   const metaPath = path.join(getRunDir(runId), 'meta.json')
   const existing = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))

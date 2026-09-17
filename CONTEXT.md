@@ -52,6 +52,8 @@ The scheduling strategy: repeatedly run every currently-ready unit at once, wait
 
 A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates settle, then scheduling stops, and nothing after the hold runs or is recorded (#93). The **hold record** is the `meta.holds[]` entry saying which hold, since when, the text on its `in` socket and the `## Candidate N` sections sliced from it; the open hold is the last record without `resolvedAt`. A hold already among the replayed outputs is settled like any replayed node and does not pause. _Avoid_: paused, suspended (no executor process survives the pause).
 
+**Resume** answers the open hold and continues the same run: the Direction becomes the hold's output, every earlier output is replayed, and only what follows the hold executes. Its step logs join the same folder after the last one there; the earlier logs and the run's version pins stay as written (#94). _Avoid_: restart, continue (a resume is a replay, not a woken process).
+
 ## Static vs dynamic width
 
 **Static** width means the N producers into a `join` are known when you read the chain file. That is all v1 supports, and it is what keeps the tier-1 promise: the graph is fixed before the run starts. **Dynamic** width — one producer spawned per runtime item — is deliberately not built.
