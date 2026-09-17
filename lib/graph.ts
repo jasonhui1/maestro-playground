@@ -6,31 +6,28 @@ export function slugify(s: string): string {
 export function extractSections(markdown: string): string[] {
   // Strip code blocks to avoid extracting headers within block code / examples
   const cleaned = markdown.replace(/```[\s\S]*?```/g, '')
+  return listSections(cleaned).map(s => slugify(s.heading)).filter(Boolean)
+}
+
+export interface MarkdownSection { heading: string; body: string }
+
+// Every heading (any level) with its body, up to the next heading, in order.
+export function listSections(markdown: string): MarkdownSection[] {
   const re = /^#{1,6}\s+(.+?)\s*$/gm
-  const out: string[] = []
+  const heads: { heading: string; bodyStart: number; headStart: number }[] = []
   let m: RegExpExecArray | null
-  while ((m = re.exec(cleaned)) !== null) {
-    const slug = slugify(m[1])
-    if (slug) out.push(slug)
+  while ((m = re.exec(markdown)) !== null) {
+    heads.push({ heading: m[1], bodyStart: re.lastIndex, headStart: m.index })
   }
-  return out
+  return heads.map((h, i) => {
+    const end = i + 1 < heads.length ? heads[i + 1].headStart : markdown.length
+    return { heading: h.heading, body: markdown.slice(h.bodyStart, end).trim() }
+  })
 }
 
 // Returns the body of the markdown section whose heading slug-matches `name`,
 // from after the heading line to the next heading (any level). '' if not found.
 export function extractSection(markdown: string, name: string): string {
   const target = slugify(name)
-  const re = /^#{1,6}\s+(.+?)\s*$/gm
-  const heads: { slug: string; bodyStart: number; headStart: number }[] = []
-  let m: RegExpExecArray | null
-  while ((m = re.exec(markdown)) !== null) {
-    heads.push({ slug: slugify(m[1]), bodyStart: re.lastIndex, headStart: m.index })
-  }
-  for (let i = 0; i < heads.length; i++) {
-    if (heads[i].slug === target) {
-      const end = i + 1 < heads.length ? heads[i + 1].headStart : markdown.length
-      return markdown.slice(heads[i].bodyStart, end).trim()
-    }
-  }
-  return ''
+  return listSections(markdown).find(s => slugify(s.heading) === target)?.body ?? ''
 }

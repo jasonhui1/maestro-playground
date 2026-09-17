@@ -9,8 +9,9 @@ export default function RunCard({ run }: RunCardProps) {
   const totalCost = run.agentOutputs.reduce((sum, o) => sum + o.costUsd, 0)
   const totalTokens = run.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
   
-  const statusColors = {
+  const statusColors: Record<typeof run.status, string> = {
     running: 'bg-blue-50 text-blue-700 border-blue-100',
+    waiting: 'bg-amber-50 text-amber-700 border-amber-100',
     complete: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     error: 'bg-rose-50 text-rose-700 border-rose-100',
   }

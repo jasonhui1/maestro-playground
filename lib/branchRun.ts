@@ -1,9 +1,9 @@
-import { streamRun } from './runStream'
+import { streamRun, endedRunId } from './runStream'
 import type { RunMeta } from './types'
 
 // Re-run a chain from an earlier step, replaying the original run's outputs up to
 // that point. Drives the SSE stream to completion and returns the new run's id
-// (null if the stream ended without a run_complete).
+// (null if the stream ended without a run_complete or run_waiting).
 export async function branchRun(run: RunMeta, fromStep: number): Promise<string | null> {
   const res = await fetch('/api/run', {
     method: 'POST',
@@ -20,7 +20,7 @@ export async function branchRun(run: RunMeta, fromStep: number): Promise<string 
 
   let newRunId: string | null = null
   await streamRun(res.body.getReader(), event => {
-    if (event.type === 'run_complete') newRunId = event.runId
+    newRunId = endedRunId(event) ?? newRunId
   })
   return newRunId
 }
