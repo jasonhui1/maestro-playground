@@ -338,6 +338,10 @@ export async function runChainGraph(
         emit(nodeId, statusRec); callbacks.onDone(nodeId, statusRec)
         markOut(nodeId, () => true)
       }
+    } else if (node.kind === 'hold') {
+      // Pausing lands in #93; until then a hold fails its own record so the run says why.
+      const rec = controlOutput(nodeId, 'hold: pausing a run is not supported yet', '', 'error')
+      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
       // Loop boundaries are consumed by runZone/zonesByStart above; one only reaches
       // here if it carries no registered zone (a malformed chain). No-op — its

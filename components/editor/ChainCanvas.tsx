@@ -22,6 +22,7 @@ import ZoneFrame from './nodes/ZoneFrame'
 import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
 import JoinNode from './nodes/JoinNode'
+import HoldNode from './nodes/HoldNode'
 
 // Each kind maps to the component that renders it. Keying by the mapped type gives
 // two compile-time guarantees at once: every kind must have an entry (miss one and it
@@ -36,6 +37,7 @@ const nodeTypes: KindComponents & { zoneFrame: React.ComponentType<any> } = {
   subchain: SubchainNode,
   report: ReportNode,
   join: JoinNode,
+  hold: HoldNode,
   zoneFrame: ZoneFrame,
 }
 

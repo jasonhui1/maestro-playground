@@ -4,7 +4,7 @@ Terms as used in this codebase. Skills and issues should use these exactly; avoi
 
 ## Node kind
 
-One of the eleven node types a chain may contain: `seed`, `context`, `agent`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
+One of the thirteen node types a chain may contain: `seed`, `context`, `param`, `agent`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`, `hold`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
 
 ## Node-kind registry
 

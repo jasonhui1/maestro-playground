@@ -195,6 +195,14 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     fields: [],
     palette: { label: 'Report', category: 'Output' },
   },
+  hold: {
+    kind: 'hold',
+    acceptsInputs: true,
+    inputs: () => [{ name: 'in' }],
+    outputs: () => ['output'],
+    fields: [{ key: 'prompt', codec: 'string' }],
+    palette: { label: 'Hold', category: 'Control flow' },
+  },
 }
 
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {

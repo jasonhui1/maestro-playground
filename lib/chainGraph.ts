@@ -41,6 +41,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
   }
 
   const seenIds = new Set<string>()
+  const hasWiredIn = (n: ChainNode) => chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')
   for (const n of chain.nodes) {
     if (!n.id) {
       add('Node is missing ID')
@@ -121,20 +122,13 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
         checkRefs(`Node "${n.id}" case "${c.label}"`, c.condition, n.id)
       }
     }
-    if (n.kind === 'report') {
-      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
-        warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
-      }
-    }
-    if (n.kind === 'join') {
-      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
-        warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
-      }
-      // A zone runs as one atomic unit and its body executes only agent/decider nodes,
-      // so a zoned join would never run and never record. Reject rather than vanish.
-      if (n.zone) {
-        add(`Node "${n.id}": a join cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
-      }
+    if (n.kind === 'report' && !hasWiredIn(n)) warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
+    if (n.kind === 'join' && !hasWiredIn(n)) warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
+    if (n.kind === 'hold' && !hasWiredIn(n)) add(`Node "${n.id}": hold needs its "in" input wired`, { nodeId: n.id })
+    // A zone runs as one atomic unit and its body executes only agent/decider nodes,
+    // so a zoned join would never run, and a zoned hold could never pause.
+    if ((n.kind === 'join' || n.kind === 'hold') && n.zone) {
+      add(`Node "${n.id}": a ${n.kind} cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
     }
   }
 
@@ -168,6 +162,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   validateZones(chain, add)
   validateSubchains(chain, chains, add, warn)
+  validateHoldPlacement(chain, chains, add)
 
   // `readSocket` dispatches every `kind: 'param'` node to the run's one value by
   // kind alone (#69) — `parameter.node` only stays meaningful if it is the chain's
@@ -214,18 +209,53 @@ function validateZones(chain: ChainDef, add: (message: string, ref?: Omit<Valida
   }
 }
 
+// The edited chain takes precedence over any on-disk copy carrying the same slug.
+function chainLookup(chain: ChainDef, chains: ChainDef[]): (slug: string) => ChainDef | undefined {
+  const bySlug = new Map(chains.map(c => [c.slug, c]))
+  return slug => (slug === chain.slug ? chain : bySlug.get(slug))
+}
+
+const refsOf = (c: ChainDef): string[] =>
+  c.nodes.flatMap(n => (n.kind === 'subchain' && n.subchain ? [n.subchain] : []))
+
+// A nested run cannot surface a pause, so a hold may not sit in any chain run as a subchain.
+function validateHoldPlacement(
+  chain: ChainDef,
+  chains: ChainDef[],
+  add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
+) {
+  const holds = chain.nodes.filter(n => n.kind === 'hold')
+  const users = holds.length
+    ? chains.filter(c => c.slug !== chain.slug && refsOf(c).includes(chain.slug)).map(c => `"${c.slug}"`)
+    : []
+  if (users.length) {
+    for (const h of holds) add(`Node "${h.id}": a hold cannot sit in a chain used as a subchain (used by ${users.join(', ')})`, { nodeId: h.id })
+  }
+
+  const chainBySlug = chainLookup(chain, chains)
+  const holdCache = new Map<string, boolean>()
+  const reachesHold = (slug: string): boolean => {
+    if (holdCache.has(slug)) return holdCache.get(slug)!
+    holdCache.set(slug, false) // cycle guard; cycles are reported by validateSubchains
+    const c = chainBySlug(slug)
+    const found = !!c && (c.nodes.some(n => n.kind === 'hold') || refsOf(c).some(reachesHold))
+    holdCache.set(slug, found)
+    return found
+  }
+  for (const n of chain.nodes) {
+    if (n.kind === 'subchain' && n.subchain && n.subchain !== chain.slug && reachesHold(n.subchain)) {
+      add(`Node "${n.id}": subchain "${n.subchain}" contains a hold, which cannot run inside a subchain`, { nodeId: n.id })
+    }
+  }
+}
+
 function validateSubchains(
   chain: ChainDef,
   chains: ChainDef[],
   add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
   warn: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
 ) {
-  const bySlug = new Map(chains.map(c => [c.slug, c]))
-  // The edited chain takes precedence over any on-disk copy carrying the same slug.
-  const chainBySlug = (slug: string): ChainDef | undefined =>
-    slug === chain.slug ? chain : bySlug.get(slug)
-  const refsOf = (c: ChainDef): string[] =>
-    c.nodes.flatMap(n => (n.kind === 'subchain' && n.subchain ? [n.subchain] : []))
+  const chainBySlug = chainLookup(chain, chains)
 
   for (const n of chain.nodes) {
     if (n.kind !== 'subchain') continue
