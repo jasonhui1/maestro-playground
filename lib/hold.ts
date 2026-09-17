@@ -1,5 +1,5 @@
 import { listSections } from './graph'
-import type { AgentOutput, HoldCandidate, HoldRecord, LogFrontmatter } from './types'
+import type { AgentOutput, HoldCandidate, HoldRecord } from './types'
 
 const CANDIDATE_HEADING = /^candidate\s+\d+$/i
 
@@ -40,9 +40,8 @@ export function answerHold(
   pick?: HoldPick,
 ): { output: AgentOutput; record: HoldRecord } {
   const at = new Date().toISOString()
-  const recorded = !pick ? {}
-    : 'candidate' in pick ? { chosen: pick.candidate.heading }
-    : { custom: pick.custom }
+  const chosen = pick && 'candidate' in pick ? { chosen: pick.candidate.heading } : {}
+  const recorded = pick && 'custom' in pick ? { custom: pick.custom } : chosen
   const lead = !pick ? undefined
     : 'candidate' in pick ? `PICK: ${pick.candidate.heading}\n${pick.candidate.body}`
     : `PICK: custom\n${pick.custom}`
@@ -51,22 +50,10 @@ export function answerHold(
     output: {
       nodeId: hold.nodeId, agentName: 'hold', systemPrompt: '', input: hold.input, output: text,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: at, status: 'success',
+      ...chosen,
     },
     record: { ...hold, ...recorded, direction, resolvedAt: at },
   }
-}
-
-/**
- * The pick each answered hold's log carries, read from its hold record (#100).
- * An answer and its record share one timestamp, so a hold answered twice across branches matches its own.
- */
-export function holdLogExtras(outputs: AgentOutput[], holds: HoldRecord[] = []): Map<AgentOutput, LogFrontmatter> {
-  const extras = new Map<AgentOutput, LogFrontmatter>()
-  for (const output of outputs) {
-    const hold = holds.find(h => h.nodeId === output.nodeId && h.resolvedAt === output.timestamp)
-    if (hold?.chosen) extras.set(output, { chosen: hold.chosen })
-  }
-  return extras
 }
 
 /** A hold reached again while still open refreshes its record rather than adding one. */

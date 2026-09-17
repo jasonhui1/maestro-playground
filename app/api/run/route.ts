@@ -1,31 +1,13 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
-import { initRunDir, readRunMeta } from '@/lib/logger'
+import { initRunDir } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
-import { RunMeta, AgentOutput, HoldRecord } from '@/lib/types'
+import { RunMeta, AgentOutput } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { streamChainRun, contextOverrides } from '@/lib/runSession'
-import { holdLogExtras } from '@/lib/hold'
 import { nanoid } from 'nanoid'
 import path from 'path'
-
-/**
- * Hold records along a branch's ancestry: a branch re-logs its source's answered holds,
- * and only the run that answered one keeps its record (#100).
- */
-function lineageHolds(runId: string | undefined): HoldRecord[] {
-  const holds: HoldRecord[] = []
-  const seen = new Set<string>()
-  while (runId && !seen.has(runId)) {
-    seen.add(runId)
-    let source: RunMeta
-    try { source = readRunMeta(runId) } catch { break }
-    holds.push(...(source.holds ?? []))
-    runId = source.branchedFromRunId
-  }
-  return holds
-}
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -67,9 +49,6 @@ export async function POST(req: NextRequest) {
   }
   initRunDir(meta)
 
-  const replay: AgentOutput[] = branchOutputs ?? []
-  const sourceHolds = replay.length ? lineageHolds(meta.branchedFromRunId) : []
-
   return streamChainRun({
     runId,
     chain,
@@ -77,8 +56,7 @@ export async function POST(req: NextRequest) {
     seedPrompt,
     paramValue: typeof paramValue === 'string' ? paramValue : '',
     context: contextOverrides(context),
-    replay,
-    logExtras: holdLogExtras(replay, sourceHolds),
+    replay: (branchOutputs as AgentOutput[]) ?? [],
     versionNumber: currentVersion,
   })
 }
