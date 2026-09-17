@@ -330,6 +330,9 @@ assistant turn.
    dropped is accepted, and that the model's reply still references its output.
    If it does not, the fallback is storing the message list per node, a bigger
    change; decide then.
+   *Result (#92):* passes on openrouter/stealth-union-alpha (no reasoning emitted);
+   untested for reasoning-emitting models — rerun before relying on it if the
+   wired model changes.
 4. **Latest-wins on repeated node ids.** After promote, `agentOutputs` holds two
    records for `join` and `creative-director`. Verify `buildLayoutModel`, export
    and the run detail page all read the last one, not the first.
