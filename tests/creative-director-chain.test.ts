@@ -210,6 +210,8 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   assert.strictEqual(waiting.type, 'run_waiting')
   assert.strictEqual(waiting.nodeId, 'hold')
   const runId = waiting.runId as string
+  assert.ok(!ran.includes('greenlight'), 'greenlight waits for the hold')
+  ran.length = 0
 
   const { POST: resume } = await import('../app/api/runs/[runId]/resume/route')
   const resumed = await sse(await resume(
@@ -218,13 +220,14 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   ))
   assert.strictEqual(resumed.at(-1)!.type, 'run_complete')
   assert.strictEqual(resumed.at(-1)!.runId, runId)
+  assert.deepStrictEqual(ran, ['greenlight'], 'only what follows the hold executes')
 
   const dir = path.join(wp, 'logs', runId)
   const logs = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort()
   const greenlightLog = logs.find(f => f.endsWith('-greenlight.md'))
   assert.ok(greenlightLog, `greenlight log in ${logs.join(', ')}`)
   const holdLog = logs.find(f => f.endsWith('-hold.md'))
-  assert.ok(holdLog)
+  assert.ok(holdLog, 'hold log written')
   assert.strictEqual(matter(fs.readFileSync(path.join(dir, holdLog), 'utf-8')).content.trim(), DIRECTION)
   assert.ok(logs.some(f => f.endsWith('-report.md')))
   const log = matter(fs.readFileSync(path.join(dir, greenlightLog), 'utf-8'))
