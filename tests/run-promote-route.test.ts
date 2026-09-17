@@ -168,6 +168,7 @@ test('promote makes the latest reply the output, reruns to the hold, and keeps t
 
   const ids = meta.agentOutputs.map(o => o.nodeId)
   for (const id of ['prop', 'j', 'dec']) assert.strictEqual(ids.filter(x => x === id).length, 2, `${id} keeps its earlier record`)
+  assert.deepStrictEqual(ids.slice(-3), ['prop', 'j', 'dec'], 'records follow log order')
   const latest = (id: string) => meta.agentOutputs.findLast(o => o.nodeId === id)!
   assert.strictEqual(latest('prop').output, 'revised 2')
   assert.strictEqual(latest('dec').output, meta.holds![0].input)

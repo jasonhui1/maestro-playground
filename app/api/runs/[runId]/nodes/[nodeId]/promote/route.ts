@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta, updateRunMeta, nextStep, latestStepOf, writeAgentLog } from '@/lib/logger'
+import { CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
 import { planPromotion, type PromoteRefusal } from '@/lib/promote'
 import { streamChainRun, contextOverrides, loadContinuation } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
 const REFUSAL_STATUS: Record<PromoteRefusal, number> = {
-  'unknown-node': 404, 'not-a-proposer': 400, 'no-output': 400, 'bad-turn': 400, 'in-loop': 400, 'past-answered-hold': 409,
+  ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400, 'past-answered-hold': 409,
 }
 
 // Use this on a waiting run: the reply becomes the node's output as a new step,
@@ -17,6 +18,9 @@ export async function POST(
   const { runId, nodeId } = await params
   const body = await req.json().catch(() => ({}))
   const { turn, context } = body ?? {}
+  if (turn != null && !Number.isInteger(turn)) {
+    return NextResponse.json({ error: 'turn must be a whole number' }, { status: 400 })
+  }
 
   let meta: RunMeta
   try {
@@ -29,18 +33,22 @@ export async function POST(
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting${fork}` }, { status: 409 })
   }
 
-  const plan = planPromotion(meta, nodeId, turn)
+  const plan = planPromotion(meta, nodeId, turn ?? undefined)
   if ('refused' in plan) return NextResponse.json({ error: plan.reason }, { status: REFUSAL_STATUS[plan.refused] })
   const sourceStep = latestStepOf(meta.runId, nodeId)
   if (sourceStep === undefined) {
     return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
   }
   const continuation = loadContinuation(meta)
-  if ('status' in continuation) return NextResponse.json(continuation.body, { status: continuation.status })
+  if ('error' in continuation) {
+    const { error, errors, status } = continuation
+    return NextResponse.json({ error, errors }, { status })
+  }
 
   // No await since the status read: the run is claimed before a second promote or resume can read it.
   // The revision is recorded up front, so a run that fails after it still shows what was promoted.
-  updateRunMeta(meta.runId, { status: 'running', agentOutputs: [...plan.marked, plan.revision] })
+  const history = plan.flaggedOutputs
+  updateRunMeta(meta.runId, { status: 'running', agentOutputs: [...history, plan.revision] })
   writeAgentLog(meta.runId, sourceStep, plan.source)
 
   return streamChainRun({
@@ -52,6 +60,6 @@ export async function POST(
     replay: [...plan.kept, plan.revision],
     resumeFrom: { logged: plan.kept.length, nextStep: nextStep(meta.runId) },
     holds: meta.holds,
-    superseded: plan.superseded,
+    history,
   })
 }

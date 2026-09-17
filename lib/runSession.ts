@@ -18,12 +18,12 @@ export function contextOverrides(value: unknown): Record<string, string> {
 /** A waiting run's recorded graph over live files, ready to continue in place; or why it cannot. */
 export function loadContinuation(meta: RunMeta):
   | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number }
-  | { status: number; body: object } {
+  | { error: string; status: number; errors?: unknown[] } {
   const workspace = loadWorkspace()
   const chain = chainForResume(meta, workspace.chains)
-  if (!chain) return { status: 422, body: { error: 'Run has no recorded graph' } }
+  if (!chain) return { error: 'Run has no recorded graph', status: 422 }
   const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
-  if (!validation.valid) return { status: 400, body: { error: 'Invalid chain', errors: validation.errors } }
+  if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
   // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
   const versionNumber = pinRunVersions(chain, workspace)[versionKey('chain', chain.slug)] ?? 0
   return { chain, workspace, versionNumber }
@@ -44,21 +44,14 @@ export interface RunSession {
   versionNumber: number
   /** Hold records the run carries before this stretch. */
   holds?: HoldRecord[]
-  /** Records this stretch reruns: never replayed, but kept in the run's record ahead of their replacements. */
-  superseded?: AgentOutput[]
+  /** Every record the run holds before this stretch, including ones it reruns; the new records follow them in log order. */
+  history?: AgentOutput[]
 }
 
-// Latest-wins readers pick the last record per node, so a superseded one sits just before its replacement.
-function withSuperseded(results: AgentOutput[], superseded: AgentOutput[]): AgentOutput[] {
-  const placed = new Set<AgentOutput>()
-  const out: AgentOutput[] = []
-  for (const r of results) {
-    for (const o of superseded) {
-      if (o.nodeId === r.nodeId && !placed.has(o)) { placed.add(o); out.push(o) }
-    }
-    out.push(r)
-  }
-  return [...superseded.filter(o => !placed.has(o)), ...out]
+function afterHistory(results: AgentOutput[], history?: AgentOutput[]): AgentOutput[] {
+  if (!history) return results
+  const had = new Set(history)
+  return [...history, ...results.filter(o => !had.has(o))]
 }
 
 /**
@@ -134,7 +127,7 @@ export function streamChainRun(s: RunSession): Response {
         s.context,
       )
 
-      const agentOutputs = keepConversations(withSuperseded(results, s.superseded ?? []), readRunMeta(runId).agentOutputs)
+      const agentOutputs = keepConversations(afterHistory(results, s.history), readRunMeta(runId).agentOutputs)
       if (reached.length > 0) {
         updateRunMeta(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
         // Wave-mate holds pause together, so each is announced (#93).

@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
 import { readRunMeta, latestStepOf } from '@/lib/logger'
-import { appendTurn, chatTarget, chatTranscript, type ChatRefusal } from '@/lib/nodeChat'
+import { appendTurn, chatTarget, chatTranscript, CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
 import { sseResponse } from '@/lib/sse'
 import type { ChatMessage, RunMeta } from '@/lib/types'
-
-const REFUSAL_STATUS: Record<ChatRefusal, number> = { 'unknown-node': 404, 'not-a-proposer': 400, 'no-output': 400 }
 
 // A node's conversation continues its own transcript and lives in its log (#97).
 export async function POST(
@@ -30,7 +28,7 @@ export async function POST(
   }
 
   const target = chatTarget(meta, nodeId)
-  if ('refused' in target) return NextResponse.json({ error: target.reason }, { status: REFUSAL_STATUS[target.refused] })
+  if ('refused' in target) return NextResponse.json({ error: target.reason }, { status: CHAT_REFUSAL_STATUS[target.refused] })
   if (latestStepOf(meta.runId, nodeId) === undefined) {
     return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
   }

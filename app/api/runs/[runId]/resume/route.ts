@@ -43,7 +43,10 @@ export async function POST(
   if (typeof pick === 'string') return NextResponse.json({ error: pick }, { status: 400 })
 
   const continuation = loadContinuation(meta)
-  if ('status' in continuation) return NextResponse.json(continuation.body, { status: continuation.status })
+  if ('error' in continuation) {
+    const { error, errors, status } = continuation
+    return NextResponse.json({ error, errors }, { status })
+  }
 
   // No await since the status read: the run is claimed before a second resume can read it.
   const answer = answerHold(hold, direction, pick)

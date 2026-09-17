@@ -1,17 +1,20 @@
 import { agentSlugOf } from './nodeKinds'
 import { latestStepOf, readRunMeta, updateRunMeta, writeAgentLog } from './logger'
-import type { AgentOutput, ChatMessage, RunMeta } from './types'
+import type { AgentOutput, ChainEdge, ChainNode, ChatMessage, RunMeta } from './types'
 
 export type ChatRefusal = 'unknown-node' | 'not-a-proposer' | 'no-output'
 
+export const CHAT_REFUSAL_STATUS: Record<ChatRefusal, number> = { 'unknown-node': 404, 'not-a-proposer': 400, 'no-output': 400 }
+
 export type ChatTarget =
-  | { index: number; record: AgentOutput; agentSlug: string }
+  | { index: number; record: AgentOutput; agentSlug: string; node: ChainNode; graph: { nodes: ChainNode[]; edges: ChainEdge[] } }
   | { refused: ChatRefusal; reason: string }
 
 /** The record a node chat continues: the node's latest output, which must have succeeded (#97). */
 export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget {
-  const node = meta.graph?.nodes.find(n => n.id === nodeId)
-  if (!node) return { refused: 'unknown-node', reason: `Node ${nodeId} is not in this run` }
+  const graph = meta.graph
+  const node = graph?.nodes.find(n => n.id === nodeId)
+  if (!graph || !node) return { refused: 'unknown-node', reason: `Node ${nodeId} is not in this run` }
   const agentSlug = agentSlugOf(node)
   if (!agentSlug) return { refused: 'not-a-proposer', reason: `A ${node.kind} node has no transcript to continue` }
   // The latest record, not the latest success: it is the one the node's latest log shows.
@@ -19,7 +22,7 @@ export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget {
   if (index === -1 || meta.agentOutputs[index].status !== 'success') {
     return { refused: 'no-output', reason: `Node ${nodeId} has no output in this run` }
   }
-  return { index, record: meta.agentOutputs[index], agentSlug }
+  return { index, record: meta.agentOutputs[index], agentSlug, node, graph }
 }
 
 // Tool turns are dropped and thought never replayed (#92).
