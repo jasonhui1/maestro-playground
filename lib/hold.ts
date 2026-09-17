@@ -30,22 +30,29 @@ export function openHoldOf(holds: HoldRecord[] = []): HoldRecord | undefined {
   return holds.findLast(h => !h.resolvedAt)
 }
 
+/** What the human picked at a hold: one of its candidates, or their own idea (#96). */
+export type HoldPick = { candidate: HoldCandidate } | { custom: string }
+
 /** The hold's answer as a replayable output, and the record marked resolved (#94, #96). */
 export function answerHold(
   hold: HoldRecord,
   direction: string,
-  candidate?: HoldCandidate,
+  pick?: HoldPick,
 ): { output: AgentOutput; record: HoldRecord } {
   const at = new Date().toISOString()
-  const text = candidate ? `PICK: ${candidate.heading}\n${candidate.body}\n\n${direction}` : direction
-  const pick = candidate ? { chosen: candidate.heading } : {}
+  const chosen = pick && 'candidate' in pick ? { chosen: pick.candidate.heading } : {}
+  const recorded = pick && 'custom' in pick ? { custom: pick.custom } : chosen
+  const lead = !pick ? undefined
+    : 'candidate' in pick ? `PICK: ${pick.candidate.heading}\n${pick.candidate.body}`
+    : `PICK: custom\n${pick.custom}`
+  const text = lead ? `${lead}\n\n${direction}` : direction
   return {
     output: {
       nodeId: hold.nodeId, agentName: 'hold', systemPrompt: '', input: hold.input, output: text,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: at, status: 'success',
-      ...pick,
+      ...chosen,
     },
-    record: { ...hold, ...pick, direction, resolvedAt: at },
+    record: { ...hold, ...recorded, direction, resolvedAt: at },
   }
 }
 

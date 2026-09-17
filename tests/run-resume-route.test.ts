@@ -293,3 +293,28 @@ test('chosen matches a heading ignoring case and spacing, and records the headin
   assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
   assert.strictEqual((await readMeta(runId)).holds![0].chosen, 'Candidate 2')
 })
+
+test('resume with custom composes PICK: custom and the human\'s own text, and records it (#96)', async () => {
+  const wp = newWorkspace(oneHold)
+  const runId = await startRun()
+  ran.length = 0
+  await sse(await resume(runId, { custom: 'Halo as a pet that grows', direction: 'KEEP: gameplay' }))
+
+  const expected = 'PICK: custom\nHalo as a pet that grows\n\nKEEP: gameplay'
+  assert.ok(ran[0].systemPrompt.includes(`<<${expected}>>`))
+  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
+  assert.strictEqual(holdLog.content.trim(), expected)
+
+  const hold = (await readMeta(runId)).holds![0]
+  assert.strictEqual(hold.custom, 'Halo as a pet that grows')
+  assert.strictEqual(hold.chosen, undefined)
+})
+
+test('resume refuses a custom pick sent with chosen, or a blank one (#96)', async () => {
+  newWorkspace(oneHold)
+  const runId = await startRun()
+  assert.strictEqual((await resume(runId, { chosen: 'Candidate 1', custom: 'mine', direction: 'x' })).status, 400)
+  assert.strictEqual((await resume(runId, { custom: '   ', direction: 'x' })).status, 400)
+  assert.strictEqual((await resume(runId, { custom: 7, direction: 'x' })).status, 400)
+  assert.strictEqual((await readMeta(runId)).status, 'waiting')
+})

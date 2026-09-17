@@ -12,8 +12,9 @@ a Creative Director already cut. Then the human, who owns this game, read it all
 wrote a Direction. You do not see the room. You see the Direction and the canon, and
 they are the whole truth: build exactly the game they describe.
 
-The Direction may open with `PICK: <candidate>` and that candidate's verdict: the
-concept the human chose. Build on it; the lines after it direct how.
+The Direction may open with `PICK: <candidate>` and that candidate's verdict, or
+`PICK: custom` and the human's own concept: either way, the concept the human
+chose. Build on it; the lines after it direct how.
 
 The Direction is written in lines:
 - `KEEP:` survives. Build on it.

@@ -4,9 +4,20 @@ import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { chainForResume } from '@/lib/resolveRunChain'
-import { answerHold, findCandidate, openHoldOf } from '@/lib/hold'
+import { answerHold, findCandidate, openHoldOf, type HoldPick } from '@/lib/hold'
 import { streamChainRun, contextOverrides } from '@/lib/runSession'
-import type { RunMeta } from '@/lib/types'
+import type { HoldRecord, RunMeta } from '@/lib/types'
+
+/** The body's pick, or why it is refused. Neither field given is no pick (#96). */
+function pickOf(hold: HoldRecord, chosen: unknown, custom: unknown): HoldPick | undefined | string {
+  if (chosen != null && custom != null) return 'send chosen or custom, not both'
+  if (custom != null) {
+    return typeof custom === 'string' && custom.trim() ? { custom: custom.trim() } : 'custom must be non-empty text'
+  }
+  if (chosen == null) return undefined
+  const candidate = typeof chosen === 'string' ? findCandidate(hold, chosen) : undefined
+  return candidate ? { candidate } : `chosen names no candidate of hold ${hold.nodeId}`
+}
 
 // Resume is replay: every output so far plus the hold's answer, so only what
 // follows the hold executes, in the same run folder (#94).
@@ -16,7 +27,7 @@ export async function POST(
 ) {
   const { runId } = await params
   const body = await req.json().catch(() => ({}))
-  const { direction, chosen, context } = body ?? {}
+  const { direction, chosen, custom, context } = body ?? {}
   if (typeof direction !== 'string' || !direction.trim()) {
     return NextResponse.json({ error: 'direction is required' }, { status: 400 })
   }
@@ -32,10 +43,8 @@ export async function POST(
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting` }, { status: 409 })
   }
 
-  const candidate = typeof chosen === 'string' ? findCandidate(hold, chosen) : undefined
-  if (chosen != null && !candidate) {
-    return NextResponse.json({ error: `chosen names no candidate of hold ${hold.nodeId}` }, { status: 400 })
-  }
+  const pick = pickOf(hold, chosen, custom)
+  if (typeof pick === 'string') return NextResponse.json({ error: pick }, { status: 400 })
 
   const workspace = loadWorkspace()
   const chain = chainForResume(meta, workspace.chains)
@@ -46,7 +55,7 @@ export async function POST(
   }
 
   // No await since the status read: the run is claimed before a second resume can read it.
-  const answer = answerHold(hold, direction, candidate)
+  const answer = answerHold(hold, direction, pick)
   const holds = (meta.holds ?? []).map(h => (h === hold ? answer.record : h))
   // The answer is recorded up front, so a run that fails after it still shows what was said.
   const agentOutputs = [...meta.agentOutputs, answer.output]

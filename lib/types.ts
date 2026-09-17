@@ -216,6 +216,8 @@ export interface HoldRecord {
   candidates: HoldCandidate[]
   reachedAt: string
   chosen?: string
+  /** The human's own idea, picked instead of a candidate (#96). */
+  custom?: string
   direction?: string
   resolvedAt?: string
 }
