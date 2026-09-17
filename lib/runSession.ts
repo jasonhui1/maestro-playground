@@ -5,6 +5,11 @@ import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import type { AgentDef, AgentOutput, ChainDef, HoldRecord, SkillDef, ToolDef } from './types'
 
+/** A request's `context` override map, or none when it is not an object. */
+export function contextOverrides(value: unknown): Record<string, string> {
+  return value && typeof value === 'object' ? value as Record<string, string> : {}
+}
+
 export interface RunSession {
   runId: string
   chain: ChainDef
@@ -14,10 +19,8 @@ export interface RunSession {
   context: Record<string, string>
   /** Outputs handed to the graph as already done; their out-edges are live. */
   replay: AgentOutput[]
-  /** How many leading `replay` records already have a step log in this run's folder. */
-  alreadyLogged?: number
-  /** The step the first newly logged record takes. */
-  firstStep?: number
+  /** A resumed run: the leading `replay` records already logged, and the step the next log takes. */
+  resumeFrom?: { logged: number; nextStep: number }
   /** Stamped on every newly logged record; 0 stamps nothing. */
   versionNumber: number
   /** Hold records the run carries before this stretch. */
@@ -30,7 +33,7 @@ export interface RunSession {
  */
 export function streamChainRun(s: RunSession): Response {
   const { runId, chain, workspace: { agents, skills, chains, tools } } = s
-  const onDisk = new Set(s.replay.slice(0, s.alreadyLogged ?? 0))
+  const onDisk = new Set(s.replay.slice(0, s.resumeFrom?.logged ?? 0))
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -39,14 +42,13 @@ export function streamChainRun(s: RunSession): Response {
 
       send({ type: 'run_start', runId })
 
-      // The panels a client draws, rebuilt from the outputs so far and sent on every
-      // hop — a view drawing mid-run reads the same projection the finished run does,
-      // rather than porting the rule (#76). Replayed outputs seed it.
+      // Every hop re-sends the panels, so a view drawing mid-run reads the finished
+      // run's projection rather than porting the rule (#76).
       const soFar: AgentOutput[] = [...s.replay]
       const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar) })
       sendLayout()
 
-      let step = s.firstStep ?? 0
+      let step = s.resumeFrom?.nextStep ?? 0
       const stepOf = new Map<string, number>()
       const nameOf = new Map<string, string>()
       // A warning is found downstream, after its node's log is already on disk —

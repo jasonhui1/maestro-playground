@@ -55,7 +55,7 @@ export function resolveRunChain(
  * The chain a resume continues: the graph the run started with, with the live
  * file's declared view and parameter when the chain still exists (#94).
  */
-export function resumeRunChain(meta: RunMeta, chains: ChainDef[]): ChainDef | undefined {
+export function chainForResume(meta: RunMeta, chains: ChainDef[]): ChainDef | undefined {
   if (!meta.graph) return undefined
   const live = findChainForRun(chains, meta.chainName)
   const base: ChainDef = live ?? { slug: 'inline', name: meta.chainName, description: '', nodes: [], edges: [], filePath: '' }

@@ -3,9 +3,9 @@ import { loadWorkspace } from '@/lib/fs/workspace'
 import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
-import { resumeRunChain } from '@/lib/resolveRunChain'
+import { chainForResume } from '@/lib/resolveRunChain'
 import { answerHold, openHoldOf } from '@/lib/hold'
-import { streamChainRun } from '@/lib/runSession'
+import { streamChainRun, contextOverrides } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
 // Resume is replay: every output so far plus the hold's answer, so only what
@@ -33,8 +33,8 @@ export async function POST(
   }
 
   const workspace = loadWorkspace()
-  const chain = resumeRunChain(meta, workspace.chains)
-  if (!chain) return NextResponse.json({ error: 'Run has no recorded graph' }, { status: 409 })
+  const chain = chainForResume(meta, workspace.chains)
+  if (!chain) return NextResponse.json({ error: 'Run has no recorded graph' }, { status: 422 })
   const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
   if (!validation.valid) {
     return NextResponse.json({ error: 'Invalid chain', errors: validation.errors }, { status: 400 })
@@ -43,7 +43,9 @@ export async function POST(
   // No await since the status read: the run is claimed before a second resume can read it.
   const answer = answerHold(hold, direction)
   const holds = (meta.holds ?? []).map(h => (h === hold ? answer.record : h))
-  updateRunMeta(meta.runId, { status: 'running', holds })
+  // The answer is recorded up front, so a run that fails after it still shows what was said.
+  const agentOutputs = [...meta.agentOutputs, answer.output]
+  updateRunMeta(meta.runId, { status: 'running', holds, agentOutputs })
 
   // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
   const versionNumber = pinRunVersions(chain, workspace)[versionKey('chain', chain.slug)] ?? 0
@@ -54,10 +56,9 @@ export async function POST(
     workspace,
     seedPrompt: meta.seedPrompt,
     paramValue: meta.parameter?.value ?? '',
-    context: context && typeof context === 'object' ? context : {},
-    replay: [...meta.agentOutputs, answer.output],
-    alreadyLogged: meta.agentOutputs.length,
-    firstStep: nextStep(meta.runId),
+    context: contextOverrides(context),
+    replay: agentOutputs,
+    resumeFrom: { logged: meta.agentOutputs.length, nextStep: nextStep(meta.runId) },
     versionNumber,
     holds,
   })

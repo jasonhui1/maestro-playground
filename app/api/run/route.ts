@@ -5,7 +5,7 @@ import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
-import { streamChainRun } from '@/lib/runSession'
+import { streamChainRun, contextOverrides } from '@/lib/runSession'
 import { nanoid } from 'nanoid'
 import path from 'path'
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     workspace,
     seedPrompt,
     paramValue: typeof paramValue === 'string' ? paramValue : '',
-    context: context && typeof context === 'object' ? context : {},
+    context: contextOverrides(context),
     replay: (branchOutputs as AgentOutput[]) ?? [],
     versionNumber: currentVersion,
   })
