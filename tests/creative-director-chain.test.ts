@@ -1,15 +1,53 @@
-import { test } from 'vitest'
+import { test, afterEach, vi } from 'vitest'
 import assert from 'node:assert'
-import { loadWorkspace } from '../lib/fs/workspace'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+import matter from 'gray-matter'
+import { loadWorkspace, getWorkspacePath } from '../lib/fs/workspace'
 import { validateChain } from '../lib/chainGraph'
 import { runChainGraph } from '../lib/executor'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { extractSections } from '../lib/graph'
-import type { AgentDef, AgentOutput } from '../lib/types'
+import { answerHold } from '../lib/hold'
+import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta } from '../lib/types'
 
-// #78: the hold note reads these panels and offers CANON? ticks from each proposer.
+// #78: the hold reads these panels and offers CANON? ticks from each proposer.
 const PROPOSERS = ['character-director', 'gameplay-director', 'world-director', 'art-director', 'devils-advocate']
 const VERDICT_SECTIONS = ['Creative Thesis', 'Player Fantasy', 'Pillars', 'Kill List', 'Greenlight Concept']
+const PITCH_SECTIONS = ['Built on', 'Direction applied', 'Greenlight Pitch']
+
+const DIRECTION = [
+  'KEEP: fast combat, halo segments as weapons',
+  'CHANGE: halo is a burden not a toolkit; using a segment has a permanent cost',
+  'KILL: stance switching',
+  'PUSH: broken-crown silhouette',
+].join('\n')
+
+const CANON = '## LOCKED\n- halo = burden\n\n## UNRESOLVED\n\n## REJECTED\n- gacha monetisation'
+
+// Only the model is stubbed; the executor, routes and logger are real.
+const ran: string[] = []
+const reply = (slug: string) => {
+  if (slug === 'creative-director') return VERDICT_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
+  if (slug === 'greenlight') return PITCH_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
+  return `## Take\n${slug} take\n\n## Proposed canon\n- ${slug} line`
+}
+const stub = async (a: AgentDef, sys: string): Promise<AgentOutput> => {
+  ran.push(a.slug)
+  return {
+    agentName: a.name, systemPrompt: sys, input: '', output: reply(a.slug),
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
+  }
+}
+vi.mock('@/lib/runner', () => ({ runAgent: (a: AgentDef, sys: string) => stub(a, sys) }))
+
+const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
+afterEach(() => {
+  ran.length = 0
+  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
+  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
+})
 
 function workspace() {
   const ws = loadWorkspace()
@@ -24,7 +62,11 @@ const agentOf = (agents: AgentDef[], slug: string) => {
   return a
 }
 
+const edgesOf = (chain: ChainDef) => chain.edges.map(e => `${e.fromNode} -> ${e.toNode}.${e.toSocket}`)
+
 const lastHeading = (prompt: string) => prompt.match(/^## .+$/gm)?.at(-1)
+
+const noop = { onStart() {}, onToken() {}, onDone() {} }
 
 test('creative-director validates against the real workspace', () => {
   const { chain, agents, chains, tools, skills } = workspace()
@@ -34,6 +76,26 @@ test('creative-director validates against the real workspace', () => {
   assert.ok(chain.parameter, 'declares the experimental dial')
   assert.ok(chain.nodes.some(n => n.kind === 'context'), 'has a canon context node')
   assert.strictEqual(chain.nodes.find(n => n.id === 'creative-director')?.kind, 'decider')
+})
+
+test('one chain: the decider feeds a hold, the hold directs greenlight, greenlight reports (#95)', () => {
+  const { chain, chains } = workspace()
+  assert.strictEqual(chains.find(c => c.slug === 'develop-direction'), undefined, 'develop-direction is gone')
+  assert.strictEqual(chain.nodes.find(n => n.id === 'hold')?.kind, 'hold')
+  const greenlight = chain.nodes.find(n => n.id === 'greenlight')
+  assert.ok(greenlight?.kind === 'agent' && greenlight.agent === 'greenlight')
+
+  const edges = edgesOf(chain)
+  for (const e of [
+    'creative-director -> hold.in',
+    'hold -> greenlight.direction',
+    'canon -> greenlight.canon',
+    'greenlight -> report.in',
+  ]) assert.ok(edges.includes(e), `wires ${e}`)
+  assert.strictEqual(edges.filter(e => e.endsWith('report.in')).length, 1, 'report reads the pitch alone')
+
+  const pitch = chain.outputs?.find(o => o.name === 'pitch')
+  assert.strictEqual(pitch?.node, 'greenlight')
 })
 
 test('every proposer prompt ends by asking for a Proposed canon section', () => {
@@ -53,21 +115,30 @@ test('the creative director prompt forces the verdict sections and declares them
   assert.match(cd.systemPrompt, /coheren/i, 'instructed to protect coherence')
 })
 
-test('a stubbed run yields a columns layout: one panel per proposer plus the verdict', async () => {
+test('the greenlight prompt refuses KILL and REJECTED and cites KEEP lines', () => {
+  const { agents } = workspace()
+  const greenlight = agentOf(agents, 'greenlight')
+  const prompt = greenlight.systemPrompt
+  assert.match(prompt, /KILL/)
+  assert.match(prompt, /REJECTED/)
+  assert.match(prompt, /KEEP/)
+  for (const s of PITCH_SECTIONS) assert.ok(prompt.includes(`## ${s}`), `prompt names ## ${s}`)
+  const sockets = greenlight.outputs.map(o => o.name.toLowerCase())
+  for (const s of PITCH_SECTIONS) assert.ok(sockets.includes(s.toLowerCase()), `declares ${s} output`)
+})
+
+test('a stubbed run stops at the hold with the columns filled, then resumes into the pitch', async () => {
   const { chain, agents, chains, tools, skills } = workspace()
-  const reply = (a: AgentDef) => a.slug === 'creative-director'
-    ? VERDICT_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
-    : `## Take\n${a.slug} take\n\n## Proposed canon\n- ${a.slug} line`
-  const stub = (async (a: AgentDef, sys: string) => ({
-    agentName: a.name, systemPrompt: sys, input: '', output: reply(a),
-    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
-  }) as AgentOutput) as never
-  const noop = { onStart() {}, onToken() {}, onDone() {} }
+  const holds: HoldRecord[] = []
+  const callbacks = { ...noop, onHold: (h: HoldRecord) => holds.push(h) }
 
   const seed = 'anime girl with a giant mechanical halo'
   const dial = chain.parameter!.options[2]
+  const canonFile = chain.nodes.find(n => n.id === 'canon')!
+  assert.ok(canonFile.kind === 'context' && canonFile.file)
+  const overrides = { [canonFile.file]: CANON }
   const results = await runChainGraph(chain, agents, skills, seed,
-    '/nonexistent', noop, stub, [], chains, tools, 0, dial)
+    '/nonexistent', callbacks, stub as never, [], chains, tools, 0, dial, overrides)
 
   // An empty brief must not leave a proposer with nothing to read.
   for (const id of [...PROPOSERS, 'creative-director']) {
@@ -78,12 +149,88 @@ test('a stubbed run yields a columns layout: one panel per proposer plus the ver
   const brief = results.find(r => r.nodeId === 'creative-brief')!
   assert.ok(brief.systemPrompt.includes(dial), 'brief received the dial pick')
 
-  const layout = buildLayoutModel(chain, results)
+  assert.deepStrictEqual(holds.map(h => h.nodeId), ['hold'])
+  assert.strictEqual(holds[0].input, cd.output, 'the hold is asked about the verdict')
+  assert.ok(!results.some(r => r.nodeId === 'greenlight' || r.nodeId === 'report'), 'nothing after the hold ran')
+
+  let layout = buildLayoutModel(chain, results)
   assert.strictEqual(layout.kind, 'columns')
-  assert.deepStrictEqual(layout.panels.map(p => p.node), [...PROPOSERS, 'creative-director'])
-  assert.ok(layout.panels.every(p => p.state === 'filled'), 'every panel filled')
-  assert.strictEqual(layout.panels.at(-1)!.emphasis, 'join')
-  for (const p of layout.panels.slice(0, -1)) {
+  assert.deepStrictEqual(layout.panels.map(p => p.node), [...PROPOSERS, 'creative-director', 'greenlight'])
+  assert.ok(layout.panels.slice(0, -1).every(p => p.state === 'filled'), 'specialists and verdict filled')
+  assert.strictEqual(layout.panels.at(-1)!.state, 'pending', 'pitch waits on the hold')
+  assert.strictEqual(layout.panels.at(-2)!.emphasis, 'join')
+  for (const p of layout.panels.slice(0, PROPOSERS.length)) {
     assert.ok(extractSections(p.text).includes('proposed-canon'), `${p.node} panel keeps canon`)
   }
+
+  const { output: answer } = answerHold(holds[0], DIRECTION)
+  const resumed = await runChainGraph(chain, agents, skills, seed,
+    '/nonexistent', noop, stub as never, [...results, answer], chains, tools, 0, dial, overrides)
+
+  const greenlight = resumed.find(r => r.nodeId === 'greenlight')!
+  assert.ok(greenlight.systemPrompt.includes(DIRECTION), 'greenlight reads the whole Direction')
+  assert.ok(greenlight.systemPrompt.includes('gacha monetisation'), 'greenlight reads canon from the request')
+  const report = resumed.find(r => r.nodeId === 'report')!
+  assert.ok(report.output.includes('Greenlight Pitch body'), 'report carries the pitch')
+
+  layout = buildLayoutModel(chain, resumed)
+  assert.ok(layout.panels.every(p => p.state === 'filled'), 'every panel filled after resume')
+  assert.ok(layout.panels.at(-1)!.text.includes('Greenlight Pitch body'))
+})
+
+// A copy of the real workspace, so the route run writes logs somewhere disposable.
+function copyWorkspace(): string {
+  const src = getWorkspacePath()
+  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-creative-director-'))
+  for (const dir of ['agents', 'chains', 'context', 'skills', 'templates', 'tools']) {
+    const from = path.join(src, dir)
+    if (fs.existsSync(from)) fs.cpSync(from, path.join(wp, dir), { recursive: true })
+  }
+  process.env.WORKSPACE_PATH = wp
+  return wp
+}
+
+type Event = { type: string; [k: string]: unknown }
+async function sse(res: Response): Promise<Event[]> {
+  assert.strictEqual(res.status, 200, await res.clone().text())
+  const text = await new Response(res.body).text()
+  return text.split('\n\n').flatMap(frame => {
+    const line = frame.split('\n').find(l => l.startsWith('data: '))
+    return line ? [JSON.parse(line.slice(6))] : []
+  })
+}
+
+test('end to end: the run stops, resumes with a Direction, and the pitch lands in the same run', async () => {
+  const wp = copyWorkspace()
+  const { POST: run } = await import('../app/api/run/route')
+  const started = await sse(await run({
+    json: async () => ({ chainName: 'creative-director', seedPrompt: 'anime girl with a giant mechanical halo' }),
+  } as import('next/server').NextRequest))
+  const waiting = started.at(-1)!
+  assert.strictEqual(waiting.type, 'run_waiting')
+  assert.strictEqual(waiting.nodeId, 'hold')
+  const runId = waiting.runId as string
+
+  const { POST: resume } = await import('../app/api/runs/[runId]/resume/route')
+  const resumed = await sse(await resume(
+    { json: async () => ({ direction: DIRECTION }) } as import('next/server').NextRequest,
+    { params: Promise.resolve({ runId }) },
+  ))
+  assert.strictEqual(resumed.at(-1)!.type, 'run_complete')
+  assert.strictEqual(resumed.at(-1)!.runId, runId)
+
+  const dir = path.join(wp, 'logs', runId)
+  const logs = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort()
+  const greenlightLog = logs.find(f => f.endsWith('-greenlight.md'))
+  assert.ok(greenlightLog, `greenlight log in ${logs.join(', ')}`)
+  const holdLog = logs.find(f => f.endsWith('-hold.md'))
+  assert.ok(holdLog)
+  assert.strictEqual(matter(fs.readFileSync(path.join(dir, holdLog), 'utf-8')).content.trim(), DIRECTION)
+  assert.ok(logs.some(f => f.endsWith('-report.md')))
+  const log = matter(fs.readFileSync(path.join(dir, greenlightLog), 'utf-8'))
+  assert.ok(log.content.includes('Greenlight Pitch body'), 'pitch is in the greenlight log')
+
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8')) as RunMeta
+  assert.strictEqual(meta.status, 'complete')
+  assert.strictEqual(meta.holds?.[0].direction, DIRECTION)
 })

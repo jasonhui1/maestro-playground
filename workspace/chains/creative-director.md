@@ -1,9 +1,9 @@
 ---
 name: creative-director
-description: 'A game seed through a brief, four departments and a devil''s advocate, cut into one concept by a creative director'
+description: 'A game seed through a brief, four departments and a devil''s advocate, cut by a creative director, held for your Direction, then built into a greenlight pitch'
 view: columns
 purpose: production
-moment: you have a one-line game idea and want a room of departments to fight over it before you direct
+moment: you have a one-line game idea and want a room of departments to fight over it, then direct the pitch
 parameter:
   name: experimental
   options:
@@ -77,10 +77,22 @@ nodes:
       - 1320
       - 160
     agent: creative-director
+  - id: hold
+    kind: hold
+    pos:
+      - 1640
+      - 160
+    prompt: read the columns and the verdict, then write a Direction
+  - id: greenlight
+    kind: agent
+    pos:
+      - 1960
+      - 160
+    agent: greenlight
   - id: report
     kind: report
     pos:
-      - 1640
+      - 2280
       - 160
 edges:
   - from: seed
@@ -150,6 +162,12 @@ edges:
   - from: join
     to: creative-director.room
   - from: creative-director
+    to: hold.in
+  - from: hold
+    to: greenlight.direction
+  - from: canon
+    to: greenlight.canon
+  - from: greenlight
     to: report.in
 outputs:
   - name: character
@@ -165,9 +183,12 @@ outputs:
   - name: verdict
     node: creative-director
     role: join
+  - name: pitch
+    node: greenlight
+    role: join
 ---
 
-The hold is the end of this chain: read the columns, write a Direction in the hold
-note, then resume with `develop-direction` (#80). Canon lives in
+The run stops at `hold`: read the columns and the verdict, write a Direction, then
+resume the same run (#95) and greenlight builds the pitch. Canon lives in
 `context/canon-anime-game.md`; only a human writes it, every proposer ends with
 `## Proposed canon` lines to tick.
