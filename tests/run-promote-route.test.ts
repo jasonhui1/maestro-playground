@@ -8,6 +8,7 @@ import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
 
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
+const chats: ChatMessage[][] = []
 vi.mock('@/lib/runner', () => ({
   runAgent: async (
     agent: { slug: string; name: string },
@@ -20,6 +21,7 @@ vi.mock('@/lib/runner', () => ({
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
     }
     if (options.history) {
+      chats.push(options.history)
       const n = options.history.filter(m => m.role === 'user').length - 1 // the turn number
       return { ...base, output: `revised ${n}`, thought: `why ${n}`, status: 'success' }
     }
@@ -35,6 +37,7 @@ const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
 
 afterEach(() => {
   ran.length = 0
+  chats.length = 0
   if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
   else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
@@ -157,7 +160,7 @@ test('promote makes the latest reply the output, reruns to the hold, and keeps t
   assert.deepStrictEqual(logs.slice(0, logsBefore.length), logsBefore, 'earlier logs stay as earlier steps')
   const added = logs.slice(logsBefore.length)
   assert.deepStrictEqual(added.map(f => f.replace(/^\d+-/, '')), ['prop.md', 'j.md', 'dec.md'])
-  assert.strictEqual(logOf(wp, runId, added[0]).content.trim(), 'revised 2')
+  assert.ok(logOf(wp, runId, added[0]).content.trim().endsWith('## Output\n\nrevised 2'))
 
   const meta = await readMeta(runId)
   assert.strictEqual(meta.status, 'waiting')
@@ -269,4 +272,53 @@ test('promote across an answered hold is refused: that is a fork (#99)', async (
   assert.strictEqual(ok.at(-1)!.type, 'run_waiting')
   const meta = await readMeta(runId)
   assert.deepStrictEqual(meta.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', true], ['hold2', false]])
+})
+
+test('a chat after promote still knows the argument that led to the promoted reply', async () => {
+  const wp = newWorkspace()
+  const runId = await startRun()
+  await chat(runId, 'prop', 'too complex')
+  await chat(runId, 'prop', 'add risk')
+  await sse(await promote(runId, 'prop'))
+  chats.length = 0
+
+  await chat(runId, 'prop', 'why that?')
+
+  assert.deepStrictEqual(chats[0].slice(1).map(m => [m.role, m.content]), [
+    ['user', chats[0][1].content],
+    ['assistant', 'first from prop'],
+    ['user', 'too complex'],
+    ['assistant', 'revised 1'],
+    ['user', 'add risk'],
+    ['assistant', 'revised 2'],
+    ['user', 'why that?'],
+  ])
+  assert.ok(chats[0].every(m => !m.thought), 'thought is never replayed')
+
+  const meta = await readMeta(runId)
+  const revision = meta.agentOutputs.findLast(o => o.nodeId === 'prop')!
+  assert.strictEqual(revision.output, 'revised 2')
+  assert.deepStrictEqual(revision.conversation!.map(m => m.content), ['why that?', 'revised 3'])
+
+  const newLog = logsOf(wp, runId).filter(f => f.endsWith('-prop.md')).at(-1)!
+  const body = logOf(wp, runId, newLog).content
+  const order = ['## Earlier turns', 'first from prop', 'too complex', 'revised 1', 'add risk', '## Output', 'revised 2', '## Conversation', 'why that?']
+  const at = order.map(t => body.indexOf(t))
+  assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `log order: ${body}`)
+})
+
+test('promoting twice keeps the whole argument', async () => {
+  newWorkspace()
+  const runId = await startRun()
+  await chat(runId, 'prop', 'one')
+  await sse(await promote(runId, 'prop'))
+  await chat(runId, 'prop', 'two')
+  await sse(await promote(runId, 'prop'))
+  chats.length = 0
+
+  await chat(runId, 'prop', 'three')
+
+  assert.deepStrictEqual(chats[0].slice(2).map(m => m.content), [
+    'first from prop', 'one', 'revised 1', 'two', 'revised 2', 'three',
+  ])
 })

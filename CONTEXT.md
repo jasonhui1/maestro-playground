@@ -56,7 +56,7 @@ A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates 
 
 **Conversation** is the human's turns with one proposer (an `agent` or `decider` node with output in the run), kept on that node's record and in its log under `## Conversation`. Each turn continues the node's own transcript, rebuilt from its record without thought or tool turns; a reply changes nothing in the run (#97). _Avoid_: chat run (no new run is made).
 
-**Promote** (*use this*) makes one of a proposer's replies its output on a waiting run: the reply becomes a new step for that node, its descendants rerun in the same run, and the open hold's record is replaced with fresh candidates. Earlier records stay and the new ones follow them in log order, so latest-wins readers show the new outputs; the promoted reply is flagged in the source conversation (#98). Promoting past an answered hold, or on a finished run, is a fork (#99). _Avoid_: revise, accept.
+**Promote** (*use this*) makes one of a proposer's replies its output on a waiting run: the reply becomes a new step for that node, its descendants rerun in the same run, and the open hold's record is replaced with fresh candidates. Earlier records stay and the new ones follow them in log order, so latest-wins readers show the new outputs; the promoted reply is flagged in the source conversation. The new output keeps the earlier output and turns that led to it (`priorTranscript`, logged under `## Earlier turns` before `## Output`), so a later chat still knows the argument (#98). Promoting past an answered hold, or on a finished run, is a fork (#99). _Avoid_: revise, accept.
 
 ## Static vs dynamic width
 

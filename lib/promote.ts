@@ -52,6 +52,11 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
     nodeId: record.nodeId, agentName: record.agentName, systemPrompt: record.systemPrompt, input: record.input,
     model: record.model, status: 'success',
     output: reply.content,
+    priorTranscript: [
+      ...(record.priorTranscript ?? []),
+      { role: 'assistant', content: record.output, ...(record.thought ? { thought: record.thought } : {}) },
+      ...conversation.slice(0, at),
+    ],
     ...(reply.thought ? { thought: reply.thought } : {}),
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,
     timestamp: new Date().toISOString(),

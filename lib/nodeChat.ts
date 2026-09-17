@@ -27,11 +27,15 @@ export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget {
 
 // Tool turns are dropped and thought never replayed (#92).
 export function chatTranscript(record: AgentOutput, message: string): ChatMessage[] {
+  const turns = [
+    ...(record.priorTranscript ?? []),
+    { role: 'assistant' as const, content: record.output },
+    ...(record.conversation ?? []),
+  ]
   return [
     { role: 'system', content: record.systemPrompt },
     { role: 'user', content: record.input },
-    { role: 'assistant', content: record.output },
-    ...(record.conversation ?? []).map(({ role, content }) => ({ role, content })),
+    ...turns.map(({ role, content }) => ({ role, content })),
     { role: 'user', content: message },
   ]
 }

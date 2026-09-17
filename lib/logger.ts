@@ -56,8 +56,8 @@ function renderWarnings(warnings: SectionWarning[]): string {
 }
 
 // Thought is shown quoted, never replayed (#97).
-function renderConversation(messages: ChatMessage[], agentName: string): string {
-  const lines: string[] = ['## Conversation', '']
+function renderConversation(messages: ChatMessage[], agentName: string, heading = '## Conversation'): string {
+  const lines: string[] = [heading, '']
   let turn = 0
   for (const m of messages) {
     if (m.role === 'user') {
@@ -118,6 +118,8 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
   const preamble = [
     ...(output.toolCalls?.length ? [renderToolLoop(output.toolCalls)] : []),
     ...(output.warnings?.length ? [renderWarnings(output.warnings)] : []),
+    // A promoted output's earlier turns come before it, as they did in time (#98).
+    ...(output.priorTranscript?.length ? [renderConversation(output.priorTranscript, output.agentName, '## Earlier turns')] : []),
   ]
   const headed = [...preamble, `## Output\n\n${output.output}`].join('\n')
   const body = output.conversation?.length
