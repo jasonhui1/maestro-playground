@@ -136,6 +136,14 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
         add(`Node "${n.id}": a join cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
       }
     }
+    if (n.kind === 'hold') {
+      if (!chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')) {
+        add(`Node "${n.id}": hold needs its "in" input wired`, { nodeId: n.id })
+      }
+      if (n.zone) {
+        add(`Node "${n.id}": a hold cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
+      }
+    }
   }
 
   const incoming = new Map<string, number>()
@@ -235,6 +243,29 @@ function validateSubchains(
     if (!target.outputs || target.outputs.length === 0) {
       // Non-blocking: a side-effect-only subchain can still run, it just exposes nothing to wire.
       warn(`Node "${n.id}": referenced chain "${n.subchain}" declares no outputs (nothing to wire)`, { nodeId: n.id })
+    }
+  }
+
+  // A nested run cannot surface a pause, so a hold may not sit in any chain run as a subchain.
+  const holds = chain.nodes.filter(n => n.kind === 'hold')
+  if (holds.length) {
+    const users = chains.filter(c => c.slug !== chain.slug && refsOf(c).includes(chain.slug)).map(c => c.slug)
+    for (const h of holds) {
+      if (users.length) add(`Node "${h.id}": a hold cannot sit in a chain used as a subchain (used by ${users.map(u => `"${u}"`).join(', ')})`, { nodeId: h.id })
+    }
+  }
+  const holdCache = new Map<string, boolean>()
+  const reachesHold = (slug: string): boolean => {
+    if (holdCache.has(slug)) return holdCache.get(slug)!
+    holdCache.set(slug, false) // cycle guard; cycles are reported below
+    const c = chainBySlug(slug)
+    const found = !!c && (c.nodes.some(n => n.kind === 'hold') || refsOf(c).some(reachesHold))
+    holdCache.set(slug, found)
+    return found
+  }
+  for (const n of chain.nodes) {
+    if (n.kind === 'subchain' && n.subchain && n.subchain !== chain.slug && reachesHold(n.subchain)) {
+      add(`Node "${n.id}": subchain "${n.subchain}" contains a hold, which cannot run inside a subchain`, { nodeId: n.id })
     }
   }
 

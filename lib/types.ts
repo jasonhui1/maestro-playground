@@ -1,7 +1,7 @@
 import type { SectionWarning } from './sectionWarning'
 import type { ENTITY_DIRS } from './entityDirs'
 
-export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join'
+export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
@@ -40,6 +40,7 @@ export type ChainNode =
   | (ChainNodeBase & { kind: 'subchain'; subchain?: string })
   | (ChainNodeBase & { kind: 'report' })
   | (ChainNodeBase & { kind: 'join' })
+  | (ChainNodeBase & { kind: 'hold'; prompt?: string })
 
 export interface ChainEdge {
   fromNode: string
