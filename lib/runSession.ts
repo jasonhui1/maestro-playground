@@ -21,10 +21,17 @@ export function newRunId(): string {
   return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
 }
 
+export interface Refusal { error: string; status: number; errors?: unknown[] }
+
+/** A refusal as the JSON response a route returns. */
+export function refusalResponse({ error, errors, status }: Refusal): Response {
+  return Response.json({ error, errors }, { status })
+}
+
 /** A run's recorded graph over live files, ready to continue or fork, with those files' pins; or why it cannot. */
 export function loadContinuation(meta: RunMeta):
   | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number; versions: Record<string, number> }
-  | { error: string; status: number; errors?: unknown[] } {
+  | Refusal {
   const workspace = loadWorkspace()
   const chain = chainForResume(meta, workspace.chains)
   if (!chain) return { error: 'Run has no recorded graph', status: 422 }

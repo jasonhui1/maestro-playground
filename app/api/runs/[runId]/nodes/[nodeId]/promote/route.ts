@@ -3,16 +3,15 @@ import { readRunMeta, updateRunMeta, nextStep, latestStepOf, writeAgentLog } fro
 import { CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
 import { planPromotion, type PromoteRefusal } from '@/lib/promote'
 import { forkRun } from '@/lib/fork'
-import { streamChainRun, contextOverrides, loadContinuation } from '@/lib/runSession'
+import { streamChainRun, contextOverrides, loadContinuation, refusalResponse } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
 const REFUSAL_STATUS: Record<PromoteRefusal, number> = {
   ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400,
 }
 
-// Use this: on a waiting run the reply becomes the node's output as a new step, its
-// descendants rerun in the same run, and the hold reopens with fresh candidates (#98).
-// On a finished run, or past an answered hold, it forks a new run instead (#99).
+// Use this: in place on a waiting run, rerunning to the hold (#98);
+// a finished run, or one past an answered hold, forks instead (#99).
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string; nodeId: string }> },
@@ -52,10 +51,7 @@ export async function POST(
   }
 
   const continuation = loadContinuation(meta)
-  if ('error' in continuation) {
-    const { error, errors, status } = continuation
-    return NextResponse.json({ error, errors }, { status })
-  }
+  if ('error' in continuation) return refusalResponse(continuation)
 
   // No await since the status read: the run is claimed before a second promote or resume can read it.
   // The revision is recorded up front, so a run that fails after it still shows what was promoted.

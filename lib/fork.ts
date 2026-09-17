@@ -1,16 +1,11 @@
-import { NextResponse } from 'next/server'
 import { initRunDir } from './logger'
 import { downstreamIds } from './partialRun'
-import { contextOverrides, loadContinuation, newRunId, streamChainRun } from './runSession'
+import { contextOverrides, loadContinuation, newRunId, refusalResponse, streamChainRun } from './runSession'
 import type { AgentOutput, HoldRecord, RunMeta } from './types'
 
 const recordKey = (o: AgentOutput) => (o.nodeId ? `${o.nodeId}|${o.round ?? ''}` : o)
 
-/**
- * Revisiting history forks instead of rewriting it (#99): a new run of the source's
- * graph, replaying every output but the anchor and its descendants, then `replacement`
- * as the anchor's output. Holds below the anchor are asked again.
- */
+/** A new run of the source's graph with `replacement` as the anchor's output (#99). */
 export function forkRun(
   source: RunMeta,
   anchor: string,
@@ -18,10 +13,7 @@ export function forkRun(
   context: unknown,
 ): Response {
   const continuation = loadContinuation(source)
-  if ('error' in continuation) {
-    const { error, errors, status } = continuation
-    return NextResponse.json({ error, errors }, { status })
-  }
+  if ('error' in continuation) return refusalResponse(continuation)
   const graph = source.graph!
   const dropped = downstreamIds(graph, anchor).add(anchor)
   const kept = source.agentOutputs.filter(o => !o.nodeId || !dropped.has(o.nodeId))
@@ -29,7 +21,8 @@ export function forkRun(
   const latest = new Map(kept.map(o => [recordKey(o), o]))
   const replay = [...kept.filter(o => latest.get(recordKey(o)) === o), replacement.output]
   const holds = [
-    ...(source.holds ?? []).filter(h => !dropped.has(h.nodeId)),
+    // An open hold carries no answer to replay; the fork reaches it again.
+    ...(source.holds ?? []).filter(h => h.resolvedAt && !dropped.has(h.nodeId)),
     ...(replacement.hold ? [replacement.hold] : []),
   ]
 

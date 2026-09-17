@@ -41,8 +41,8 @@ export function answerHold(
 ): { output: AgentOutput; record: HoldRecord } {
   const at = new Date().toISOString()
   // A re-answered hold (a fork, #99) drops the earlier answer before taking the new one.
-  const { nodeId, prompt, input, candidates, reachedAt } = hold
-  const open: HoldRecord = { nodeId, ...(prompt ? { prompt } : {}), input, candidates, reachedAt }
+  const open: HoldRecord = { ...hold }
+  delete open.chosen; delete open.custom; delete open.direction; delete open.resolvedAt
   const chosen = pick && 'candidate' in pick ? { chosen: pick.candidate.heading } : {}
   const recorded = pick && 'custom' in pick ? { custom: pick.custom } : chosen
   const lead = !pick ? undefined

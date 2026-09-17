@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
 import { answerHold, findCandidate, openHoldOf, type HoldPick } from '@/lib/hold'
-import { streamChainRun, contextOverrides, loadContinuation } from '@/lib/runSession'
+import { streamChainRun, contextOverrides, loadContinuation, refusalResponse, type Refusal } from '@/lib/runSession'
 import { forkRun } from '@/lib/fork'
 import type { HoldRecord, RunMeta } from '@/lib/types'
 
@@ -17,7 +17,7 @@ function pickOf(hold: HoldRecord, chosen: unknown, custom: unknown): HoldPick | 
 }
 
 /** The hold a resume answers: the named one, else the open one, else a finished run's only hold. */
-function targetHold(meta: RunMeta, holdId: unknown): HoldRecord | { error: string; status: number } {
+function targetHold(meta: RunMeta, holdId: unknown): HoldRecord | Refusal {
   const holds = meta.holds ?? []
   if (holdId != null) {
     const named = typeof holdId === 'string' ? holds.findLast(h => h.nodeId === holdId) : undefined
@@ -25,14 +25,13 @@ function targetHold(meta: RunMeta, holdId: unknown): HoldRecord | { error: strin
   }
   const open = meta.status === 'waiting' ? openHoldOf(holds) : undefined
   if (open) return open
-  const answered = new Set(holds.map(h => h.nodeId))
-  if (answered.size > 1) return { error: 'The run has several holds; name one with holdId', status: 400 }
+  const holdIds = new Set(holds.map(h => h.nodeId))
+  if (holdIds.size > 1) return { error: 'The run has several holds; name one with holdId', status: 400 }
   return holds.at(-1) ?? { error: `Run is ${meta.status}, not waiting`, status: 409 }
 }
 
-// Resume is replay: every output so far plus the hold's answer, so only what
-// follows the hold executes, in the same run folder (#94). Answering a hold
-// already answered forks a new run instead (#99).
+// Resume is replay, in the same run folder, of every output plus the hold's answer (#94);
+// re-answering an answered hold forks instead (#99).
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string }> },
@@ -54,7 +53,7 @@ export async function POST(
     return NextResponse.json({ error: 'Run is running' }, { status: 409 })
   }
   const hold = targetHold(meta, holdId)
-  if ('error' in hold) return NextResponse.json({ error: hold.error }, { status: hold.status })
+  if ('error' in hold) return refusalResponse(hold)
 
   const pick = pickOf(hold, chosen, custom)
   if (typeof pick === 'string') return NextResponse.json({ error: pick }, { status: 400 })
@@ -68,10 +67,7 @@ export async function POST(
   }
 
   const continuation = loadContinuation(meta)
-  if ('error' in continuation) {
-    const { error, errors, status } = continuation
-    return NextResponse.json({ error, errors }, { status })
-  }
+  if ('error' in continuation) return refusalResponse(continuation)
 
   // No await since the status read: the run is claimed before a second resume can read it.
   const answer = answerHold(hold, direction, pick)

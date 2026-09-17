@@ -4,7 +4,7 @@ import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta } from '@/lib/logger'
 import { sseResponse } from '@/lib/sse'
-import { nanoid } from 'nanoid'
+import { newRunId } from '@/lib/runSession'
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
         currentStep = meta.agentOutputs.length
       } catch (e) {
         // If runId not found, fallback to new
-        runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+        runId = newRunId()
         meta = {
           runId,
           chainName: `Chat with ${agentDef.name}`,
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
         initRunDir(meta)
       }
     } else {
-      runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+      runId = newRunId()
       meta = {
         runId,
         chainName: `Chat with ${agentDef.name}`,
