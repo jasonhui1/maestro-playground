@@ -265,6 +265,20 @@ test('resume with chosen composes PICK, the candidate body, then the Direction (
   assert.strictEqual(meta.holds![0].direction, 'KEEP: halo')
 })
 
+test('a branch past an answered hold keeps the pick in its hold log (#96)', async () => {
+  const wp = newWorkspace(oneHold)
+  const runId = await startRun()
+  await sse(await resume(runId, { chosen: 'Candidate 2', direction: 'go' }))
+  const branchOutputs = (await readMeta(runId)).agentOutputs.filter(o => o.nodeId !== 'after')
+
+  const { POST } = await import('../app/api/run/route')
+  const events = await sse(await POST({ json: async () => ({
+    chainName: 'held', seedPrompt: 'go', branchedFromRunId: runId, branchedFromStep: 1, branchOutputs,
+  }) } as import('next/server').NextRequest))
+  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', events[0].runId as string, '01-hold.md'), 'utf-8'))
+  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
+})
+
 test('resume with a chosen that names no candidate is a bad request (#96)', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()

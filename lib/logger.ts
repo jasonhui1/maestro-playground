@@ -72,7 +72,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
   const baseLabel = output.nodeId ? path.basename(output.nodeId) : safeAgentName
   const filename = `${String(stepIdx).padStart(2, '0')}-${baseLabel}.md`
   
-  const frontmatter: any = {
+  const frontmatter: Record<string, unknown> = {
     node_id: output.nodeId,
     agent: output.agentName,
     run_id: runId,
