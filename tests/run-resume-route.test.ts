@@ -157,16 +157,13 @@ test('resume writes the hold log, runs what follows in the same folder, and comp
   assert.ok(meta.holds![0].resolvedAt)
 })
 
-test('resume is refused unless the run is waiting', async () => {
+test('resume is refused while the run is running, or when it has no hold', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
-  await sse(await resume(runId, { direction: 'go' }))
-
-  const again = await resume(runId, { direction: 'go again' })
-  assert.strictEqual(again.status, 409)
-
   const { updateRunMeta } = await import('../lib/logger')
   updateRunMeta(runId, { status: 'running' })
+  assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
+  updateRunMeta(runId, { status: 'complete', holds: [] })
   assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
 })
 

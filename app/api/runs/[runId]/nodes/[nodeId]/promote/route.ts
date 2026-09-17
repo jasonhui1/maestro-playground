@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta, updateRunMeta, nextStep, latestStepOf, writeAgentLog } from '@/lib/logger'
 import { CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
 import { planPromotion, type PromoteRefusal } from '@/lib/promote'
+import { forkRun } from '@/lib/fork'
 import { streamChainRun, contextOverrides, loadContinuation } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
 const REFUSAL_STATUS: Record<PromoteRefusal, number> = {
-  ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400, 'past-answered-hold': 409,
+  ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400,
 }
 
-// Use this on a waiting run: the reply becomes the node's output as a new step,
-// its descendants rerun in the same run, and the hold reopens with fresh candidates (#98).
+// Use this: on a waiting run the reply becomes the node's output as a new step, its
+// descendants rerun in the same run, and the hold reopens with fresh candidates (#98).
+// On a finished run, or past an answered hold, it forks a new run instead (#99).
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string; nodeId: string }> },
@@ -28,9 +30,8 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Run not found' }, { status: 404 })
   }
-  if (meta.status !== 'waiting') {
-    const fork = meta.status === 'complete' || meta.status === 'error' ? '; promoting on a finished run forks it (#99)' : ''
-    return NextResponse.json({ error: `Run is ${meta.status}, not waiting${fork}` }, { status: 409 })
+  if (meta.status === 'running') {
+    return NextResponse.json({ error: 'Run is running' }, { status: 409 })
   }
 
   const plan = planPromotion(meta, nodeId, turn ?? undefined)
@@ -39,6 +40,17 @@ export async function POST(
   if (sourceStep === undefined) {
     return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
   }
+
+  if (meta.status !== 'waiting' || plan.forks) {
+    const res = forkRun(meta, nodeId, { output: plan.revision }, context)
+    // The source keeps its history; only the flag on the promoted reply is new.
+    if (res.ok) {
+      updateRunMeta(meta.runId, { agentOutputs: plan.flaggedOutputs })
+      writeAgentLog(meta.runId, sourceStep, plan.source)
+    }
+    return res
+  }
+
   const continuation = loadContinuation(meta)
   if ('error' in continuation) {
     const { error, errors, status } = continuation

@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const keyword = searchParams.get('keyword')
     const entityType = searchParams.get('entityType')
     const slug = searchParams.get('slug')
+    const branchedFromRunId = searchParams.get('branchedFromRunId')
 
     let runs = listAllRuns()
 
@@ -29,6 +30,10 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       runs = runs.filter(r => r.status === status)
+    }
+
+    if (branchedFromRunId) {
+      runs = runs.filter(r => r.branchedFromRunId === branchedFromRunId)
     }
 
     if (keyword) {

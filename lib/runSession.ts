@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid'
 import { getWorkspacePath, loadWorkspace } from './fs/workspace'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
@@ -15,9 +16,14 @@ export function contextOverrides(value: unknown): Record<string, string> {
   return value && typeof value === 'object' ? value as Record<string, string> : {}
 }
 
-/** A waiting run's recorded graph over live files, ready to continue in place; or why it cannot. */
+/** A new run's folder name: its start date, then a short random suffix. */
+export function newRunId(): string {
+  return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+}
+
+/** A run's recorded graph over live files, ready to continue or fork, with those files' pins; or why it cannot. */
 export function loadContinuation(meta: RunMeta):
-  | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number }
+  | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number; versions: Record<string, number> }
   | { error: string; status: number; errors?: unknown[] } {
   const workspace = loadWorkspace()
   const chain = chainForResume(meta, workspace.chains)
@@ -25,8 +31,8 @@ export function loadContinuation(meta: RunMeta):
   const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
   // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
-  const versionNumber = pinRunVersions(chain, workspace)[versionKey('chain', chain.slug)] ?? 0
-  return { chain, workspace, versionNumber }
+  const versions = pinRunVersions(chain, workspace)
+  return { chain, workspace, versionNumber: versions[versionKey('chain', chain.slug)] ?? 0, versions }
 }
 
 export interface RunSession {

@@ -5,8 +5,7 @@ import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { RunMeta, AgentOutput } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
-import { streamChainRun, contextOverrides } from '@/lib/runSession'
-import { nanoid } from 'nanoid'
+import { streamChainRun, contextOverrides, newRunId } from '@/lib/runSession'
 import path from 'path'
 
 export async function POST(req: NextRequest) {
@@ -32,7 +31,7 @@ export async function POST(req: NextRequest) {
   // for an agent run — so a step log keeps the one number it has always carried.
   const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
-  const runId = `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
+  const runId = newRunId()
   const meta: RunMeta = {
     runId,
     chainName: runTitle,

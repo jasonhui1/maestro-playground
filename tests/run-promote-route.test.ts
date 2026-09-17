@@ -223,7 +223,7 @@ test('layout and markdown export read the promoted outputs', async () => {
   assert.ok(!md.includes(staleDec), 'the stale verdict does not show')
 })
 
-test('promote is refused unless the run is waiting', async () => {
+test('promote is refused while the run is running', async () => {
   newWorkspace()
   const runId = await startRun()
   await chat(runId, 'prop', 'push')
@@ -231,10 +231,6 @@ test('promote is refused unless the run is waiting', async () => {
 
   updateRunMeta(runId, { status: 'running' })
   assert.strictEqual((await promote(runId, 'prop')).status, 409)
-  updateRunMeta(runId, { status: 'complete' })
-  const complete = await promote(runId, 'prop')
-  assert.strictEqual(complete.status, 409)
-  assert.match((await complete.json()).error, /#99|fork/i)
   assert.strictEqual((await promote('no-such-run', 'prop')).status, 404)
 })
 
@@ -252,26 +248,6 @@ test('promote needs a reply to promote, from a proposer in the run', async () =>
   const meta = await readMeta(runId)
   assert.strictEqual(meta.status, 'waiting', 'a refused promote changes nothing')
   assert.ok(!meta.agentOutputs.some(o => o.conversation?.some(m => m.promoted)))
-})
-
-test('promote across an answered hold is refused: that is a fork (#99)', async () => {
-  newWorkspace(chain.replace('  - from: hold\n    to: after.direction\n', `  - from: hold
-    to: after.direction
-  - from: after
-    to: hold2.in
-`).replace('edges:\n', '  - id: hold2\n    kind: hold\nedges:\n'))
-  const runId = await startRun()
-  const { POST } = await import('../app/api/runs/[runId]/resume/route')
-  const events = await sse(await POST({ json: async () => ({ direction: 'go' }) } as Req, { params: Promise.resolve({ runId }) }))
-  assert.strictEqual(events.at(-1)!.nodeId, 'hold2')
-  await chat(runId, 'prop', 'push')
-  await chat(runId, 'after', 'push')
-
-  assert.strictEqual((await promote(runId, 'prop')).status, 409)
-  const ok = await sse(await promote(runId, 'after'))
-  assert.strictEqual(ok.at(-1)!.type, 'run_waiting')
-  const meta = await readMeta(runId)
-  assert.deepStrictEqual(meta.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', true], ['hold2', false]])
 })
 
 test('a chat after promote still knows the argument that led to the promoted reply', async () => {

@@ -2,7 +2,7 @@ import { chatTarget, type ChatRefusal } from './nodeChat'
 import { downstreamIds } from './partialRun'
 import type { AgentOutput, RunMeta } from './types'
 
-export type PromoteRefusal = ChatRefusal | 'bad-turn' | 'in-loop' | 'past-answered-hold'
+export type PromoteRefusal = ChatRefusal | 'bad-turn' | 'in-loop'
 
 export interface Promotion {
   /** The run's records, in order, with the promoted reply flagged on its source. */
@@ -13,6 +13,8 @@ export interface Promotion {
   revision: AgentOutput
   /** Records the rerun replays: everything but the node's descendants. */
   kept: AgentOutput[]
+  /** An answered hold lies downstream: rerunning in place would ask it again, so this forks (#99). */
+  forks: boolean
 }
 
 /**
@@ -37,11 +39,7 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
   const reply = conversation[at]
 
   const downstream = downstreamIds(target.graph, nodeId)
-  // Rerunning an answered hold would ask the human again: that is a fork (#99).
-  const answered = (meta.holds ?? []).find(h => h.resolvedAt && downstream.has(h.nodeId))
-  if (answered) {
-    return { refused: 'past-answered-hold', reason: `Hold ${answered.nodeId} is already answered; promoting past it forks the run (#99)` }
-  }
+  const forks = (meta.holds ?? []).some(h => h.resolvedAt && downstream.has(h.nodeId))
 
   const { record } = target
   const source: AgentOutput = {
@@ -63,5 +61,5 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
   }
   const flaggedOutputs = meta.agentOutputs.map((o, i) => (i === target.index ? source : o))
   const kept = flaggedOutputs.filter(o => !o.nodeId || !downstream.has(o.nodeId))
-  return { flaggedOutputs, source, revision, kept }
+  return { flaggedOutputs, source, revision, kept, forks }
 }
