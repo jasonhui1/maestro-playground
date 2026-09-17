@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { resolveRefs } from './resolver'
 import { calcCost } from './pricing'
+import { resolveProvider } from './provider'
 import { injectSkills } from './prompt'
 import { runToolLoop, ToolLoopError, ChatCall, ChatCallHooks, ChatCallResponse, WireMessage } from './tools/loop'
 import type { ToolEventSink, ToolNarration } from './tools/events'
@@ -13,12 +14,8 @@ export const DEFAULT_MAX_TOOL_TURNS = 8
 let _client: OpenAI | null = null
 function getClient(): OpenAI {
   if (!_client) {
-    // Both normalizations are #18 findings that cost an afternoon each: a CRLF
-    // .env.local leaves a trailing \r on every value, and a trailing slash on the
-    // base URL yields //chat/completions, which Google 404s. scripts/derisk was
-    // hardened at the time; the app was not.
-    const baseURL = (process.env.AI_BASE_URL?.trim() || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
-    _client = new OpenAI({ baseURL, apiKey: process.env.AI_API_KEY?.trim() })
+    const { baseURL, apiKey } = resolveProvider()
+    _client = new OpenAI({ baseURL, apiKey })
   }
   return _client
 }

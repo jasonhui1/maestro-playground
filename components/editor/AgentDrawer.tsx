@@ -86,7 +86,7 @@ const SOURCE_LABEL: Record<FieldSource, string> = {
   defaults: 'defaults.md',
   variant: 'this variant',
   'built-in': 'built-in',
-  env: 'AI_MODEL_NAME',
+  env: '.env.local (AI_PROVIDER)',
 }
 
 function fieldValue(agent: AgentDef, field: AgentField): string {

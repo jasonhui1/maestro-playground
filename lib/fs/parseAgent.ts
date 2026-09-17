@@ -5,6 +5,7 @@ import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDe
 import { discoverFiles, assertUniqueSlug } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
+import { resolveProvider } from '../provider'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -84,7 +85,7 @@ export function parseAgent(
   // A spread never reaches inside a field, which is what ADR-0010 asks for.
   const merged = { ...statedDefaults, ...stated }
 
-  const envModel = process.env.AI_MODEL_NAME?.trim()
+  const envModel = resolveProvider().model
   const resolution: AgentResolution = {
     sources: Object.fromEntries(AGENT_FIELDS.map(f =>
       [f, f in stated ? 'file' : f in statedDefaults ? 'defaults' : 'built-in'],
@@ -96,9 +97,6 @@ export function parseAgent(
   return {
     slug,
     name: merged.name,
-    // .trim(): a CRLF .env.local leaves a trailing \r on every value. Harmless in
-    // headers, fatal here — the model name reaches the JSON body and Google 400s
-    // with "unexpected model name format" (#18, and see .env.example).
     model: envModel || merged.model || 'anthropic/claude-3.5-sonnet',
     description: merged.description ?? '',
     skills: merged.skills ?? [],
