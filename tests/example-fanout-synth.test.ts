@@ -51,7 +51,8 @@ test('fan-out → join → synthesize, end to end', async () => {
   const results = await runChainGraph(chain, agents, [], 'Should we ship on Friday?', '/ws', noop, slow)
   const elapsed = Date.now() - t
 
-  assert.ok(elapsed < 130, `panel should run concurrently; got ${elapsed}ms`)
+  // Concurrent is ~100ms, sequential ~200ms; the margin absorbs CI timer jitter.
+  assert.ok(elapsed < 175, `panel should run concurrently; got ${elapsed}ms`)
 
   const j = results.find(r => r.nodeId === 'j')!
   assert.ok(j.output.indexOf('## Optimist') < j.output.indexOf('## Skeptic')
