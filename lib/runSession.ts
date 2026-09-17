@@ -3,7 +3,7 @@ import { writeAgentLog, updateRunMeta } from './logger'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
-import type { AgentDef, AgentOutput, ChainDef, HoldRecord, SkillDef, ToolDef } from './types'
+import type { AgentDef, AgentOutput, ChainDef, HoldRecord, LogFrontmatter, SkillDef, ToolDef } from './types'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -25,6 +25,8 @@ export interface RunSession {
   versionNumber: number
   /** Hold records the run carries before this stretch. */
   holds?: HoldRecord[]
+  /** Extra log frontmatter for a `replay` record, keyed by that record. */
+  logExtras?: Map<AgentOutput, LogFrontmatter>
 }
 
 /**
@@ -53,7 +55,7 @@ export function streamChainRun(s: RunSession): Response {
       const nameOf = new Map<string, string>()
       // A warning is found downstream, after its node's log is already on disk —
       // so the log is rewritten from the same record the executor amended (#37).
-      const loggedOf = new Map<string, { step: number; output: AgentOutput }>()
+      const loggedOf = new Map<string, { step: number; output: AgentOutput; extra?: LogFrontmatter }>()
       // The graph is fixed, so kind is knowable here rather than threaded
       // through the executor's eleven emit sites (#35).
       const kindById = new Map(chain.nodes.map(n => [n.id, n.kind]))
@@ -78,8 +80,9 @@ export function streamChainRun(s: RunSession): Response {
               let n = stepOf.get(nodeId)
               if (n === undefined) { n = step++; stepOf.set(nodeId, n); nameOf.set(nodeId, output.agentName) }
               if (s.versionNumber > 0) output.versionNumber = s.versionNumber
-              writeAgentLog(runId, n, output)
-              loggedOf.set(nodeId, { step: n, output })
+              const extra = s.logExtras?.get(output)
+              writeAgentLog(runId, n, output, extra)
+              loggedOf.set(nodeId, { step: n, output, extra })
               send({ type: 'agent_done', agentName: output.agentName, nodeId, step: n, output, kind: kindById.get(nodeId) })
               soFar.push({ ...output, nodeId })
               sendLayout()
@@ -91,7 +94,7 @@ export function streamChainRun(s: RunSession): Response {
               const nodeId = warning.fromNode
               send({ type: 'section_missing', nodeId, warning, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
               const logged = loggedOf.get(nodeId)
-              if (logged) writeAgentLog(runId, logged.step, logged.output)
+              if (logged) writeAgentLog(runId, logged.step, logged.output, logged.extra)
             },
             onHold: hold => { reached.push(hold) },
           },

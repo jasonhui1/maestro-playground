@@ -4,7 +4,7 @@ import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { chainForResume } from '@/lib/resolveRunChain'
-import { answerHold, findCandidate, openHoldOf, type HoldPick } from '@/lib/hold'
+import { answerHold, findCandidate, holdLogExtras, openHoldOf, type HoldPick } from '@/lib/hold'
 import { streamChainRun, contextOverrides } from '@/lib/runSession'
 import type { HoldRecord, RunMeta } from '@/lib/types'
 
@@ -75,5 +75,6 @@ export async function POST(
     resumeFrom: { logged: meta.agentOutputs.length, nextStep: nextStep(meta.runId) },
     versionNumber,
     holds,
+    logExtras: holdLogExtras([answer.output], holds),
   })
 }

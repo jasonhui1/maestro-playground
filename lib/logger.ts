@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { RunMeta, AgentOutput, ToolCallRecord } from './types'
+import { RunMeta, AgentOutput, ToolCallRecord, LogFrontmatter } from './types'
 import { getWorkspacePath } from './fs/workspace'
 import { groupToolCallsByTurn } from './tools/logFormat'
 import { sectionWarningText } from './sectionWarning'
@@ -66,13 +66,14 @@ export function initRunDir(meta: RunMeta) {
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2))
 }
 
-export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutput) {
+/** `extra` adds frontmatter a node kind keeps off `AgentOutput`, e.g. a hold's pick (#100). */
+export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutput, extra: LogFrontmatter = {}) {
   const dir = getRunDir(runId)
   const safeAgentName = path.basename(output.agentName)
   const baseLabel = output.nodeId ? path.basename(output.nodeId) : safeAgentName
   const filename = `${String(stepIdx).padStart(2, '0')}-${baseLabel}.md`
   
-  const frontmatter: any = {
+  const frontmatter: LogFrontmatter = {
     node_id: output.nodeId,
     agent: output.agentName,
     run_id: runId,
@@ -88,7 +89,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     system_prompt: output.systemPrompt,
     thought: output.thought,
     tool_turns: output.toolTurns,
-    chosen: output.chosen,
+    ...extra,
   }
 
   // Remove undefined properties to prevent js-yaml from throwing
