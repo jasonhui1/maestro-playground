@@ -15,15 +15,14 @@ export function runOrderOf(outputs: AgentOutput[]): string[] {
 // Where a node's round sits in the flat list, which is the step "branch from here" forks at.
 // A null round is the panel's "latest" — the node's last step. -1 when there is no such step.
 export function stepIndexOf(outputs: AgentOutput[], nodeId: string, round: number | null): number {
-  if (round !== null) return outputs.findIndex(o => o.nodeId === nodeId && o.round === round)
+  // A rerun can repeat a round number (#90), so the latest write, not the first, is
+  // the step "branch from here" should fork at.
+  if (round !== null) return outputs.findLastIndex(o => o.nodeId === nodeId && o.round === round)
   return outputs.findLastIndex(o => o.nodeId === nodeId)
 }
 
-// Collapse a rerun (promote, #90) to one record per node id — the last write — while
-// keeping each node at the position it first appeared, so a "one section per
-// participant" reader (the markdown export) shows the current answer instead of every
-// attempt. An output with no nodeId predates graph capture and can't be matched to
-// any other, so it is kept as its own entry rather than dropped.
+// Last write per node id, kept at first-appearance position (#90). No-nodeId
+// records predate graph capture and can't be matched, so they're kept as-is.
 export function latestOutputsByNode(outputs: AgentOutput[]): AgentOutput[] {
   const indexOfNode = new Map<string, number>()
   const result: AgentOutput[] = []
@@ -44,9 +43,17 @@ export function latestOutputsByNode(outputs: AgentOutput[]): AgentOutput[] {
 // keyed by nodeId. Mirrors lib/runState.applyRunEvent's agent_done case (accumulates rounds).
 export function buildRunStateMap(outputs: AgentOutput[]): RunStateMap {
   const map: RunStateMap = {}
+  // A rerun (#90) resets `prev` to empty() instead of merging: only a strictly
+  // increasing round continues the same loop attempt (ADR-0016 rule 4).
+  const priorRound = new Map<string, number | undefined>()
   for (const o of outputs) {
     if (!o.nodeId) continue
-    const prev = map[o.nodeId] ?? empty()
+    const continuesLoop = priorRound.has(o.nodeId)
+      && o.round !== undefined
+      && priorRound.get(o.nodeId) !== undefined
+      && o.round > (priorRound.get(o.nodeId) as number)
+    const prev = continuesLoop ? map[o.nodeId] : empty()
+    priorRound.set(o.nodeId, o.round)
     const rounds = o.round !== undefined
       ? [...prev.rounds, roundRecord(o.round, o)]
       : prev.rounds

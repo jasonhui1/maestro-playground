@@ -1,5 +1,6 @@
 import { ChainDef, ChainPort, AgentOutput } from './types'
 import { extractSection } from './graph'
+import { latestOutputsByNode } from './runHistoryState'
 
 /** A layout a chain file may name in `view:`. Adding one is a branch here (ADR-0015). */
 export type DeclaredView = 'timeline' | 'columns' | 'sidebar'
@@ -82,7 +83,7 @@ function panelsFor(ports: ChainPort[], outputs: AgentOutput[]): LayoutPanel[] {
   // Last write wins: a loop-body node reports once per round, and the panel shows
   // where the node ended up rather than where it started.
   const byNode = new Map<string, AgentOutput>()
-  for (const o of outputs) if (o.nodeId) byNode.set(o.nodeId, o)
+  for (const o of latestOutputsByNode(outputs)) if (o.nodeId) byNode.set(o.nodeId, o)
 
   return ports.map(port => panelFor(port, byNode.get(port.node)))
 }

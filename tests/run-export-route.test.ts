@@ -56,10 +56,8 @@ async function callGET(runId: string, format: string) {
   return response
 }
 
-// A promote-style rerun (spec de-risk 4) leaves two agentOutputs records for the same
-// node id, latest last. The markdown export is a one-section-per-agent narrative, so a
-// stale first attempt rendered alongside the real result reads as two answers for one
-// question (#90).
+// A promote-style rerun leaves two agentOutputs records for the same node id, latest
+// last (#90). The markdown export is one section per agent, not a log.
 test('markdown export renders the latest record per node id, not every record', async () => {
   const wp = newWorkspace()
   writeRun(wp, meta({
@@ -123,11 +121,8 @@ test('markdown export keeps every record that has no node id', async () => {
   assert.ok(md.includes('second'))
 })
 
-// The JSON export is the same full-history record GET /api/runs/:id already returns
-// (tier 2 of vision.md's promise: content knowable from the log). It intentionally
-// keeps every record rather than projecting to the latest per node — readers that need
-// "the current state" (buildLayoutModel, buildRunStateMap) do that collapsing
-// themselves from this same raw array.
+// JSON export stays the raw meta.agentOutputs, every record — callers needing current
+// state (buildLayoutModel, buildRunStateMap) do their own collapsing (#90).
 test('json export is the raw meta, every agentOutputs record intact', async () => {
   const wp = newWorkspace()
   writeRun(wp, meta({

@@ -105,8 +105,8 @@ test('a node that reported more than once shows its last output', () => {
   assert.strictEqual(model.panels[0].text, 'second pass')
 })
 
-// De-risk 4 (#90): after a promote, agentOutputs holds two records for the same node
-// (no round involved — this is not a loop). The layout model must read the last one.
+// After a promote, agentOutputs holds two records for the same node, no round
+// involved (#90). The layout model must read the last one.
 test('a promote-style rerun (no round) still collapses each node to its last write', () => {
   const model = buildLayoutModel(
     chain({ view: 'timeline', outputs: [
@@ -220,6 +220,18 @@ test('a round reported more than once shows its last write', () => {
   ])
   assert.strictEqual(model.panels.length, 1)
   assert.strictEqual(model.panels[0].text, 'second try')
+})
+
+// A promote-style rerun of a loop-body node restarts at round 0 and re-covers the same
+// rounds (#90); each round panel shows the rerun's write, not the first attempt's.
+test('a promote-style rerun under sidebar shows the rerun\'s rounds, not the first attempt\'s', () => {
+  const model = buildLayoutModel(chain({ view: 'sidebar', outputs: sidebarPorts }), [
+    output('loopBody', '## Summary\nattempt1 round0', 0),
+    output('loopBody', '## Summary\nattempt1 round1', 1),
+    output('loopBody', '## Summary\nattempt2 round0', 0),
+    output('loopBody', '## Summary\nattempt2 round1', 1),
+  ])
+  assert.deepStrictEqual(model.panels.map(p => p.text), ['attempt2 round0', 'attempt2 round1'])
 })
 
 // A timeline containing a loop-body node keeps ADR-0015's last-write-wins collapse —
