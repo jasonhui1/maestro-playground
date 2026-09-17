@@ -33,3 +33,22 @@ export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: Ch
     edges: chain.edges.filter(e => keep.has(e.fromNode) && keep.has(e.toNode)),
   }
 }
+
+// Every node downstream of sourceId (not itself), with any touched loop zone fully included.
+export function downstreamIds(graph: { nodes: ChainNode[]; edges: ChainEdge[] }, sourceId: string): Set<string> {
+  const zoneOf = new Map(graph.nodes.map(n => [n.id, n.zone]))
+  const found = new Set<string>()
+  const queue = [sourceId]
+  const reach = (id: string) => {
+    if (id === sourceId || found.has(id)) return
+    found.add(id)
+    queue.push(id)
+  }
+  while (queue.length) {
+    const id = queue.shift()!
+    for (const e of graph.edges) if (e.fromNode === id) reach(e.toNode)
+    const zone = id === sourceId ? undefined : zoneOf.get(id)
+    if (zone) for (const n of graph.nodes) if (n.zone === zone) reach(n.id)
+  }
+  return found
+}

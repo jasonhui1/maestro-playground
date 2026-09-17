@@ -64,7 +64,7 @@ function renderConversation(messages: ChatMessage[], agentName: string): string 
       lines.push(`### Turn ${++turn}`, '', `**human:** ${m.content}`, '')
     } else if (m.role === 'assistant') {
       if (m.thought) lines.push(m.thought.split('\n').map(l => `> ${l}`).join('\n'), '')
-      lines.push(`**${agentName}:** ${m.content}`, '')
+      lines.push(`**${agentName}:**${m.promoted ? ' _(promoted)_' : ''} ${m.content}`, '')
     }
   }
   return lines.join('\n')

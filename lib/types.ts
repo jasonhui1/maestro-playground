@@ -294,6 +294,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   thought?: string
+  promoted?: boolean  // this reply became its node's output (#98)
 }
 
 export interface ChatSession {

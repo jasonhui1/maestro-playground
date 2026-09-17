@@ -1,15 +1,32 @@
-import { getWorkspacePath } from './fs/workspace'
+import { getWorkspacePath, loadWorkspace } from './fs/workspace'
+import { validateChain } from './chainGraph'
+import { chainForResume } from './resolveRunChain'
+import { pinRunVersions, versionKey } from './runVersions'
 import { writeAgentLog, updateRunMeta, readRunMeta } from './logger'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
 import { keepConversations } from './nodeChat'
-import type { AgentDef, AgentOutput, ChainDef, HoldRecord, SkillDef, ToolDef } from './types'
+import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta, SkillDef, ToolDef } from './types'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
   return value && typeof value === 'object' ? value as Record<string, string> : {}
+}
+
+/** A waiting run's recorded graph over live files, ready to continue in place; or why it cannot. */
+export function loadContinuation(meta: RunMeta):
+  | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number }
+  | { status: number; body: object } {
+  const workspace = loadWorkspace()
+  const chain = chainForResume(meta, workspace.chains)
+  if (!chain) return { status: 422, body: { error: 'Run has no recorded graph' } }
+  const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
+  if (!validation.valid) return { status: 400, body: { error: 'Invalid chain', errors: validation.errors } }
+  // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
+  const versionNumber = pinRunVersions(chain, workspace)[versionKey('chain', chain.slug)] ?? 0
+  return { chain, workspace, versionNumber }
 }
 
 export interface RunSession {
@@ -27,6 +44,21 @@ export interface RunSession {
   versionNumber: number
   /** Hold records the run carries before this stretch. */
   holds?: HoldRecord[]
+  /** Records this stretch reruns: never replayed, but kept in the run's record ahead of their replacements. */
+  superseded?: AgentOutput[]
+}
+
+// Latest-wins readers pick the last record per node, so a superseded one sits just before its replacement.
+function withSuperseded(results: AgentOutput[], superseded: AgentOutput[]): AgentOutput[] {
+  const placed = new Set<AgentOutput>()
+  const out: AgentOutput[] = []
+  for (const r of results) {
+    for (const o of superseded) {
+      if (o.nodeId === r.nodeId && !placed.has(o)) { placed.add(o); out.push(o) }
+    }
+    out.push(r)
+  }
+  return [...superseded.filter(o => !placed.has(o)), ...out]
 }
 
 /**
@@ -102,7 +134,7 @@ export function streamChainRun(s: RunSession): Response {
         s.context,
       )
 
-      const agentOutputs = keepConversations(results, readRunMeta(runId).agentOutputs)
+      const agentOutputs = keepConversations(withSuperseded(results, s.superseded ?? []), readRunMeta(runId).agentOutputs)
       if (reached.length > 0) {
         updateRunMeta(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
         // Wave-mate holds pause together, so each is announced (#93).

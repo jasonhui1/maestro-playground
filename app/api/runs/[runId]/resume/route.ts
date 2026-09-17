@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadWorkspace } from '@/lib/fs/workspace'
 import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
-import { pinRunVersions, versionKey } from '@/lib/runVersions'
-import { validateChain } from '@/lib/chainGraph'
-import { chainForResume } from '@/lib/resolveRunChain'
 import { answerHold, findCandidate, openHoldOf, type HoldPick } from '@/lib/hold'
-import { streamChainRun, contextOverrides } from '@/lib/runSession'
+import { streamChainRun, contextOverrides, loadContinuation } from '@/lib/runSession'
 import type { HoldRecord, RunMeta } from '@/lib/types'
 
 /** The body's pick, or why it is refused. Neither field given is no pick (#96). */
@@ -46,13 +42,8 @@ export async function POST(
   const pick = pickOf(hold, chosen, custom)
   if (typeof pick === 'string') return NextResponse.json({ error: pick }, { status: 400 })
 
-  const workspace = loadWorkspace()
-  const chain = chainForResume(meta, workspace.chains)
-  if (!chain) return NextResponse.json({ error: 'Run has no recorded graph' }, { status: 422 })
-  const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
-  if (!validation.valid) {
-    return NextResponse.json({ error: 'Invalid chain', errors: validation.errors }, { status: 400 })
-  }
+  const continuation = loadContinuation(meta)
+  if ('status' in continuation) return NextResponse.json(continuation.body, { status: continuation.status })
 
   // No await since the status read: the run is claimed before a second resume can read it.
   const answer = answerHold(hold, direction, pick)
@@ -61,19 +52,14 @@ export async function POST(
   const agentOutputs = [...meta.agentOutputs, answer.output]
   updateRunMeta(meta.runId, { status: 'running', holds, agentOutputs })
 
-  // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
-  const versionNumber = pinRunVersions(chain, workspace)[versionKey('chain', chain.slug)] ?? 0
-
   return streamChainRun({
+    ...continuation,
     runId: meta.runId,
-    chain,
-    workspace,
     seedPrompt: meta.seedPrompt,
     paramValue: meta.parameter?.value ?? '',
     context: contextOverrides(context),
     replay: agentOutputs,
     resumeFrom: { logged: meta.agentOutputs.length, nextStep: nextStep(meta.runId) },
-    versionNumber,
     holds,
   })
 }
