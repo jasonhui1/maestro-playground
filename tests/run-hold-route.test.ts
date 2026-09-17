@@ -123,3 +123,21 @@ test('a run replayed with the hold answered does not pause', async () => {
   assert.ok(!events.some(e => e.type === 'run_waiting'))
   assert.deepStrictEqual(ran, ['after'])
 })
+
+test('two holds reached in one wave are both recorded and both announced', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'chains/held.md'), heldChain.replace('edges:\n', `  - id: hold2
+    kind: hold
+edges:
+  - from: dec
+    to: hold2.in
+`))
+  const events = await run({ chainName: 'held', seedPrompt: 'go' })
+
+  const waiting = events.filter(e => e.type === 'run_waiting')
+  assert.deepStrictEqual(waiting.map(e => e.nodeId).sort(), ['hold', 'hold2'])
+  const { readRunMeta } = await import('../lib/logger')
+  const meta = readRunMeta(waiting[0].runId as string)
+  assert.strictEqual(meta.status, 'waiting')
+  assert.deepStrictEqual(meta.holds?.map(h => h.nodeId).sort(), ['hold', 'hold2'])
+})

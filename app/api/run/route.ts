@@ -4,7 +4,7 @@ import { initRunDir, writeAgentLog, updateRunMeta } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { runChainGraph } from '@/lib/executor'
 import { validateChain } from '@/lib/chainGraph'
-import { RunMeta, AgentOutput, AgentDef, ChainDef, HoldRecord } from '@/lib/types'
+import { RunMeta, AgentOutput, HoldRecord } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { buildLayoutModel, failLayoutModel } from '@/lib/layoutModel'
 import { nanoid } from 'nanoid'
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       // The graph is fixed, so kind is knowable here rather than threaded
       // through the executor's eleven emit sites (#35).
       const kindById = new Map(theChain.nodes.map(n => [n.id, n.kind]))
-      let hold: HoldRecord | undefined
+      const reached: HoldRecord[] = []
 
       try {
         const results = await runChainGraph(
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
               const logged = loggedOf.get(nodeId)
               if (logged) writeAgentLog(runId, logged.step, logged.output)
             },
-            onHold: (_nodeId, reached) => { hold = reached },
+            onHold: hold => { reached.push(hold) },
           },
           undefined,
           (branchOutputs as AgentOutput[]) ?? [],
@@ -122,10 +122,10 @@ export async function POST(req: NextRequest) {
           context && typeof context === 'object' ? context : {},
         )
 
-        if (hold) {
-          const holds = [...(meta.holds ?? []), hold]
-          updateRunMeta(runId, { status: 'waiting', agentOutputs: results, holds })
-          send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold })
+        if (reached.length > 0) {
+          updateRunMeta(runId, { status: 'waiting', agentOutputs: results, holds: [...(meta.holds ?? []), ...reached] })
+          // Wave-mate holds pause together, so each is announced (#93).
+          for (const hold of reached) send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold })
         } else {
           updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs: results })
           send({ type: 'run_complete', runId })

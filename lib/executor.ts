@@ -24,7 +24,7 @@ export interface RunCallbacks {
   // Carries both endpoints, so it takes no separate nodeId (#37).
   onWarning?: (warning: SectionWarning) => void
   // The run pauses after the current wave settles; the hold itself records nothing (#93).
-  onHold?: (nodeId: string, hold: HoldRecord) => void
+  onHold?: (hold: HoldRecord) => void
 }
 
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
@@ -346,7 +346,7 @@ export async function runChainGraph(
       // An answered hold never gets here: it is replayed from startOutputs above.
       // Out-edges stay dead; nothing is recorded until the human answers.
       held = true
-      callbacks.onHold?.(nodeId, openHold(nodeId, inValue(nodeId), node.prompt))
+      callbacks.onHold?.(openHold(nodeId, inValue(nodeId), node.prompt))
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
       // Loop boundaries are consumed by runZone/zonesByStart above; one only reaches
       // here if it carries no registered zone (a malformed chain). No-op — its

@@ -34,6 +34,13 @@ interface Version {
 
 type Tab = 'runs' | 'versions';
 
+const STATUS_DOT: Record<RunMeta['status'], string> = {
+  running: 'bg-blue-500 animate-pulse',
+  waiting: 'bg-amber-500',
+  complete: 'bg-green-500',
+  error: 'bg-red-500',
+}
+
 export function HistoryPane({ entityType, slug, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('runs');
   const [runs, setRuns] = useState<RunMeta[]>([]);
@@ -230,12 +237,7 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${
-                            run.status === 'complete' ? 'bg-green-500' :
-                            run.status === 'running' ? 'bg-blue-500 animate-pulse' :
-                            run.status === 'waiting' ? 'bg-amber-500' :
-                            'bg-red-500'
-                          }`} />
+                          <span className={`w-2 h-2 rounded-full ${STATUS_DOT[run.status]}`} />
                           <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-tight">
                             {run.chainName || 'Single Agent'}
                           </span>

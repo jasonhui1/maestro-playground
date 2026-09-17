@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { ChainDef, AgentOutput } from '@/lib/types'
-import { streamRun, runErrorMessage } from '@/lib/runStream'
+import { streamRun, runErrorMessage, endedRunId } from '@/lib/runStream'
 import { applyRunEvent, RunStateMap } from '@/lib/runState'
 import { applyOrder } from '@/lib/runModel'
 import { buildLayoutModel, LayoutModel } from '@/lib/layoutModel'
@@ -117,7 +117,8 @@ export default function ResultPage() {
       await streamRun(reader, e => {
         if (e.type === 'layout') { setStreamedModel(e.model); return }
         if (e.type === 'error') { setError(e.error); return }
-        if (e.type === 'run_complete' || e.type === 'run_waiting') { setRunId(e.runId); return }
+        const ended = endedRunId(e)
+        if (ended) { setRunId(ended); return }
         setStates(prev => applyRunEvent(prev, e))
         setOrder(prev => applyOrder(prev, e))
       })

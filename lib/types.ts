@@ -1,5 +1,6 @@
 import type { SectionWarning } from './sectionWarning'
 import type { ENTITY_DIRS } from './entityDirs'
+import type { MarkdownSection } from './graph'
 
 export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
 
@@ -204,7 +205,7 @@ export interface AgentOutput {
   warnings?: SectionWarning[]   // sections downstream edges asked this output for and did not find (#37)
 }
 
-export interface HoldCandidate { heading: string; body: string }
+export type HoldCandidate = MarkdownSection
 
 export interface HoldRecord {
   nodeId: string

@@ -1,4 +1,4 @@
-import { streamRun } from './runStream'
+import { streamRun, endedRunId } from './runStream'
 import type { RunMeta } from './types'
 
 // Re-run a chain from an earlier step, replaying the original run's outputs up to
@@ -20,7 +20,7 @@ export async function branchRun(run: RunMeta, fromStep: number): Promise<string 
 
   let newRunId: string | null = null
   await streamRun(res.body.getReader(), event => {
-    if (event.type === 'run_complete' || event.type === 'run_waiting') newRunId = event.runId
+    newRunId = endedRunId(event) ?? newRunId
   })
   return newRunId
 }

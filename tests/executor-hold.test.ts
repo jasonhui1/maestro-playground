@@ -47,12 +47,12 @@ test('wavefront stop: a hold records nothing, its descendants are never recorded
     ],
   }
   const starts: string[] = []
-  const holds: [string, HoldRecord][] = []
+  const holds: HoldRecord[] = []
   const callbacks: RunCallbacks = {
     onStart: nodeId => starts.push(nodeId),
     onToken() {},
     onDone() {},
-    onHold: (nodeId, hold) => holds.push([nodeId, hold]),
+    onHold: hold => holds.push(hold),
   }
   // 's' outlasts the hold, so its record proves the pause waits for the wave to settle.
   const stub: typeof runAgent = async (a, sp) => {
@@ -65,8 +65,7 @@ test('wavefront stop: a hold records nothing, its descendants are never recorded
   assert.deepStrictEqual(results.map(r => r.nodeId).sort(), ['dec', 's'], 'exactly the pre-hold outputs')
   assert.ok(!starts.includes('d'), 'd never starts')
   assert.strictEqual(holds.length, 1)
-  const [nodeId, hold] = holds[0]
-  assert.strictEqual(nodeId, 'h')
+  const hold = holds[0]
   assert.strictEqual(hold.nodeId, 'h')
   assert.strictEqual(hold.prompt, 'pick one')
   assert.strictEqual(hold.input, decision, 'the text on `in`, verbatim')

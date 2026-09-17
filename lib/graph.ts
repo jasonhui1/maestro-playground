@@ -6,14 +6,7 @@ export function slugify(s: string): string {
 export function extractSections(markdown: string): string[] {
   // Strip code blocks to avoid extracting headers within block code / examples
   const cleaned = markdown.replace(/```[\s\S]*?```/g, '')
-  const re = /^#{1,6}\s+(.+?)\s*$/gm
-  const out: string[] = []
-  let m: RegExpExecArray | null
-  while ((m = re.exec(cleaned)) !== null) {
-    const slug = slugify(m[1])
-    if (slug) out.push(slug)
-  }
-  return out
+  return listSections(cleaned).map(s => slugify(s.heading)).filter(Boolean)
 }
 
 export interface MarkdownSection { heading: string; body: string }

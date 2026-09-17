@@ -24,6 +24,11 @@ export type RunEvent =
   | { type: 'run_waiting'; runId: string; nodeId: string; hold: HoldRecord }
   | { type: 'error'; error: string }
 
+// The run id once the stream has ended without error: finished, or paused at a hold.
+export function endedRunId(e: RunEvent): string | undefined {
+  return e.type === 'run_complete' || e.type === 'run_waiting' ? e.runId : undefined
+}
+
 // /api/run rejects with either a validation list or a bare message; every caller wants
 // one string. Reads the body, so call it once per failed response.
 export async function runErrorMessage(res: Response): Promise<string> {
