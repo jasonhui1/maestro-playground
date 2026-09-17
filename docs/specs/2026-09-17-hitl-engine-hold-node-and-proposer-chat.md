@@ -253,17 +253,23 @@ the whole meta, so the plugin needs no new read endpoint.
 `POST /api/runs/:id/nodes/:nodeId/chat { message: string }` → SSE `token`s, then
 `chat_done { message }`.
 
-- Allowed on any run status. Refused (400) when the node is not `agent | decider`
-  or has no successful output in this run.
+- Allowed on `waiting`, `complete` and `error` runs. Refused (409) on a `running`
+  run: a stretch rewrites `agentOutputs` when it ends and would drop the turn.
+  Refused (400) when the node is not `agent | decider`, or its latest output in
+  this run failed or is missing. Unknown node 404; agent file gone 422.
+- A turn written while a stretch runs (chat started before a resume) survives:
+  the stretch re-reads `meta.json` before its final write and keeps it.
 - Transcript rebuilt from the node's own record: `[system: systemPrompt, user:
   input, assistant: output, …conversation so far, user: message]`. `thought` is
   never replayed (stopgap decision, kept). For a tool-using proposer the tool
   turns are **dropped** from the rebuilt transcript; see de-risk 3.
 - Runs through `runAgent(agent, systemPrompt, message, { history })`, which the
-  `/api/chat` route already exercises.
+  `/api/chat` route already exercises, with the model recorded on the output
+  (not the agent file's current one) and no tools bound.
 - `AgentOutput` gains `conversation?: ChatMessage[]`. `writeAgentLog` renders it
   as `## Conversation` **after** `## Output` (chronological, like the tool loop),
-  one `**human:**` / `**<agent>:**` pair per turn. The log is rewritten from the
+  one `### Turn N` per exchange: `**human:**`, the reply's thought as a `>`
+  quote when there is one, then `**<agent>:**`. The log is rewritten from the
   amended record, the #37 precedent.
 - `meta.agentOutputs` is updated so `GET /api/runs/:id` shows the conversation.
 
