@@ -65,7 +65,8 @@ Then one bullet per KEEP line, quoting it verbatim, then where it lives in the p
 
 ## Direction applied
 One bullet per remaining Direction line (not KEEP, KILL or CANON?): the line
-verbatim, then what it did to the concept in one sentence.
+verbatim, then what it did to the concept in one sentence. If there are none,
+write `- None` and nothing else.
 
 ## Greenlight Pitch
 About 200 words: the game to build, told as one game. Its thesis in the first

@@ -127,6 +127,7 @@ test('the greenlight prompt builds on the PICK line and skips empty verb lines (
   const prompt = agentOf(agents, 'greenlight').systemPrompt
   assert.match(prompt, /PICK:/)
   assert.match(prompt, /nothing after the colon/i)
+  assert.match(prompt, /write `- None`/, 'an empty Direction applied still says so')
 })
 
 test('the greenlight prompt refuses KILL and REJECTED and cites KEEP lines', () => {
