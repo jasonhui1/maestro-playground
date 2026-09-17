@@ -233,6 +233,7 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
                           <span className={`w-2 h-2 rounded-full ${
                             run.status === 'complete' ? 'bg-green-500' :
                             run.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                            run.status === 'waiting' ? 'bg-amber-500' :
                             'bg-red-500'
                           }`} />
                           <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-tight">

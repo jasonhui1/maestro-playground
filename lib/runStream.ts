@@ -1,4 +1,4 @@
-import { AgentOutput, ChainNode } from './types'
+import { AgentOutput, ChainNode, HoldRecord } from './types'
 import type { SectionWarning } from './sectionWarning'
 import type { LayoutModel } from './layoutModel'
 
@@ -20,6 +20,8 @@ export type RunEvent =
   // projection so a streaming view never re-implements it (#76).
   | { type: 'layout'; model: LayoutModel }
   | { type: 'run_complete'; runId: string }
+  // The run stopped at a hold and is not complete; the record is what meta.json stores (#93).
+  | { type: 'run_waiting'; runId: string; nodeId: string; hold: HoldRecord }
   | { type: 'error'; error: string }
 
 // /api/run rejects with either a validation list or a bare message; every caller wants

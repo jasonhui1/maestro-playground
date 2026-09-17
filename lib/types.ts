@@ -204,6 +204,20 @@ export interface AgentOutput {
   warnings?: SectionWarning[]   // sections downstream edges asked this output for and did not find (#37)
 }
 
+export interface HoldCandidate { heading: string; body: string }
+
+export interface HoldRecord {
+  nodeId: string
+  prompt?: string
+  /** The text on the hold's `in` socket, verbatim. */
+  input: string
+  candidates: HoldCandidate[]
+  reachedAt: string
+  chosen?: string
+  direction?: string
+  resolvedAt?: string
+}
+
 export interface RunMeta {
   runId: string
   chainName: string
@@ -213,8 +227,10 @@ export interface RunMeta {
   parameter?: { name: string; value: string }
   startedAt: string
   completedAt?: string
-  status: 'running' | 'complete' | 'error'
+  status: 'running' | 'waiting' | 'complete' | 'error'
   agentOutputs: AgentOutput[]
+  /** One entry per hold reached; the open one is the last without `resolvedAt` (#93). */
+  holds?: HoldRecord[]
   graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
   branchedFromRunId?: string
   branchedFromStep?: number

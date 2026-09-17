@@ -48,6 +48,10 @@ The executor's schedulable atom: one node, or one whole zone run as a sequential
 
 The scheduling strategy: repeatedly run every currently-ready unit at once, wait for all of them, then recompute. A unit is *ready* when every unit it depends on is **settled** — ran, was skipped, or was replayed — not when it has no inputs. Result order stays independent of finish order: each record files under an anchor node, and the returned array is the anchors flushed in topological order.
 
+## Waiting and hold record
+
+A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates settle, then scheduling stops, and nothing after the hold runs or is recorded (#93). The **hold record** is the `meta.holds[]` entry saying which hold, since when, the text on its `in` socket and the `## Candidate N` sections sliced from it; the open hold is the last record without `resolvedAt`. A hold already among the replayed outputs is settled like any replayed node and does not pause. _Avoid_: paused, suspended (no executor process survives the pause).
+
 ## Static vs dynamic width
 
 **Static** width means the N producers into a `join` are known when you read the chain file. That is all v1 supports, and it is what keeps the tier-1 promise: the graph is fixed before the run starts. **Dynamic** width — one producer spawned per runtime item — is deliberately not built.

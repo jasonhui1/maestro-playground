@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef } from './types'
+import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef, HoldRecord } from './types'
 import { findBySlug } from './fs/discover'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
@@ -11,6 +11,7 @@ import { SectionWarning, sameSectionWarning } from './sectionWarning'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { slugify } from './graph'
+import { openHold } from './hold'
 import { kindOf, agentSlugOf, resolveNodeSkills } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
@@ -22,9 +23,8 @@ export interface RunCallbacks {
   onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
   // Carries both endpoints, so it takes no separate nodeId (#37).
   onWarning?: (warning: SectionWarning) => void
-  // Stand-in for #89's hold arm (superseded by #91's real hold kind); records
-  // nothing and stops the wavefront after the current wave, not immediately.
-  shouldHold?: (nodeId: string) => boolean
+  // The run pauses after the current wave settles; the hold itself records nothing (#93).
+  onHold?: (nodeId: string, hold: HoldRecord) => void
 }
 
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
@@ -270,8 +270,6 @@ export async function runChainGraph(
       return // out-edges remain dead
     }
 
-    if (callbacks.shouldHold?.(node.id)) { held = true; return }
-
     if (node.kind === 'agent' || node.kind === 'decider') {
       const agent = node.agent ? agentBySlug.get(node.agent) : undefined
       if (agent) {
@@ -345,9 +343,10 @@ export async function runChainGraph(
         markOut(nodeId, () => true)
       }
     } else if (node.kind === 'hold') {
-      // Pausing lands in #93; until then a hold fails its own record so the run says why.
-      const rec = controlOutput(nodeId, 'hold: pausing a run is not supported yet', '', 'error')
-      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
+      // An answered hold never gets here: it is replayed from startOutputs above.
+      // Out-edges stay dead; nothing is recorded until the human answers.
+      held = true
+      callbacks.onHold?.(nodeId, openHold(nodeId, inValue(nodeId), node.prompt))
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
       // Loop boundaries are consumed by runZone/zonesByStart above; one only reaches
       // here if it carries no registered zone (a malformed chain). No-op — its
@@ -394,7 +393,7 @@ export async function runChainGraph(
       await Promise.allSettled(ready.slice(i, i + MAX_CONCURRENCY).map(processUnit))
     }
     for (const u of ready) doneUnits.add(u)
-    if (held) break // #89: a held unit's descendants must never reach `ready`
+    if (held) break // a held unit's descendants must never reach `ready` (#93)
   }
 
   const results: AgentOutput[] = []

@@ -50,7 +50,7 @@ export default function RunPage() {
 
     await streamRun(reader, e => {
       if (e.type === 'error') { setRunError(e.error); return }
-      if (e.type === 'run_complete') { setCompletedRuns(prev => [...prev, e.runId]); return }
+      if (e.type === 'run_complete' || e.type === 'run_waiting') { setCompletedRuns(prev => [...prev, e.runId]); return }
       setRunState(prev => applyInstanceEvent(prev, runIndex, e))
       setRunOrder(prev => applyInstanceOrder(prev, runIndex, e))
     })

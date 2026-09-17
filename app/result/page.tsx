@@ -117,7 +117,7 @@ export default function ResultPage() {
       await streamRun(reader, e => {
         if (e.type === 'layout') { setStreamedModel(e.model); return }
         if (e.type === 'error') { setError(e.error); return }
-        if (e.type === 'run_complete') { setRunId(e.runId); return }
+        if (e.type === 'run_complete' || e.type === 'run_waiting') { setRunId(e.runId); return }
         setStates(prev => applyRunEvent(prev, e))
         setOrder(prev => applyOrder(prev, e))
       })
