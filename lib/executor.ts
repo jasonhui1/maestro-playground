@@ -22,6 +22,10 @@ export interface RunCallbacks {
   onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
   // Carries both endpoints, so it takes no separate nodeId (#37).
   onWarning?: (warning: SectionWarning) => void
+  // De-risk stand-in for the `hold` node kind (#89): when a ready node answers
+  // true, the wavefront records nothing for it, leaves its out-edges dead, and
+  // stops scheduling after the current wave settles.
+  onHold?: (nodeId: string) => boolean
 }
 
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
@@ -256,6 +260,8 @@ export async function runChainGraph(
     const node = nodeById.get(nodeId)
     if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
 
+    if (callbacks.onHold?.(node.id)) { held = true; return }
+
     if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
     const slots = usedSlots(node)
@@ -367,6 +373,7 @@ export async function runChainGraph(
   const topoRank = new Map(topoOrder(chain).map((id, i) => [id, i]))
   const doneUnits = new Set<string>()
   const MAX_CONCURRENCY = Number(process.env.CHAIN_MAX_CONCURRENCY) || 4
+  let held = false
 
   const processUnit = async (unitId: string): Promise<void> => {
     const zone = zonesByStart.get(unitId)
@@ -384,6 +391,7 @@ export async function runChainGraph(
       await Promise.allSettled(ready.slice(i, i + MAX_CONCURRENCY).map(processUnit))
     }
     for (const u of ready) doneUnits.add(u)
+    if (held) break // #89: a held unit's descendants must never reach `ready`
   }
 
   const results: AgentOutput[] = []
