@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta } from '@/lib/logger'
+import { latestOutputsByNode } from '@/lib/runHistoryState'
 
 export async function GET(
   request: NextRequest,
@@ -32,7 +33,9 @@ export async function GET(
     md += `- **Completed At:** ${meta.completedAt || 'N/A'}\n\n`
     md += `---\n\n`
 
-    for (const output of meta.agentOutputs) {
+    // One section per node id, the last write — a rerun (promote, #90) leaves earlier
+    // attempts in agentOutputs, and this is a one-section-per-agent narrative, not a log.
+    for (const output of latestOutputsByNode(meta.agentOutputs)) {
       md += `## Agent: ${output.agentName}\n\n`
       md += `- **Model:** ${output.model}\n`
       md += `- **Timestamp:** ${output.timestamp}\n\n`
