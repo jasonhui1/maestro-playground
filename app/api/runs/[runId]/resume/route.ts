@@ -32,8 +32,8 @@ export async function POST(
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting` }, { status: 409 })
   }
 
-  const candidate = chosen === undefined ? undefined : hold.candidates.find(c => c.heading === chosen)
-  if (chosen !== undefined && !candidate) {
+  const candidate = chosen == null ? undefined : hold.candidates.find(c => c.heading === chosen)
+  if (chosen != null && !candidate) {
     return NextResponse.json({ error: `chosen names no candidate of hold ${hold.nodeId}` }, { status: 400 })
   }
 

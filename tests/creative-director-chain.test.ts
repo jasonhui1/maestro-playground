@@ -246,18 +246,14 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   assert.ok(greenlightLog, `greenlight log in ${logs.join(', ')}`)
   const holdLog = logs.find(f => f.endsWith('-hold.md'))
   assert.ok(holdLog, 'hold log written')
-  const holdText = `PICK: Candidate 2
-Candidate 2 body
-
-${DIRECTION}`
+  const holdText = `PICK: Candidate 2\nCandidate 2 body\n\n${DIRECTION}`
   const hold = matter(fs.readFileSync(path.join(dir, holdLog), 'utf-8'))
   assert.strictEqual(hold.content.trim(), holdText)
   assert.strictEqual(hold.data.chosen, 'Candidate 2')
   assert.ok(logs.some(f => f.endsWith('-report.md')))
   const log = matter(fs.readFileSync(path.join(dir, greenlightLog), 'utf-8'))
   assert.ok(log.content.includes('Greenlight Pitch body'), 'pitch is in the greenlight log')
-  assert.ok((log.data.system_prompt as string).includes(`<direction>
-${holdText}`), 'greenlight reads the pick first')
+  assert.ok((log.data.system_prompt as string).includes(`<direction>\n${holdText}`), 'greenlight reads the pick first')
 
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8')) as RunMeta
   assert.strictEqual(meta.status, 'complete')

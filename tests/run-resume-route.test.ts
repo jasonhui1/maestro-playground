@@ -275,10 +275,10 @@ test('resume with a chosen that names no candidate is a bad request (#96)', asyn
   assert.strictEqual(meta.holds![0].chosen, undefined)
 })
 
-test('resume without chosen leaves no pick in the record or the log (#96)', async () => {
+test('resume without chosen, or with a null one, leaves no pick in the record or the log (#96)', async () => {
   const wp = newWorkspace(oneHold)
   const runId = await startRun()
-  await sse(await resume(runId, { direction: 'go' }))
+  await sse(await resume(runId, { chosen: null, direction: 'go' }))
   const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
   assert.strictEqual(holdLog.data.chosen, undefined)
   assert.strictEqual((await readMeta(runId)).holds![0].chosen, undefined)
