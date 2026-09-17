@@ -336,6 +336,8 @@ assistant turn.
 4. **Latest-wins on repeated node ids.** After promote, `agentOutputs` holds two
    records for `join` and `creative-director`. Verify `buildLayoutModel`, export
    and the run detail page all read the last one, not the first.
+   *Amended (#90):* the JSON export stays the full log (every record, like
+   `GET /api/runs/:id`); only the markdown export collapses to the latest.
 5. **Version pins on resume (ADR-0011).** Resume runs live files, as branching
    does. Confirm `meta.versions` is not overwritten and the post-hold step logs
    carry the version they actually ran with.
