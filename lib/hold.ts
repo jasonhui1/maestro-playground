@@ -23,15 +23,25 @@ export function openHoldOf(holds: HoldRecord[] = []): HoldRecord | undefined {
   return holds.findLast(h => !h.resolvedAt)
 }
 
-/** The hold's answer as a replayable output, and the record marked resolved (#94). */
-export function answerHold(hold: HoldRecord, direction: string): { output: AgentOutput; record: HoldRecord } {
+/** The hold's answer as a replayable output, and the record marked resolved (#94).
+ *  A pick leads the output as `PICK: <heading>` and that candidate's body (#96). */
+export function answerHold(
+  hold: HoldRecord,
+  direction: string,
+  chosen?: HoldCandidate,
+): { output: AgentOutput; record: HoldRecord } {
   const at = new Date().toISOString()
+  const text = chosen ? `PICK: ${chosen.heading}
+${chosen.body}
+
+${direction}` : direction
   return {
     output: {
-      nodeId: hold.nodeId, agentName: 'hold', systemPrompt: '', input: hold.input, output: direction,
+      nodeId: hold.nodeId, agentName: 'hold', systemPrompt: '', input: hold.input, output: text,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: at, status: 'success',
+      ...(chosen ? { chosen: chosen.heading } : {}),
     },
-    record: { ...hold, direction, resolvedAt: at },
+    record: { ...hold, ...(chosen ? { chosen: chosen.heading } : {}), direction, resolvedAt: at },
   }
 }
 

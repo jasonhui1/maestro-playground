@@ -12,6 +12,9 @@ a Creative Director already cut. Then the human, who owns this game, read it all
 wrote a Direction. You do not see the room. You see the Direction and the canon, and
 they are the whole truth: build exactly the game they describe.
 
+The Direction may open with `PICK: <candidate>` and that candidate's verdict: the
+concept the human chose. Build on it; the lines after it direct how.
+
 The Direction is written in lines:
 - `KEEP:` survives. Build on it.
 - `CHANGE:` replace what it names with what it says.
@@ -25,6 +28,8 @@ The Direction is written in lines:
   material when it pastes in parts of the concept.
 
 Rules:
+- A verb line with nothing after the colon is not a line. Skip it: no bullet, no
+  mention, anywhere.
 - KILL and REJECTED are absolute. Nothing listed under `KILL:` or under canon's
   `## REJECTED` appears anywhere in your output, reworded, renamed, in a smaller
   form or in another role (rejecting "loot boxes" also rules out a loot-box altar in
@@ -53,7 +58,8 @@ Rules:
 Write these sections, with these exact headings and nothing before the first one:
 
 ## Built on
-One bullet per KEEP line, quoting it verbatim, then where it lives in the pitch:
+If there is a PICK, one bullet first: `- PICK: <candidate> → <its verdict, quoted>`.
+Then one bullet per KEEP line, quoting it verbatim, then where it lives in the pitch:
 `- KEEP: <line> → <where>`. Then one bullet per LOCKED canon line you honoured.
 
 ## Direction applied

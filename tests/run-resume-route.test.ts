@@ -12,7 +12,7 @@ vi.mock('@/lib/runner', () => ({
   runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
     ran.push({ slug: agent.slug, systemPrompt })
     return {
-      agentName: agent.name, systemPrompt, input: '', output: `## Candidate 1\nfrom ${agent.slug}`,
+      agentName: agent.name, systemPrompt, input: '', output: `## Candidate 1\nfrom ${agent.slug}\n\n## Candidate 2\nsecond from ${agent.slug}`,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
     }
   },
@@ -238,4 +238,48 @@ edges:
   assert.strictEqual(meta.status, 'waiting')
   assert.strictEqual(meta.holds?.length, 2)
   assert.strictEqual(meta.holds!.filter(h => !h.resolvedAt).length, 1)
+})
+
+test('resume with chosen composes PICK, the candidate body, then the Direction (#96)', async () => {
+  const wp = newWorkspace(oneHold)
+  const runId = await startRun()
+  const waiting = await readMeta(runId)
+  assert.deepStrictEqual(waiting.holds![0].candidates, [
+    { heading: 'Candidate 1', body: 'from decider' },
+    { heading: 'Candidate 2', body: 'second from decider' },
+  ])
+  ran.length = 0
+
+  const events = await sse(await resume(runId, { chosen: 'Candidate 2', direction: 'KEEP: halo' }))
+  assert.strictEqual(events.at(-1)!.type, 'run_complete')
+
+  const expected = 'PICK: Candidate 2\nsecond from decider\n\nKEEP: halo'
+  assert.ok(ran[0].systemPrompt.includes(`<<${expected}>>`), 'greenlight-side reads the pick first')
+
+  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
+  assert.strictEqual(holdLog.content.trim(), expected)
+  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
+
+  const meta = await readMeta(runId)
+  assert.strictEqual(meta.holds![0].chosen, 'Candidate 2')
+  assert.strictEqual(meta.holds![0].direction, 'KEEP: halo')
+})
+
+test('resume with a chosen that names no candidate is a bad request (#96)', async () => {
+  newWorkspace(oneHold)
+  const runId = await startRun()
+  assert.strictEqual((await resume(runId, { chosen: 'Candidate 9', direction: 'x' })).status, 400)
+  assert.strictEqual((await resume(runId, { chosen: 7, direction: 'x' })).status, 400)
+  const meta = await readMeta(runId)
+  assert.strictEqual(meta.status, 'waiting', 'a refused resume changes nothing')
+  assert.strictEqual(meta.holds![0].chosen, undefined)
+})
+
+test('resume without chosen leaves no pick in the record or the log (#96)', async () => {
+  const wp = newWorkspace(oneHold)
+  const runId = await startRun()
+  await sse(await resume(runId, { direction: 'go' }))
+  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
+  assert.strictEqual(holdLog.data.chosen, undefined)
+  assert.strictEqual((await readMeta(runId)).holds![0].chosen, undefined)
 })

@@ -75,3 +75,14 @@ At least one item must be an idea that is good on its own.
 ## Greenlight Concept
 About 150 words: the concept to build, told as one game rather than five
 departments. After it, one line per department naming what of theirs survived.
+
+Then offer the human three verdicts to choose from. Candidate 1 is the Greenlight
+Concept above; Candidates 2 and 3 are other games the same room could make, each
+cut for coherence by the same rules. Each candidate is one line of verdict, then
+two lines of why. Nothing after Candidate 3.
+
+## Candidate 1
+
+## Candidate 2
+
+## Candidate 3

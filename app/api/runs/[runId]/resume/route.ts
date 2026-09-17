@@ -16,7 +16,7 @@ export async function POST(
 ) {
   const { runId } = await params
   const body = await req.json().catch(() => ({}))
-  const { direction, context } = body ?? {}
+  const { direction, chosen, context } = body ?? {}
   if (typeof direction !== 'string' || !direction.trim()) {
     return NextResponse.json({ error: 'direction is required' }, { status: 400 })
   }
@@ -32,6 +32,11 @@ export async function POST(
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting` }, { status: 409 })
   }
 
+  const candidate = chosen === undefined ? undefined : hold.candidates.find(c => c.heading === chosen)
+  if (chosen !== undefined && !candidate) {
+    return NextResponse.json({ error: `chosen names no candidate of hold ${hold.nodeId}` }, { status: 400 })
+  }
+
   const workspace = loadWorkspace()
   const chain = chainForResume(meta, workspace.chains)
   if (!chain) return NextResponse.json({ error: 'Run has no recorded graph' }, { status: 422 })
@@ -41,7 +46,7 @@ export async function POST(
   }
 
   // No await since the status read: the run is claimed before a second resume can read it.
-  const answer = answerHold(hold, direction)
+  const answer = answerHold(hold, direction, candidate)
   const holds = (meta.holds ?? []).map(h => (h === hold ? answer.record : h))
   // The answer is recorded up front, so a run that fails after it still shows what was said.
   const agentOutputs = [...meta.agentOutputs, answer.output]

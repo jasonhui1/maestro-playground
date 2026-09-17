@@ -152,7 +152,7 @@ can consume without reimplementing Maestro's chain/run logic.
   `pending` state for nodes not yet reached. 404 JSON `{ error }` if the run doesn't exist.
 * **`GET /api/runs/:runId/export?format=markdown|json`** — the run rendered as a single document.
 * **`POST /api/run`** — start a run (SSE stream of `AgentOutput` events). Body: `{ chainName }` / `{ agentName }` / `{ chain, slug }` (inline graph), plus optional `seedPrompt`, `parameter`, and `context` — a `{ [contextFile]: text }` map. Any `context` node whose `file` is a key in that map uses the supplied text instead of reading `workspace/context/<file>.md`, so a client holding the live copy elsewhere (e.g. a canon note in an Obsidian vault) never needs this repo to keep its own synced copy. A `context` node whose file is neither overridden nor found on disk still injects `[context <file> not found]`, same as before this existed.
-* **`POST /api/runs/:runId/resume`** — answer a `waiting` run's open hold. Body: `{ direction, context? }`. The Direction becomes the hold's output and the same run continues, streaming the same SSE events as `/api/run`; it ends `run_complete`, or `run_waiting` at a later hold. 409 unless the run is `waiting`; 400 without a `direction`.
+* **`POST /api/runs/:runId/resume`** — answer a `waiting` run's open hold. Body: `{ direction, chosen?, context? }`. `chosen` names one of the hold's `## Candidate N` headings; the hold's output is then `PICK: <heading>`, that candidate's body, and the Direction, else the Direction alone. The same run continues, streaming the same SSE events as `/api/run`; it ends `run_complete`, or `run_waiting` at a later hold. 409 unless the run is `waiting`; 400 without a `direction`, or when `chosen` names no candidate.
 
 ---
 

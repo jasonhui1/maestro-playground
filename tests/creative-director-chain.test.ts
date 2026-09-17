@@ -16,6 +16,7 @@ import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta } from '../li
 const PROPOSERS = ['character-director', 'gameplay-director', 'world-director', 'art-director', 'devils-advocate']
 const VERDICT_SECTIONS = ['Creative Thesis', 'Player Fantasy', 'Pillars', 'Kill List', 'Greenlight Concept']
 const PITCH_SECTIONS = ['Built on', 'Direction applied', 'Greenlight Pitch']
+const CANDIDATES = ['Candidate 1', 'Candidate 2', 'Candidate 3']
 
 const DIRECTION = [
   'KEEP: fast combat, halo segments as weapons',
@@ -29,7 +30,7 @@ const CANON = '## LOCKED\n- halo = burden\n\n## UNRESOLVED\n\n## REJECTED\n- gac
 // Only the model is stubbed; the executor, routes and logger are real.
 const ran: string[] = []
 const reply = (slug: string) => {
-  if (slug === 'creative-director') return VERDICT_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
+  if (slug === 'creative-director') return [...VERDICT_SECTIONS, ...CANDIDATES].map(s => `## ${s}\n${s} body`).join('\n\n')
   if (slug === 'greenlight') return PITCH_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
   return `## Take\n${slug} take\n\n## Proposed canon\n- ${slug} line`
 }
@@ -113,6 +114,19 @@ test('the creative director prompt forces the verdict sections and declares them
   const sockets = cd.outputs.map(o => o.name.toLowerCase())
   for (const s of VERDICT_SECTIONS) assert.ok(sockets.includes(s.toLowerCase()), `declares ${s} output`)
   assert.match(cd.systemPrompt, /coheren/i, 'instructed to protect coherence')
+})
+
+test('the creative director prompt ends with three candidates for the hold to offer (#96)', () => {
+  const { agents } = workspace()
+  const headings = agentOf(agents, 'creative-director').systemPrompt.match(/^## .+$/gm) ?? []
+  assert.deepStrictEqual(headings.slice(-3), CANDIDATES.map(c => `## ${c}`))
+})
+
+test('the greenlight prompt builds on the PICK line and skips empty verb lines (#96)', () => {
+  const { agents } = workspace()
+  const prompt = agentOf(agents, 'greenlight').systemPrompt
+  assert.match(prompt, /PICK:/)
+  assert.match(prompt, /nothing after the colon/i)
 })
 
 test('the greenlight prompt refuses KILL and REJECTED and cites KEEP lines', () => {
@@ -213,9 +227,13 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   assert.ok(!ran.includes('greenlight'), 'greenlight waits for the hold')
   ran.length = 0
 
+  const held = JSON.parse(fs.readFileSync(path.join(wp, 'logs', runId, 'meta.json'), 'utf-8')) as RunMeta
+  assert.deepStrictEqual(held.holds?.[0].candidates.map(c => c.heading), CANDIDATES)
+  assert.ok(held.holds![0].candidates.every(c => c.body), 'each candidate has a body')
+
   const { POST: resume } = await import('../app/api/runs/[runId]/resume/route')
   const resumed = await sse(await resume(
-    { json: async () => ({ direction: DIRECTION }) } as import('next/server').NextRequest,
+    { json: async () => ({ chosen: 'Candidate 2', direction: DIRECTION }) } as import('next/server').NextRequest,
     { params: Promise.resolve({ runId }) },
   ))
   assert.strictEqual(resumed.at(-1)!.type, 'run_complete')
@@ -228,12 +246,21 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   assert.ok(greenlightLog, `greenlight log in ${logs.join(', ')}`)
   const holdLog = logs.find(f => f.endsWith('-hold.md'))
   assert.ok(holdLog, 'hold log written')
-  assert.strictEqual(matter(fs.readFileSync(path.join(dir, holdLog), 'utf-8')).content.trim(), DIRECTION)
+  const holdText = `PICK: Candidate 2
+Candidate 2 body
+
+${DIRECTION}`
+  const hold = matter(fs.readFileSync(path.join(dir, holdLog), 'utf-8'))
+  assert.strictEqual(hold.content.trim(), holdText)
+  assert.strictEqual(hold.data.chosen, 'Candidate 2')
   assert.ok(logs.some(f => f.endsWith('-report.md')))
   const log = matter(fs.readFileSync(path.join(dir, greenlightLog), 'utf-8'))
   assert.ok(log.content.includes('Greenlight Pitch body'), 'pitch is in the greenlight log')
+  assert.ok((log.data.system_prompt as string).includes(`<direction>
+${holdText}`), 'greenlight reads the pick first')
 
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8')) as RunMeta
   assert.strictEqual(meta.status, 'complete')
   assert.strictEqual(meta.holds?.[0].direction, DIRECTION)
+  assert.strictEqual(meta.holds?.[0].chosen, 'Candidate 2')
 })

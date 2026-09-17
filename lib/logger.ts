@@ -88,6 +88,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     system_prompt: output.systemPrompt,
     thought: output.thought,
     tool_turns: output.toolTurns,
+    chosen: output.chosen,
   }
 
   // Remove undefined properties to prevent js-yaml from throwing
