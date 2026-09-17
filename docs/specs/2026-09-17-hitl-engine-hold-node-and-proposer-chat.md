@@ -243,10 +243,11 @@ the whole meta, so the plugin needs no new read endpoint.
   branch path uses today). Steps continue from `agentOutputs.length`.
 - Streams the same SSE protocol as `POST /api/run`: `run_start`, `layout`,
   `agent_start`… then `run_complete`, or `run_waiting` if a later hold is reached.
-- A resume on a `complete` run (someone re-answering an old hold) is a fork:
-  `POST /api/run` with `branchedFromRunId`, `branchedFromNode = holdId`, and
-  `branchOutputs` = every output up to the hold plus the new answer. Same code
-  path as *use this* on a complete run.
+- Re-answering a hold already answered (on any run not `running`) is a fork: a
+  new run with `branchedFromRunId`, `branchedFromNode = holdId`, replaying every
+  output but the hold and its descendants, plus the new answer. Same code path
+  (`lib/fork.ts`, not `POST /api/run`) as *use this* on a complete run. Optional
+  `holdId` names the hold; required when a finished run has several (#99).
 
 ### 5. Conversation
 
@@ -285,7 +286,9 @@ assistant turn.
   old join/decider logs stay as earlier steps. Layout, export and run detail
   already collapse repeated node ids to the last write (ADR-0016 notes the rule;
   de-risk 4 verifies it).
-- Complete run: fork via the branch path with `branchedFromNode = nodeId`.
+- Complete or error run, or an answered hold downstream: fork (`lib/fork.ts`)
+  with `branchedFromNode = nodeId`, replaying every output but the node and its
+  descendants, plus the revision. Only answered holds above the node carry over (#99).
 - The promoted turn is marked in the source node's conversation (`promoted:
   true`), so the log says which argument won.
 
