@@ -2,7 +2,8 @@
 // green run on one proves nothing about the other (ADR-0003): the app's wired
 // Google model emits reasoning inline, OpenRouter emits it structured.
 //
-// Selected by DERISK_PROVIDER (default "google"):
+// Selected by DERISK_PROVIDER (default "google", kept on purpose: free tier —
+// deliberately not AI_PROVIDER, see #92):
 //   • google     → AI_API_KEY / AI_BASE_URL / AI_MODEL_NAME
 //   • openrouter → OPENROUTER_API_KEY / OPENROUTER_BASE_URL / OPENROUTER_MODEL
 import OpenAI from 'openai'
