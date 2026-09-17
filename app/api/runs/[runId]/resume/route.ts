@@ -4,7 +4,7 @@ import { readRunMeta, updateRunMeta, nextStep } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { chainForResume } from '@/lib/resolveRunChain'
-import { answerHold, openHoldOf } from '@/lib/hold'
+import { answerHold, findCandidate, openHoldOf } from '@/lib/hold'
 import { streamChainRun, contextOverrides } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
@@ -32,7 +32,7 @@ export async function POST(
     return NextResponse.json({ error: `Run is ${meta.status}, not waiting` }, { status: 409 })
   }
 
-  const candidate = chosen == null ? undefined : hold.candidates.find(c => c.heading === chosen)
+  const candidate = typeof chosen === 'string' ? findCandidate(hold, chosen) : undefined
   if (chosen != null && !candidate) {
     return NextResponse.json({ error: `chosen names no candidate of hold ${hold.nodeId}` }, { status: 400 })
   }

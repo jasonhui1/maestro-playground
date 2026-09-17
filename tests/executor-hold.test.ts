@@ -146,3 +146,33 @@ test('resume as replay: a hold already answered does not pause; only post-hold u
   assert.ok(g.systemPrompt.includes('## W1'), "g's prompt carries the replayed join's labelled section")
   assert.strictEqual(results.find(r => r.nodeId === 'j')!.output, joinOutput)
 })
+
+test('a hold offered no candidates warns against the node that fed it (#96)', async () => {
+  const agents = [agent('dec', 'DEC: {input}')]
+  const chain: ChainDef = {
+    slug: 'c', name: 'c', description: '', filePath: '',
+    nodes: [
+      { id: 'seed', kind: 'seed' },
+      { id: 'dec', kind: 'decider', agent: 'dec' },
+      { id: 'h', kind: 'hold' },
+    ],
+    edges: [
+      { fromNode: 'seed', fromSocket: 'output', toNode: 'dec', toSocket: 'input' },
+      { fromNode: 'dec', fromSocket: 'output', toNode: 'h', toSocket: 'in' },
+    ],
+  }
+  const run = async (output: string) => {
+    const warnings: unknown[] = []
+    const results = await runChainGraph(chain, agents, [], 'go', '/ws',
+      { ...noop, onHold() {}, onWarning: w => warnings.push(w) },
+      (async (a: AgentDef, sp: string) => agentOutput(a, sp, output)) as typeof runAgent)
+    return { warnings, dec: results.find(r => r.nodeId === 'dec')! }
+  }
+
+  const bare = await run('A verdict with no options.')
+  const expected = { fromNode: 'dec', section: 'Candidate 1', toNode: 'h', toSocket: 'candidates' }
+  assert.deepStrictEqual(bare.warnings, [expected])
+  assert.deepStrictEqual(bare.dec.warnings, [expected], 'the decider log carries it')
+
+  assert.deepStrictEqual((await run(decision)).warnings, [])
+})

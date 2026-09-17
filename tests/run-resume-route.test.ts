@@ -283,3 +283,13 @@ test('resume without chosen, or with a null one, leaves no pick in the record or
   assert.strictEqual(holdLog.data.chosen, undefined)
   assert.strictEqual((await readMeta(runId)).holds![0].chosen, undefined)
 })
+
+test('chosen matches a heading ignoring case and spacing, and records the heading as written (#96)', async () => {
+  const wp = newWorkspace(oneHold)
+  const runId = await startRun()
+  await sse(await resume(runId, { chosen: '  candidate   2 ', direction: 'go' }))
+  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
+  assert.ok(holdLog.content.startsWith('PICK: Candidate 2\n'))
+  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
+  assert.strictEqual((await readMeta(runId)).holds![0].chosen, 'Candidate 2')
+})

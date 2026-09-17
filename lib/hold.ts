@@ -18,6 +18,13 @@ export function openHold(nodeId: string, input: string, prompt?: string): HoldRe
   }
 }
 
+const normalize = (heading: string) => heading.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/** The candidate a human's pick names, forgiving case and spacing (#96). */
+export function findCandidate(hold: HoldRecord, chosen: string): HoldCandidate | undefined {
+  return hold.candidates.find(c => normalize(c.heading) === normalize(chosen))
+}
+
 /** The hold a resume answers: the last record not yet resolved. */
 export function openHoldOf(holds: HoldRecord[] = []): HoldRecord | undefined {
   return holds.findLast(h => !h.resolvedAt)
