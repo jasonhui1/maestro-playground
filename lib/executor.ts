@@ -22,10 +22,9 @@ export interface RunCallbacks {
   onToolEvent?: (nodeId: string, event: ToolLoopEvent) => void
   // Carries both endpoints, so it takes no separate nodeId (#37).
   onWarning?: (warning: SectionWarning) => void
-  // De-risk stand-in for the `hold` node kind (#89): when a ready node answers
-  // true, the wavefront records nothing for it, leaves its out-edges dead, and
-  // stops scheduling after the current wave settles.
-  onHold?: (nodeId: string) => boolean
+  // Stand-in for #89's hold arm (superseded by #91's real hold kind); records
+  // nothing and stops the wavefront after the current wave, not immediately.
+  shouldHold?: (nodeId: string) => boolean
 }
 
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
@@ -256,11 +255,10 @@ export async function runChainGraph(
     }
   }
 
+  let held = false
   const processMainNode = async (nodeId: string): Promise<void> => {
     const node = nodeById.get(nodeId)
     if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
-
-    if (callbacks.onHold?.(node.id)) { held = true; return }
 
     if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
@@ -271,6 +269,8 @@ export async function runChainGraph(
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       return // out-edges remain dead
     }
+
+    if (callbacks.shouldHold?.(node.id)) { held = true; return }
 
     if (node.kind === 'agent' || node.kind === 'decider') {
       const agent = node.agent ? agentBySlug.get(node.agent) : undefined
@@ -373,7 +373,6 @@ export async function runChainGraph(
   const topoRank = new Map(topoOrder(chain).map((id, i) => [id, i]))
   const doneUnits = new Set<string>()
   const MAX_CONCURRENCY = Number(process.env.CHAIN_MAX_CONCURRENCY) || 4
-  let held = false
 
   const processUnit = async (unitId: string): Promise<void> => {
     const zone = zonesByStart.get(unitId)

@@ -1,13 +1,11 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph, RunCallbacks } from '../lib/executor'
+import type { runAgent } from '../lib/runner'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
 
-// De-risk #89: the `hold` node kind does not exist yet (docs/specs/2026-09-17-
-// hitl-engine-hold-node-and-proposer-chat.md). These tests drive the executor
-// with a stand-in stop signal (`RunCallbacks.onHold`) in place of a real hold
-// node, to prove the wavefront-break and resume-as-replay mechanics before any
-// hold-kind plumbing is built.
+// De-risk #89: the `hold` node kind doesn't exist yet; drives the executor via
+// the `shouldHold` stand-in instead.
 
 function agent(slug: string, prompt: string): AgentDef {
   return {
@@ -16,11 +14,13 @@ function agent(slug: string, prompt: string): AgentDef {
     inputs: [], systemPrompt: prompt, filePath: '',
   }
 }
+function agentOutput(a: AgentDef, sp: string): AgentOutput {
+  return {
+    agentName: a.name, systemPrompt: sp, input: '', output: `OUT(${a.slug})`,
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
+  }
+}
 const noop: RunCallbacks = { onStart() {}, onToken() {}, onDone() {} }
-const stub = (async (a: AgentDef, sp: string) => ({
-  agentName: a.name, systemPrompt: sp, input: '', output: `OUT(${a.slug})`,
-  tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
-})) as never
 
 test('wavefront stop: a held node records nothing, its descendants are never recorded, wave-mates finish', async () => {
   const agents = [agent('s', 'S: {input}'), agent('d', 'D: {in}')]
@@ -38,20 +38,33 @@ test('wavefront stop: a held node records nothing, its descendants are never rec
       { fromNode: 'h', fromSocket: 'output', toNode: 'd', toSocket: 'in' },
     ],
   }
-  const results = await runChainGraph(
-    chain, agents, [], 'SEED', '/ws',
-    { ...noop, onHold: nodeId => nodeId === 'h' },
-    stub,
-  )
+  const starts: string[] = []
+  const dones: string[] = []
+  const callbacks: RunCallbacks = {
+    onStart: nodeId => starts.push(nodeId),
+    onToken() {},
+    onDone: nodeId => dones.push(nodeId),
+    shouldHold: nodeId => nodeId === 'h',
+  }
+  // 's' outlasts the hold decision, so a finish recorded for it proves the
+  // break happens only after the wave settles, not mid-wave.
+  const delayedStub: typeof runAgent = async (a, sp) => {
+    if (a.slug === 's') await new Promise(resolve => setTimeout(resolve, 20))
+    return agentOutput(a, sp)
+  }
+
+  const results = await runChainGraph(chain, agents, [], 'SEED', '/ws', callbacks, delayedStub)
+
   assert.strictEqual(results.length, 1, 'results hold exactly the pre-hold outputs')
   assert.strictEqual(results[0].nodeId, 's', 'the wave-mate finished')
   assert.strictEqual(results[0].status, 'success')
   assert.strictEqual(results.find(r => r.nodeId === 'h'), undefined, 'the held node itself records nothing')
   assert.strictEqual(results.find(r => r.nodeId === 'd'), undefined, "the held node's descendant is never recorded (no skipped entry)")
+  assert.ok(!starts.includes('d') && !dones.includes('d'), 'd never starts or completes')
 })
 
 test('resume as replay: only post-hold units execute; a replayed join keeps its labelled sections', async () => {
-  const agents = [agent('w1', 'W1: {task}'), agent('w2', 'W2: {task}'), agent('g', 'G: {direction}')]
+  const agents = [agent('w1', 'W1: {task}'), agent('w2', 'W2: {task}'), agent('g', 'G: {direction} {joined}')]
   const chain: ChainDef = {
     slug: 'c', name: 'c', description: '', filePath: '',
     nodes: [
@@ -69,6 +82,7 @@ test('resume as replay: only post-hold units execute; a replayed join keeps its 
       { fromNode: 'w2', fromSocket: 'output', toNode: 'j', toSocket: 'in' },
       { fromNode: 'j', fromSocket: 'output', toNode: 'hold', toSocket: 'in' },
       { fromNode: 'hold', fromSocket: 'output', toNode: 'g', toSocket: 'direction' },
+      { fromNode: 'j', fromSocket: 'output', toNode: 'g', toSocket: 'joined' }, // j also consumed directly, so its replay is exercised
     ],
   }
   const rec = (nodeId: string, output: string): AgentOutput => ({
@@ -84,20 +98,22 @@ test('resume as replay: only post-hold units execute; a replayed join keeps its 
   ]
 
   const order: string[] = []
-  const orderingStub = (async (a: AgentDef, sp: string) => {
+  const orderingStub: typeof runAgent = async (a, sp) => {
     order.push(a.slug)
-    return { agentName: a.name, systemPrompt: sp, input: '', output: `OUT(${a.slug})`,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput
-  }) as never
+    return agentOutput(a, sp)
+  }
 
   const results = await runChainGraph(
-    chain, agents, [], 'SEED', '/ws', noop, orderingStub, startOutputs,
+    chain, agents, [], 'SEED', '/ws',
+    { ...noop, shouldHold: nodeId => nodeId === 'hold' }, // would hold if reached; replay must bypass it
+    orderingStub, startOutputs,
   )
 
-  assert.deepStrictEqual(order, ['g'], 'only the post-hold unit actually executed')
+  assert.deepStrictEqual(order, ['g'], 'the resumed hold takes the replay path (no pause), so only g executed')
   const g = results.find(r => r.nodeId === 'g')!
   assert.strictEqual(g.status, 'success', "the hold's out-edge is live, so g ran instead of being skipped")
   assert.ok(g.systemPrompt.includes('PICK: Candidate 1'), 'g received the replayed hold answer')
+  assert.ok(g.systemPrompt.includes('## W1'), "g's prompt carries the replayed join's labelled section")
   const j = results.find(r => r.nodeId === 'j')!
   assert.strictEqual(j.output, joinOutput, 'the replayed join keeps its labelled sections verbatim, not recomputed')
 })
