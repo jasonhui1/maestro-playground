@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
-import { readRunMeta, updateRunMeta, writeAgentLog, latestStepOf } from '@/lib/logger'
-import { chatTarget, chatTranscript, withTurn } from '@/lib/nodeChat'
+import { readRunMeta, latestStepOf } from '@/lib/logger'
+import { appendTurn, chatTarget, chatTranscript, type ChatRefusal } from '@/lib/nodeChat'
+import { sseResponse } from '@/lib/sse'
 import type { ChatMessage, RunMeta } from '@/lib/types'
+
+const REFUSAL_STATUS: Record<ChatRefusal, number> = { 'unknown-node': 404, 'not-a-proposer': 400, 'no-output': 400 }
 
 // A node's conversation continues its own transcript and lives in its log (#97).
 export async function POST(
@@ -27,47 +30,30 @@ export async function POST(
   }
 
   const target = chatTarget(meta, nodeId)
-  if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
-  const step = latestStepOf(meta.runId, nodeId)
-  if (step === undefined) return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
-  const agent = loadWorkspace().agents.find(a => a.slug === target.agentSlug)
-  if (!agent) return NextResponse.json({ error: `Agent ${target.agentSlug} no longer exists` }, { status: 422 })
+  if ('refused' in target) return NextResponse.json({ error: target.reason }, { status: REFUSAL_STATUS[target.refused] })
+  if (latestStepOf(meta.runId, nodeId) === undefined) {
+    return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
+  }
+  const live = loadWorkspace().agents.find(a => a.slug === target.agentSlug)
+  if (!live) return NextResponse.json({ error: `Agent ${target.agentSlug} no longer exists` }, { status: 422 })
+  // The reply comes from the model that wrote the output, not whatever the file names now.
+  const agent = target.record.model ? { ...live, model: target.record.model } : live
 
-  const history = chatTranscript(target.record, message)
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
-      try {
-        const result = await runAgent(agent, target.record.systemPrompt, message, {
-          history,
-          onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
-        })
-        if (result.status !== 'success') {
-          send({ type: 'error', error: result.error ?? 'chat failed' })
-          return
-        }
-        const reply: ChatMessage = { role: 'assistant', content: result.output, ...(result.thought ? { thought: result.thought } : {}) }
-
-        // Re-read: another turn may have landed while this one streamed.
-        const fresh = readRunMeta(meta.runId)
-        const current = chatTarget(fresh, nodeId)
-        if ('error' in current) throw new Error(current.error)
-        const amended = withTurn(current.record, message, reply)
-        const agentOutputs = fresh.agentOutputs.map((o, i) => (i === current.index ? amended : o))
-        updateRunMeta(meta.runId, { agentOutputs })
-        writeAgentLog(meta.runId, step, amended)
-
-        send({ type: 'chat_done', message: reply })
-      } catch (error) {
-        send({ type: 'error', error: error instanceof Error ? error.message : String(error) })
-      } finally {
-        controller.close()
+  return sseResponse(async send => {
+    try {
+      const result = await runAgent(agent, target.record.systemPrompt, message, {
+        history: chatTranscript(target.record, message),
+        onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
+      })
+      if (result.status !== 'success') {
+        send({ type: 'error', error: result.error ?? 'chat failed' })
+        return
       }
-    },
-  })
-
-  return new Response(stream, {
-    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      const reply: ChatMessage = { role: 'assistant', content: result.output, ...(result.thought ? { thought: result.thought } : {}) }
+      appendTurn(meta.runId, nodeId, message, reply)
+      send({ type: 'chat_done', message: reply })
+    } catch (error) {
+      send({ type: 'error', error: error instanceof Error ? error.message : String(error) })
+    }
   })
 }

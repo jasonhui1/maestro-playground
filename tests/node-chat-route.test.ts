@@ -8,9 +8,11 @@ import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
 
 // The model is the only stand-in: the executor, routes and logger are real.
 const chats: ChatMessage[][] = []
+const chatModels: string[] = []
+let duringAfter: (() => void) | undefined
 vi.mock('@/lib/runner', () => ({
   runAgent: async (
-    agent: { slug: string; name: string },
+    agent: { slug: string; name: string; model: string },
     systemPrompt: string,
     userMessage: string,
     options: { history?: ChatMessage[]; onToken?: (t: string, type?: 'thought' | 'output') => void } = {},
@@ -20,9 +22,11 @@ vi.mock('@/lib/runner', () => ({
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
     }
     if (!options.history) {
+      if (agent.slug === 'after') duringAfter?.()
       return { ...base, output: `## Candidate 1\nfrom ${agent.slug}`, status: 'success' }
     }
     chats.push(options.history)
+    chatModels.push(agent.model)
     if (userMessage === 'fail') return { ...base, output: '', status: 'error', error: 'model down' }
     const n = options.history.filter(m => m.role === 'user').length - 1
     options.onToken?.('hmm', 'thought')
@@ -35,6 +39,8 @@ const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
 
 afterEach(() => {
   chats.length = 0
+  chatModels.length = 0
+  duringAfter = undefined
   if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
   else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
@@ -249,4 +255,35 @@ test('a failed reply is reported and recorded nowhere', async () => {
   assert.deepStrictEqual(events.at(-1), { type: 'error', error: 'model down' })
   assert.strictEqual((await readMeta(runId)).agentOutputs.find(o => o.nodeId === 'dec')!.conversation, undefined)
   assert.strictEqual(fs.readFileSync(path.join(wp, 'logs', runId, '00-dec.md'), 'utf-8'), before)
+})
+
+test('a turn written while a resume runs survives the resume ending', async () => {
+  newWorkspace()
+  const runId = await startRun()
+  const { appendTurn } = await import('../lib/nodeChat')
+  duringAfter = () => appendTurn(runId, 'dec', 'mid-resume', { role: 'assistant', content: 'still here' })
+
+  const { POST } = await import('../app/api/runs/[runId]/resume/route')
+  await sse(await POST({ json: async () => ({ direction: 'go' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+
+  const meta = await readMeta(runId)
+  assert.strictEqual(meta.status, 'complete')
+  assert.deepStrictEqual(meta.agentOutputs.find(o => o.nodeId === 'dec')!.conversation?.map(m => m.content), ['mid-resume', 'still here'])
+})
+
+test('a node whose latest record failed is refused, so the log and record never disagree', async () => {
+  newWorkspace()
+  const runId = await startRun()
+  const { updateRunMeta } = await import('../lib/logger')
+  const meta = await readMeta(runId)
+  const dec = meta.agentOutputs.find(o => o.nodeId === 'dec')!
+  updateRunMeta(runId, { agentOutputs: [...meta.agentOutputs, { ...dec, status: 'error', output: '' }] })
+  assert.strictEqual((await chat(runId, 'dec', { message: 'hi' })).status, 400)
+})
+
+test('the reply comes from the model that wrote the output', async () => {
+  newWorkspace()
+  const runId = await startRun()
+  await sse(await chat(runId, 'dec', { message: 'hi' }))
+  assert.deepStrictEqual(chatModels, ['m'])
 })

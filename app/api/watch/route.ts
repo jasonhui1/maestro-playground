@@ -3,6 +3,7 @@ import { resolveEntityPath, isValidEntityType } from '@/lib/fs/workspace'
 import chokidar from 'chokidar'
 import fs from 'fs'
 import path from 'path'
+import { SSE_HEADERS, sseFrame } from '@/lib/sse'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,11 +15,10 @@ export async function GET(req: NextRequest) {
 
   const filePath = resolveEntityPath(type, slug)
   const target = path.resolve(filePath)
-  const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = (data: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      const send = (data: object) => controller.enqueue(sseFrame(data))
       // Watch the containing directory (depth 0) rather than the single file:
       // editors that save atomically (write temp + rename) replace the inode,
       // which a single-file watch can stop tracking. We filter to our target and
@@ -37,7 +37,5 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  return new Response(stream, {
-    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
-  })
+  return new Response(stream, { headers: SSE_HEADERS })
 }

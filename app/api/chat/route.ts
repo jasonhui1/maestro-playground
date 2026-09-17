@@ -3,6 +3,7 @@ import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta } from '@/lib/logger'
+import { sseResponse } from '@/lib/sse'
 import { nanoid } from 'nanoid'
 
 export async function POST(req: NextRequest) {
@@ -76,54 +77,37 @@ export async function POST(req: NextRequest) {
       ...history
     ]
 
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream({
-      async start(controller) {
-        const send = (data: object) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
-        }
+    return sseResponse(async send => {
+      // Send run_id early so frontend can update URL
+      send({ type: 'run_id', runId })
 
-        // Send run_id early so frontend can update URL
-        send({ type: 'run_id', runId })
+      try {
+        const result = await runAgent(
+          agentDef,
+          systemPrompt,
+          lastUserMessage,
+          {
+            onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
+            history: fullHistory,
+          }
+        )
 
-        try {
-          const result = await runAgent(
-            agentDef,
-            systemPrompt,
-            lastUserMessage,
-            {
-              onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
-              history: fullHistory,
-            }
-          )
+        // Persist the output
+        writeAgentLog(runId, currentStep, result)
 
-          // Persist the output
-          writeAgentLog(runId, currentStep, result)
-          
-          const updatedOutputs = [...meta.agentOutputs, result]
-          updateRunMeta(runId, {
-            agentOutputs: updatedOutputs,
-            status: 'complete',
-            completedAt: new Date().toISOString(),
-          })
+        const updatedOutputs = [...meta.agentOutputs, result]
+        updateRunMeta(runId, {
+          agentOutputs: updatedOutputs,
+          status: 'complete',
+          completedAt: new Date().toISOString(),
+        })
 
-          send({ type: 'done', result, runId })
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          send({ type: 'error', error: errorMessage })
-          updateRunMeta(runId, { status: 'error' })
-        } finally {
-          controller.close()
-        }
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
+        send({ type: 'done', result, runId })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        send({ type: 'error', error: errorMessage })
+        updateRunMeta(runId, { status: 'error' })
+      }
     })
   } catch (error) {
     return new Response(error instanceof Error ? error.message : 'Internal Server Error', { status: 500 })

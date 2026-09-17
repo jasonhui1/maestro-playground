@@ -119,12 +119,10 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     ...(output.toolCalls?.length ? [renderToolLoop(output.toolCalls)] : []),
     ...(output.warnings?.length ? [renderWarnings(output.warnings)] : []),
   ]
-  const conversation = output.conversation?.length
-    ? `\n\n${renderConversation(output.conversation, output.agentName)}`
-    : ''
-  const body = preamble.length || conversation
-    ? `${preamble.join('\n')}${preamble.length ? '\n' : ''}## Output\n\n${output.output}${conversation}`
-    : output.output
+  const headed = [...preamble, `## Output\n\n${output.output}`].join('\n')
+  const body = output.conversation?.length
+    ? `${headed}\n\n${renderConversation(output.conversation, output.agentName)}`
+    : preamble.length ? headed : output.output
 
   const fileContent = matter.stringify(body, frontmatter)
   fs.writeFileSync(path.join(dir, filename), fileContent)
@@ -132,20 +130,21 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
 
 /** The step after the highest one logged; a run's outputs can outnumber its step logs. */
 export function nextStep(runId: string): number {
-  const steps = fs.readdirSync(getRunDir(runId))
-    .map(f => /^(\d+)-.*\.md$/.exec(f))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map(m => Number(m[1]))
+  const steps = loggedSteps(runId).map(l => l.step)
   return steps.length ? Math.max(...steps) + 1 : 0
 }
 
 /** The step of a node's latest log in a run, if it has one. */
 export function latestStepOf(runId: string, nodeId: string): number | undefined {
-  const steps = fs.readdirSync(getRunDir(runId))
-    .map(f => /^(\d+)-(.*)\.md$/.exec(f))
-    .filter((m): m is RegExpExecArray => m !== null && m[2] === path.basename(nodeId))
-    .map(m => Number(m[1]))
+  const steps = loggedSteps(runId).filter(l => l.label === path.basename(nodeId)).map(l => l.step)
   return steps.length ? Math.max(...steps) : undefined
+}
+
+function loggedSteps(runId: string): { step: number; label: string }[] {
+  return fs.readdirSync(getRunDir(runId))
+    .map(f => /^(\d+)-(.*)\.md$/.exec(f))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map(m => ({ step: Number(m[1]), label: m[2] }))
 }
 
 export function updateRunMeta(runId: string, updates: Partial<RunMeta>) {
