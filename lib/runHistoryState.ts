@@ -19,6 +19,27 @@ export function stepIndexOf(outputs: AgentOutput[], nodeId: string, round: numbe
   return outputs.findLastIndex(o => o.nodeId === nodeId)
 }
 
+// Collapse a rerun (promote, #90) to one record per node id — the last write — while
+// keeping each node at the position it first appeared, so a "one section per
+// participant" reader (the markdown export) shows the current answer instead of every
+// attempt. An output with no nodeId predates graph capture and can't be matched to
+// any other, so it is kept as its own entry rather than dropped.
+export function latestOutputsByNode(outputs: AgentOutput[]): AgentOutput[] {
+  const indexOfNode = new Map<string, number>()
+  const result: AgentOutput[] = []
+  for (const o of outputs) {
+    if (!o.nodeId) { result.push(o); continue }
+    const idx = indexOfNode.get(o.nodeId)
+    if (idx === undefined) {
+      indexOfNode.set(o.nodeId, result.length)
+      result.push(o)
+    } else {
+      result[idx] = o
+    }
+  }
+  return result
+}
+
 // Fold a completed run's agentOutputs into the same RunStateMap the live editor run uses,
 // keyed by nodeId. Mirrors lib/runState.applyRunEvent's agent_done case (accumulates rounds).
 export function buildRunStateMap(outputs: AgentOutput[]): RunStateMap {

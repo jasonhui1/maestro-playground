@@ -105,6 +105,24 @@ test('a node that reported more than once shows its last output', () => {
   assert.strictEqual(model.panels[0].text, 'second pass')
 })
 
+// De-risk 4 (#90): after a promote, agentOutputs holds two records for the same node
+// (no round involved — this is not a loop). The layout model must read the last one.
+test('a promote-style rerun (no round) still collapses each node to its last write', () => {
+  const model = buildLayoutModel(
+    chain({ view: 'timeline', outputs: [
+      { name: 'the pick', node: 'join', socket: 'summary' },
+      { name: 'verdict', node: 'creative-director', socket: 'summary' },
+    ] }),
+    [
+      output('join', '## Summary\nfirst pass, stale'),
+      output('creative-director', '## Summary\nfirst pass, stale'),
+      output('join', '## Summary\nsecond pass, latest'),
+      output('creative-director', '## Summary\nsecond pass, latest'),
+    ],
+  )
+  assert.deepStrictEqual(model.panels.map(p => p.text), ['second pass, latest', 'second pass, latest'])
+})
+
 // Opting in is the chain's decision. Anything that has not opted in renders as the
 // ordinary run trace, so no chain is ever drawn in a shape it did not ask for (#66).
 test('a chain that declares no view is undeclared, whatever its outputs say', () => {

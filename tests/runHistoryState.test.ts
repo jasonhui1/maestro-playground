@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildRunStateMap, runOrderOf, stepIndexOf } from '../lib/runHistoryState'
+import { buildRunStateMap, runOrderOf, stepIndexOf, latestOutputsByNode } from '../lib/runHistoryState'
 import type { AgentOutput } from '../lib/types'
 
 test('runHistoryState', () => {
@@ -90,6 +90,43 @@ test('runHistoryState', () => {
   // n3 assertions
   assert.strictEqual(map['n3'].status, 'skipped')
   assert.strictEqual(map['n3'].output, '')
+})
+
+// De-risk 4 (#90): a promote-style rerun leaves two records for the same node, no round
+// involved. The run-detail overlay (canvas + rail) must read the last one, not the first.
+test('buildRunStateMap collapses a promote-style rerun to its last write', () => {
+  const out = (nodeId: string, output: string): AgentOutput => ({
+    nodeId, agentName: 'Creative Director', systemPrompt: '', input: 'in', output,
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, status: 'success',
+    model: 'm', timestamp: 't',
+  })
+  const map = buildRunStateMap([
+    out('creative-director', 'first pass, stale'),
+    out('creative-director', 'second pass, latest'),
+  ])
+  assert.strictEqual(map['creative-director'].output, 'second pass, latest')
+})
+
+test('latestOutputsByNode', () => {
+  const out = (nodeId: string | undefined, output: string): AgentOutput => ({
+    nodeId, agentName: 'A', systemPrompt: '', input: '', output,
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, status: 'success',
+    model: 'm', timestamp: 't',
+  })
+
+  // Repeated node id: last write wins, kept at the first-appearance position.
+  assert.deepStrictEqual(
+    latestOutputsByNode([out('a', 'a1'), out('b', 'b1'), out('a', 'a2')]).map(o => o.output),
+    ['a2', 'b1'],
+  )
+
+  // No nodeId: predates graph capture, cannot be matched to any other record, kept as-is.
+  assert.deepStrictEqual(
+    latestOutputsByNode([out(undefined, 'x1'), out(undefined, 'x2')]).map(o => o.output),
+    ['x1', 'x2'],
+  )
+
+  assert.deepStrictEqual(latestOutputsByNode([]), [])
 })
 
 // The sidebar rail and "branch from here" both read the flat agentOutputs list: one
