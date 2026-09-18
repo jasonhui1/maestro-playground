@@ -48,7 +48,7 @@ next-env.d.ts
 **/logs*
 
 workspace/context
-workspace/skills
+workspace/skills/personal/
 workspace/.versions
 
 .superpowers/
