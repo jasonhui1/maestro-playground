@@ -1,4 +1,5 @@
 import { listSections } from './graph'
+import { badRequest, conflict, notFound } from './refusal'
 import type { SectionWarning } from './sectionWarning'
 import type { AgentOutput, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -41,10 +42,10 @@ export interface AnswerRequest {
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
 export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | Refusal {
-  if (typeof direction !== 'string' || !direction.trim()) return { error: 'direction is required', status: 400 }
-  if (holdId != null && typeof holdId !== 'string') return { error: 'holdId must be a node id', status: 400 }
-  if (chosen != null && typeof chosen !== 'string') return { error: 'chosen must be a candidate heading', status: 400 }
-  if (custom != null && typeof custom !== 'string') return { error: 'custom must be non-empty text', status: 400 }
+  if (typeof direction !== 'string' || !direction.trim()) return badRequest('direction is required')
+  if (holdId != null && typeof holdId !== 'string') return badRequest('holdId must be a node id')
+  if (chosen != null && typeof chosen !== 'string') return badRequest('chosen must be a candidate heading')
+  if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
   return { direction, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
 }
 
@@ -52,13 +53,13 @@ export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<
 export function selectHold(meta: RunMeta, holdId?: string): HoldRecord | Refusal {
   const holds = meta.holds ?? []
   if (holdId !== undefined) {
-    return holds.findLast(h => h.nodeId === holdId) ?? { error: 'holdId names no hold of this run', status: 404 }
+    return holds.findLast(h => h.nodeId === holdId) ?? notFound('holdId names no hold of this run')
   }
   const open = meta.status === 'waiting' ? holds.findLast(h => !h.resolvedAt) : undefined
   if (open) return open
   const holdIds = new Set(holds.map(h => h.nodeId))
-  if (holdIds.size > 1) return { error: 'The run has several holds; name one with holdId', status: 400 }
-  return holds.at(-1) ?? { error: `Run is ${meta.status}, not waiting`, status: 409 }
+  if (holdIds.size > 1) return badRequest('The run has several holds; name one with holdId')
+  return holds.at(-1) ?? conflict(`Run is ${meta.status}, not waiting`)
 }
 
 /** What the human picked at a hold: one of its candidates, or their own idea (#96). */
@@ -68,12 +69,11 @@ const normalize = (heading: string) => heading.trim().replace(/\s+/g, ' ').toLow
 
 /** A request's pick, forgiving case and spacing in a heading; neither field given is no pick (#96). */
 export function readPick(hold: HoldRecord, chosen?: string, custom?: string): HoldPick | undefined | Refusal {
-  const refuse = (error: string): Refusal => ({ error, status: 400 })
-  if (chosen !== undefined && custom !== undefined) return refuse('send chosen or custom, not both')
-  if (custom !== undefined) return custom.trim() ? { custom: custom.trim() } : refuse('custom must be non-empty text')
+  if (chosen !== undefined && custom !== undefined) return badRequest('send chosen or custom, not both')
+  if (custom !== undefined) return custom.trim() ? { custom: custom.trim() } : badRequest('custom must be non-empty text')
   if (chosen === undefined) return undefined
   const candidate = hold.candidates.find(c => normalize(c.heading) === normalize(chosen))
-  return candidate ? { candidate } : refuse(`chosen names no candidate of hold ${hold.nodeId}`)
+  return candidate ? { candidate } : badRequest(`chosen names no candidate of hold ${hold.nodeId}`)
 }
 
 export interface HoldAnswer {

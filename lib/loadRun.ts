@@ -1,4 +1,5 @@
 import { readRunMeta } from './logger'
+import { conflict, notFound } from './refusal'
 import type { Refusal, RunMeta } from './types'
 
 /**
@@ -10,8 +11,8 @@ export function loadRunFor(runId: string, { mustNotBeRunning = false } = {}): Ru
   try {
     meta = readRunMeta(runId)
   } catch {
-    return { error: 'Run not found', status: 404 }
+    return notFound('Run not found')
   }
-  if (mustNotBeRunning && meta.status === 'running') return { error: 'Run is running', status: 409 }
+  if (mustNotBeRunning && meta.status === 'running') return conflict('Run is running')
   return meta
 }

@@ -1,4 +1,5 @@
 import { runLog } from './partialRun'
+import { badRequest, notFound, unprocessable } from './refusal'
 import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -21,13 +22,13 @@ export interface ForkRequest {
 
 /** A fork body's shape, before it meets a run. */
 export function readForkRequest({ from, revisions, versions }: Record<string, unknown>): ForkRequest | Refusal {
-  if (from !== undefined && typeof from !== 'string') return { error: 'from must be a node id', status: 400 }
-  if (revisions !== undefined && !isTextMap(revisions)) return { error: 'revisions must map node ids to text', status: 400 }
+  if (from !== undefined && typeof from !== 'string') return badRequest('from must be a node id')
+  if (revisions !== undefined && !isTextMap(revisions)) return badRequest('revisions must map node ids to text')
   if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
-    return { error: "versions must be 'current' or 'pinned'", status: 400 }
+    return badRequest("versions must be 'current' or 'pinned'")
   }
-  if (from === undefined && !Object.keys(revisions ?? {}).length) return { error: 'from or revisions is required', status: 400 }
-  if (from !== undefined && revisions && from in revisions) return { error: `Node ${from} cannot both rerun and be revised`, status: 400 }
+  if (from === undefined && !Object.keys(revisions ?? {}).length) return badRequest('from or revisions is required')
+  if (from !== undefined && revisions && from in revisions) return badRequest(`Node ${from} cannot both rerun and be revised`)
   return { from, revisions, versions }
 }
 
@@ -37,20 +38,20 @@ export function readForkRequest({ from, revisions, versions }: Record<string, un
  */
 export function planFork(source: RunMeta, { from, revisions, versions }: ForkRequest): Fork | Refusal {
   const graph = source.graph
-  if (!graph) return { error: 'Run has no recorded graph', status: 422 }
+  if (!graph) return unprocessable('Run has no recorded graph')
   const revised = Object.entries(revisions ?? {})
   const anchors = [...(from === undefined ? [] : [from]), ...revised.map(([nodeId]) => nodeId)]
   for (const nodeId of anchors) {
-    if (!graph.nodes.some(n => n.id === nodeId)) return { error: `Node ${nodeId} is not in this run`, status: 404 }
+    if (!graph.nodes.some(n => n.id === nodeId)) return notFound(`Node ${nodeId} is not in this run`)
   }
 
   const outputs: AgentOutput[] = []
   for (const [nodeId, text] of revised) {
     const node = graph.nodes.find(n => n.id === nodeId)!
-    if (node.kind === 'hold') return { error: `Node ${nodeId} is a hold; answer it through resume`, status: 400 }
-    if (node.zone) return { error: `Node ${nodeId} is inside a loop; its rounds cannot be revised`, status: 400 }
+    if (node.kind === 'hold') return badRequest(`Node ${nodeId} is a hold; answer it through resume`)
+    if (node.zone) return badRequest(`Node ${nodeId} is inside a loop; its rounds cannot be revised`)
     const record = source.agentOutputs.findLast(o => o.nodeId === nodeId)
-    if (!record) return { error: `Node ${nodeId} has no output in this run`, status: 400 }
+    if (!record) return badRequest(`Node ${nodeId} has no output in this run`)
     outputs.push(revisedOutput(record, text))
   }
   return { anchors, outputs, versions }

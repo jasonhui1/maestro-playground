@@ -1,4 +1,5 @@
 import { agentSlugOf } from './nodeKinds'
+import { badRequest, notFound, unprocessable } from './refusal'
 import { recordKey } from './partialRun'
 import { latestStepOf, readRunMeta, updateRunMeta, writeAgentLog } from './logger'
 import type { AgentDef, AgentOutput, ChainEdge, ChainNode, ChatMessage, Refusal, RunMeta } from './types'
@@ -14,25 +15,25 @@ export interface ChatTarget {
 /** A chat body's shape, the message trimmed. */
 export function readChatRequest({ message }: Record<string, unknown>): { message: string } | Refusal {
   const text = typeof message === 'string' ? message.trim() : ''
-  return text ? { message: text } : { error: 'message is required', status: 400 }
+  return text ? { message: text } : badRequest('message is required')
 }
 
 /** The step of the node's latest log: the one a chat or promote rewrites. */
 export function loggedStep(runId: string, nodeId: string): number | Refusal {
-  return latestStepOf(runId, nodeId) ?? { error: `Node ${nodeId} has no log in this run`, status: 400 }
+  return latestStepOf(runId, nodeId) ?? badRequest(`Node ${nodeId} has no log in this run`)
 }
 
 /** The record a node chat continues: the node's latest output, which must have succeeded (#97). */
 export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget | Refusal {
   const graph = meta.graph
   const node = graph?.nodes.find(n => n.id === nodeId)
-  if (!graph || !node) return { error: `Node ${nodeId} is not in this run`, status: 404 }
+  if (!graph || !node) return notFound(`Node ${nodeId} is not in this run`)
   const agentSlug = agentSlugOf(node)
-  if (!agentSlug) return { error: `A ${node.kind} node has no transcript to continue`, status: 400 }
+  if (!agentSlug) return badRequest(`A ${node.kind} node has no transcript to continue`)
   // The latest record, not the latest success: it is the one the node's latest log shows.
   const index = meta.agentOutputs.findLastIndex(o => o.nodeId === nodeId)
   if (index === -1 || meta.agentOutputs[index].status !== 'success') {
-    return { error: `Node ${nodeId} has no output in this run`, status: 400 }
+    return badRequest(`Node ${nodeId} has no output in this run`)
   }
   return { index, record: meta.agentOutputs[index], agentSlug, node, graph }
 }
@@ -44,7 +45,7 @@ export function chatSpeaker(meta: RunMeta, nodeId: string, agents: AgentDef[]): 
   const step = loggedStep(meta.runId, nodeId)
   if (typeof step !== 'number') return step
   const live = agents.find(a => a.slug === target.agentSlug)
-  if (!live) return { error: `Agent ${target.agentSlug} no longer exists`, status: 422 }
+  if (!live) return unprocessable(`Agent ${target.agentSlug} no longer exists`)
   return { target, agent: target.record.model ? { ...live, model: target.record.model } : live }
 }
 

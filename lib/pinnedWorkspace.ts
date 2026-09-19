@@ -1,4 +1,5 @@
 import path from 'path'
+import { unprocessable } from './refusal'
 import matter from 'gray-matter'
 import { getVersionContent } from './fs/versions'
 import { getWorkspacePath } from './fs/workspacePath'
@@ -46,7 +47,7 @@ export function pinnedWorkspace(
   for (const [key, version] of Object.entries(versions)) {
     const { type, slug } = parseVersionKey(key)
     const raw = getVersionContent(type, slug, version)
-    if (raw === null) return { error: `Pinned ${key} v${version} is missing`, status: 422 }
+    if (raw === null) return unprocessable(`Pinned ${key} v${version} is missing`)
     pins.push({ type, slug, raw })
   }
 

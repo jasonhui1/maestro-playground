@@ -1,4 +1,5 @@
 import { hasAnsweredHold } from './hold'
+import { badRequest } from './refusal'
 import { chatTarget } from './nodeChat'
 import { runLog } from './partialRun'
 import type { AgentOutput, Refusal, RunMeta } from './types'
@@ -12,7 +13,7 @@ export interface PromoteRequest {
 /** A promote body's shape, before it meets a run. */
 export function readPromoteRequest(nodeId: string, { turn }: Record<string, unknown>): PromoteRequest | Refusal {
   if (turn == null) return { nodeId }
-  if (typeof turn !== 'number' || !Number.isInteger(turn)) return { error: 'turn must be a whole number', status: 400 }
+  if (typeof turn !== 'number' || !Number.isInteger(turn)) return badRequest('turn must be a whole number')
   return { nodeId, turn }
 }
 
@@ -35,15 +36,15 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
   const target = chatTarget(meta, nodeId)
   if ('error' in target) return target
   if (target.node.zone) {
-    return { error: `Node ${nodeId} is inside a loop; its rounds cannot be promoted`, status: 400 }
+    return badRequest(`Node ${nodeId} is inside a loop; its rounds cannot be promoted`)
   }
 
   const conversation = target.record.conversation ?? []
   const replies = conversation.flatMap((m, i) => (m.role === 'assistant' ? [i] : []))
-  if (!replies.length) return { error: `Node ${nodeId} has no reply to promote`, status: 400 }
+  if (!replies.length) return badRequest(`Node ${nodeId} has no reply to promote`)
   const n = turn ?? replies.length
   if (n < 1 || n > replies.length) {
-    return { error: `turn must be from 1 to ${replies.length}`, status: 400 }
+    return badRequest(`turn must be from 1 to ${replies.length}`)
   }
   const at = replies[n - 1]
   const reply = conversation[at]

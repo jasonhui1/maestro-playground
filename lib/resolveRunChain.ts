@@ -1,4 +1,5 @@
 import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta } from './types'
+import { badRequest, notFound } from './refusal'
 
 export interface RunChainBody {
   chainName?: string
@@ -33,12 +34,12 @@ export function resolveRunChain(
   }
   if (body.chainName) {
     const found = findChainForRun(ws.chains, body.chainName)
-    if (!found) return { error: 'Chain not found', status: 404 }
+    if (!found) return notFound('Chain not found')
     return { kind: 'chain', title: found.name, chain: found }
   }
   if (body.agentName) {
     const agent = ws.agents.find(a => a.name === body.agentName) || ws.agents.find(a => a.slug === body.agentName)
-    if (!agent) return { error: 'Agent not found', status: 404 }
+    if (!agent) return notFound('Agent not found')
     return {
       kind: 'agent', title: agent.name,
       chain: {
@@ -48,7 +49,7 @@ export function resolveRunChain(
       },
     }
   }
-  return { error: 'No chain or agent specified', status: 400 }
+  return badRequest('No chain or agent specified')
 }
 
 /**

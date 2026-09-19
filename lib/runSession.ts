@@ -1,4 +1,5 @@
 import { getWorkspacePath, type loadWorkspace } from './fs/workspace'
+import { unprocessable } from './refusal'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinRunVersions, versionKey } from './runVersions'
@@ -34,7 +35,7 @@ export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: Conti
     }
   | Refusal {
   if (from === 'pinned') {
-    if (!meta.versions) return { error: 'Run has no pinned versions', status: 422 }
+    if (!meta.versions) return unprocessable('Run has no pinned versions')
     const pinned = pinnedWorkspace(live, meta.versions)
     if ('error' in pinned) return pinned
     const { context: pinnedContext, ...workspace } = pinned
@@ -51,7 +52,7 @@ export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: Conti
 
 function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refusal {
   const chain = chainForResume(meta, ws.chains)
-  if (!chain) return { error: 'Run has no recorded graph', status: 422 }
+  if (!chain) return unprocessable('Run has no recorded graph')
   const validation = validateChain(chain, ws.agents, ws.chains, ws.tools, ws.skills)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
   return chain
