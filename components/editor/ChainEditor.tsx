@@ -5,8 +5,7 @@ import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { kindOf } from '@/lib/nodeKinds'
-import { uniqueNodeId } from '@/lib/editorOps'
-import { applyEditorAction, EditorAction, NON_HISTORIC } from '@/lib/editorReducer'
+import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph } from '@/lib/editorOps'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
@@ -54,8 +53,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   skills?: SkillDef[]
   onSaveStatus?: (status: SaveStatus) => void
 }) {
-  const historced = useMemo(() => withHistory(applyEditorAction, (a: EditorAction) => !NON_HISTORIC.has(a.type)), [])
-  const [hist, dispatch] = useReducer(historced, undefined, () => ({
+  const historied = useMemo(() => withHistory(applyOp, (op: EditorOp) => !NON_HISTORIC.has(op.type)), [])
+  const [hist, dispatch] = useReducer(historied, undefined, () => ({
     past: [],
     present: {
       nodes: seedPositions(initialChain.nodes, initialChain.edges),
@@ -72,7 +71,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const fileKey = `chain:${slug}`
 
   const setSelectedIds = useCallback((ids: string[]) => {
-    dispatch({ type: 'setSelection', ids })
+    dispatch(editorOps.setSelection(ids))
     useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
   }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
@@ -93,7 +92,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const adopt = useCallback((raw: string) => {
     const parsed = parseChainContent(raw, slug)
-    dispatch({ type: 'setGraph', nodes: seedPositions(parsed.nodes, parsed.edges), edges: parsed.edges })
+    dispatch(editorOps.setGraph(seedPositions(parsed.nodes, parsed.edges), parsed.edges))
     setIface({ inputs: parsed.inputs ?? [], outputs: parsed.outputs ?? [] })
   }, [slug])
 
@@ -184,22 +183,22 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     })
   }, [triggerRun, fileKey, slug, chain, iface])
 
-  const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
+  const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch(editorOps.updateNode(id, patch)), [])
   const moveNode = useCallback((id: string, pos: [number, number]) => {
     const node = nodes.find(n => n.id === id)
     if (!node || node.kind === 'loop-start' || node.kind === 'loop-end') {
-      dispatch({ type: 'moveNode', id, pos }); return
+      dispatch(editorOps.moveNode(id, pos)); return
     }
     const frames = computeZoneFrames(nodes.filter(n => n.id !== id))
     const zone = zoneAtPoint(frames, pos[0] + NODE_W / 2, pos[1] + NODE_H / 2)
-    dispatch({ type: 'updateNode', id, patch: { pos, zone } })
+    dispatch(editorOps.updateNode(id, { pos, zone }))
   }, [nodes])
-  const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch({ type: 'moveMany', updates }), [])
-  const addNodeOfKind = useCallback((kind: ChainNodeKind) => dispatch({ type: 'addNode', node: { id: uniqueNodeId(kind, nodes.map(n => n.id)), kind, pos: [80, 80] } }), [nodes])
-  const addLoopZone = useCallback(() => dispatch({ type: 'addLoopZone', pos: [120, 120] }), [])
-  const connect = useCallback((edge: ChainEdge) => dispatch({ type: 'connect', edge }), [])
-  const deleteNode = useCallback((id: string) => dispatch({ type: 'deleteNode', id }), [])
-  const deleteEdge = useCallback((edge: ChainEdge) => dispatch({ type: 'deleteEdge', edge }), [])
+  const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch(editorOps.moveMany(updates)), [])
+  const addNodeOfKind = useCallback((kind: ChainNodeKind) => dispatch(editorOps.addNode({ id: uniqueNodeId(kind, nodes.map(n => n.id)), kind, pos: [80, 80] })), [nodes])
+  const addLoopZone = useCallback(() => dispatch(editorOps.addLoopZone([120, 120])), [])
+  const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge)), [])
+  const deleteNode = useCallback((id: string) => dispatch(editorOps.deleteNode(id)), [])
+  const deleteEdge = useCallback((edge: ChainEdge) => dispatch(editorOps.deleteEdge(edge)), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -210,20 +209,20 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       if (key === 'c' && selectedIds.length) {
         if (window.getSelection()?.toString()) return
         e.preventDefault()
-        dispatch({ type: 'copy', ids: selectedIds })
+        dispatch(editorOps.copy(selectedIds))
       } else if (key === 'v' && clipboard) {
         e.preventDefault()
-        dispatch({ type: 'paste' })
+        dispatch(editorOps.paste())
       } else if (key === 'd' && selectedIds.length) {
         e.preventDefault()
-        dispatch({ type: 'copy', ids: selectedIds })
-        dispatch({ type: 'paste' })
+        dispatch(editorOps.copy(selectedIds))
+        dispatch(editorOps.paste())
       } else if (key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        dispatch({ type: 'undo' })
+        dispatch(editorOps.undo())
       } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
         e.preventDefault()
-        dispatch({ type: 'redo' })
+        dispatch(editorOps.redo())
       }
     }
     window.addEventListener('keydown', onKey)

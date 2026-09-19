@@ -1,4 +1,5 @@
 import { ChainNode, ChainEdge } from './types'
+import { kindOf } from './nodeKinds'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
   const set = new Set(existing)
@@ -17,8 +18,10 @@ export function reservedIds(nodes: ChainNode[]): string[] {
   return [...nodes.map(n => n.id), ...zones]
 }
 
-export function connectEdge(edges: ChainEdge[], edge: ChainEdge, allowMulti = false): ChainEdge[] {
-  if (allowMulti) {
+export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
+  const dst = nodes.find(n => n.id === edge.toNode)
+  const isMulti = dst ? kindOf(dst.kind).multiInput === true : false
+  if (isMulti) {
     const dup = edges.some(e =>
       e.fromNode === edge.fromNode && e.fromSocket === edge.fromSocket &&
       e.toNode === edge.toNode && e.toSocket === edge.toSocket)
@@ -44,6 +47,22 @@ export function deleteEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
     e => !(e.fromNode === edge.fromNode && e.fromSocket === edge.fromSocket &&
            e.toNode === edge.toNode && e.toSocket === edge.toSocket),
   )
+}
+
+export function updateNode(
+  nodes: ChainNode[],
+  id: string,
+  patch: Partial<ChainNode>,
+): ChainNode[] {
+  return nodes.map(n => (n.id === id ? { ...n, ...patch } : n))
+}
+
+export function moveMany(
+  nodes: ChainNode[],
+  updates: { id: string; pos: [number, number] }[],
+): ChainNode[] {
+  const m = new Map(updates.map(u => [u.id, u.pos]))
+  return nodes.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n))
 }
 
 export function makeLoopZone(existingIds: string[], pos: [number, number]): ChainNode[] {
@@ -106,4 +125,111 @@ export function pasteSubgraph(
     toSocket: e.toSocket,
   }))
   return { nodes, edges, newIds: [...idMap.values()] }
+}
+
+export interface EditorGraph {
+  nodes: ChainNode[]
+  edges: ChainEdge[]
+  selectedIds: string[]
+  clipboard: Subgraph | null
+}
+
+export type EditorOpType =
+  | 'setGraph'
+  | 'addNode'
+  | 'addLoopZone'
+  | 'connect'
+  | 'deleteNode'
+  | 'deleteEdge'
+  | 'moveNode'
+  | 'moveMany'
+  | 'updateNode'
+  | 'setSelection'
+  | 'copy'
+  | 'paste'
+
+export interface EditorOp {
+  type: EditorOpType
+  apply: (graph: EditorGraph) => EditorGraph
+}
+
+export const NON_HISTORIC = new Set<EditorOpType>(['setSelection', 'copy', 'setGraph'])
+
+export function applyOp(graph: EditorGraph, op: EditorOp): EditorGraph {
+  return op.apply(graph)
+}
+
+export const editorOps = {
+  setGraph: (nodes: ChainNode[], edges: ChainEdge[]): EditorOp => ({
+    type: 'setGraph',
+    apply: g => ({ ...g, nodes, edges }),
+  }),
+  addNode: (node: ChainNode): EditorOp => ({
+    type: 'addNode',
+    apply: g => ({ ...g, nodes: [...g.nodes, node] }),
+  }),
+  addLoopZone: (pos: [number, number]): EditorOp => ({
+    type: 'addLoopZone',
+    apply: g => ({ ...g, nodes: [...g.nodes, ...makeLoopZone(reservedIds(g.nodes), pos)] }),
+  }),
+  connect: (edge: ChainEdge): EditorOp => ({
+    type: 'connect',
+    apply: g => ({ ...g, edges: connectEdge(g.nodes, g.edges, edge) }),
+  }),
+  deleteNode: (id: string): EditorOp => ({
+    type: 'deleteNode',
+    apply: g => {
+      const { nodes, edges } = deleteNode(g.nodes, g.edges, id)
+      return { ...g, nodes, edges, selectedIds: g.selectedIds.filter(x => x !== id) }
+    },
+  }),
+  deleteEdge: (edge: ChainEdge): EditorOp => ({
+    type: 'deleteEdge',
+    apply: g => ({ ...g, edges: deleteEdge(g.edges, edge) }),
+  }),
+  moveNode: (id: string, pos: [number, number]): EditorOp => ({
+    type: 'moveNode',
+    apply: g => ({
+      ...g,
+      nodes: updateNode(g.nodes, id, { pos }),
+    }),
+  }),
+  moveMany: (updates: { id: string; pos: [number, number] }[]): EditorOp => ({
+    type: 'moveMany',
+    apply: g => ({
+      ...g,
+      nodes: moveMany(g.nodes, updates),
+    }),
+  }),
+  updateNode: (id: string, patch: Partial<ChainNode>): EditorOp => ({
+    type: 'updateNode',
+    apply: g => ({
+      ...g,
+      nodes: updateNode(g.nodes, id, patch),
+    }),
+  }),
+  setSelection: (ids: string[]): EditorOp => ({
+    type: 'setSelection',
+    apply: g => {
+      // #115: Identity bail-out for React Flow re-emits to prevent render churn.
+      const a = g.selectedIds
+      const b = ids
+      if (a.length === b.length && a.every((id, i) => id === b[i])) return g
+      return { ...g, selectedIds: b }
+    },
+  }),
+  copy: (ids: string[]): EditorOp => ({
+    type: 'copy',
+    apply: g => ({ ...g, clipboard: copySubgraph(g.nodes, g.edges, ids) }),
+  }),
+  paste: (): EditorOp => ({
+    type: 'paste',
+    apply: g => {
+      if (!g.clipboard) return g
+      const { nodes, edges, newIds } = pasteSubgraph(g.clipboard, reservedIds(g.nodes), [40, 40])
+      return { ...g, nodes: [...g.nodes, ...nodes], edges: [...g.edges, ...edges], selectedIds: newIds }
+    },
+  }),
+  undo: () => ({ type: 'undo' as const }),
+  redo: () => ({ type: 'redo' as const }),
 }
