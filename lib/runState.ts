@@ -16,7 +16,7 @@ export interface LiveToolCall extends ToolCallRecord {
 export interface RoundRecord {
   round: number
   output: string
-  metrics: { tokensIn: number; tokensOut: number; costUsd: number; latencyMs: number }
+  metrics: { tokensIn: number; tokensOut: number; costUsd?: number; latencyMs: number }
 }
 
 export interface NodeRunState {

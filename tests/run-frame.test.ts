@@ -11,7 +11,7 @@ function chain(over: Partial<ChainDef> = {}): ChainDef {
   }
 }
 
-function output(costUsd: number): AgentOutput {
+function output(costUsd?: number): AgentOutput {
   return {
     agentName: 'Relay', systemPrompt: '', input: '', output: '',
     tokensIn: 0, tokensOut: 0, costUsd, latencyMs: 0, model: 'm',
@@ -66,7 +66,7 @@ test('cost sums every node settled so far', () => {
       second: { status: 'running' },
     }),
   })
-  assert.strictEqual(Number(frame.costUsd.toFixed(6)), 0.01)
+  assert.strictEqual(Number(frame.costUsd?.toFixed(6)), 0.01)
 })
 
 // A loop-body node reports once per round; the run paid for all of them.
@@ -84,7 +84,19 @@ test('cost counts every round a looping node ran, not just its last', () => {
       },
     }),
   })
-  assert.strictEqual(Number(frame.costUsd.toFixed(6)), 0.05)
+  assert.strictEqual(Number(frame.costUsd?.toFixed(6)), 0.05)
+})
+
+// #126
+test('unpriced model leaves costUsd undefined and sets costWarning', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, now: 0,
+    states: states({
+      first: { status: 'success', result: { ...output(), model: 'unpriced-model' } },
+    }),
+  })
+  assert.strictEqual(frame.costUsd, undefined)
+  assert.strictEqual(frame.costWarning, 'no price for unpriced-model')
 })
 
 test('elapsed runs against the clock while the run is live, and freezes when it ends', () => {

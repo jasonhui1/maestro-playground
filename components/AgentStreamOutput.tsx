@@ -79,7 +79,7 @@ export function AgentStreamOutput({
               <Info size={16} />
             </button>
             
-            {showMetrics && (tokensIn != null || latencyMs != null) && (
+            {showMetrics && (tokensIn != null || latencyMs != null || costUsd !== undefined) && (
               <div className="absolute right-0 top-full mt-1 z-20 bg-zinc-900 text-white p-3 rounded-lg shadow-xl border border-zinc-800 min-w-40 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100">
                 <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1 mb-1">
                   Agent Metrics
@@ -90,12 +90,10 @@ export function AgentStreamOutput({
                     <span className="text-xs font-mono">{tokensIn + (tokensOut ?? 0)}</span>
                   </div>
                 )}
-                {costUsd != null && (
-                  <div className="flex justify-between items-center gap-4">
-                    <span className="text-[10px] text-zinc-400">Cost</span>
-                    <span className="text-xs font-mono">{formatCost(costUsd)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-[10px] text-zinc-400">Cost</span>
+                  <span className="text-xs font-mono">{costUsd != null ? formatCost(costUsd) : 'unpriced'}</span>
+                </div>
                 {latencyMs != null && (
                   <div className="flex justify-between items-center gap-4">
                     <span className="text-[10px] text-zinc-400">Latency</span>

@@ -78,7 +78,10 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, actions, chil
             </div>
             <div className="flex flex-col">
               <dt className={TYPE.label}>cost</dt>
-              <dd className="font-mono text-zinc-600">${frame.costUsd.toFixed(4)}</dd>
+              <dd className="font-mono text-zinc-600">{frame.costUsd !== undefined ? `$${frame.costUsd.toFixed(4)}` : 'unpriced'}</dd>
+              {frame.costWarning && (
+                <dd className="text-amber-600 text-[11px] leading-tight mt-0.5">{frame.costWarning}</dd>
+              )}
             </div>
           </dl>
 

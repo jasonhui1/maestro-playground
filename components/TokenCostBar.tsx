@@ -3,7 +3,7 @@ import React from 'react'
 interface TokenCostBarProps {
   tokensIn: number
   tokensOut: number
-  costUsd: number
+  costUsd?: number
 }
 
 export default function TokenCostBar({ tokensIn, tokensOut, costUsd }: TokenCostBarProps) {
@@ -15,7 +15,7 @@ export default function TokenCostBar({ tokensIn, tokensOut, costUsd }: TokenCost
     <div className="flex flex-col gap-1 w-full">
       <div className="flex justify-between text-[10px] uppercase tracking-wider font-bold text-zinc-400">
         <span>{tokensIn.toLocaleString()} in / {tokensOut.toLocaleString()} out</span>
-        <span className="font-mono text-zinc-900">${costUsd.toFixed(4)}</span>
+        <span className="font-mono text-zinc-900">{costUsd !== undefined ? `$${costUsd.toFixed(4)}` : 'unpriced'}</span>
       </div>
       <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden flex">
         <div 

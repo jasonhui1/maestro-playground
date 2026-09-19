@@ -6,7 +6,8 @@ interface RunCardProps {
 }
 
 export default function RunCard({ run }: RunCardProps) {
-  const totalCost = run.agentOutputs.reduce((sum, o) => sum + o.costUsd, 0)
+  const hasUnpriced = run.agentOutputs.some(o => o.costUsd === undefined)
+  const totalCost = hasUnpriced ? undefined : run.agentOutputs.reduce((sum, o) => sum + (o.costUsd ?? 0), 0)
   const totalTokens = run.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
   
   const statusColors: Record<typeof run.status, string> = {
@@ -52,7 +53,7 @@ export default function RunCard({ run }: RunCardProps) {
         </div>
         <div className="flex gap-4 items-center font-medium">
           <span>{totalTokens.toLocaleString()} tokens</span>
-          <span className="text-zinc-900">${totalCost.toFixed(4)}</span>
+          <span className="text-zinc-900">{totalCost !== undefined ? `$${totalCost.toFixed(4)}` : 'unpriced'}</span>
         </div>
       </div>
     </Link>

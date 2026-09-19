@@ -30,16 +30,8 @@ export interface RunFrameModel {
   /** Why the run failed — the engine's message, or the request error. */
   error?: string
   elapsedMs: number
-  costUsd: number
-}
-
-// A loop-body node reports once per round and the run paid for every one, so rounds
-// win over the node's last result wherever they exist.
-function costOf(states: RunStateMap): number {
-  return Object.values(states).reduce((sum, s) => {
-    if (s.rounds.length > 0) return sum + s.rounds.reduce((r, x) => r + x.metrics.costUsd, 0)
-    return sum + (s.result?.costUsd ?? 0)
-  }, 0)
+  costUsd?: number
+  costWarning?: string
 }
 
 function describeSeed(seed: SeedSource): string {
@@ -99,14 +91,42 @@ export function buildRunFrame(input: {
     }
   }
 
+  // #126
+  let sum = 0
+  let hasUnpriced = false
+  const unpricedModels = new Set<string>()
+  for (const s of Object.values(states)) {
+    if (s.rounds.length > 0) {
+      for (const r of s.rounds) {
+        if (r.metrics.costUsd === undefined) {
+          hasUnpriced = true
+          if (s.result?.model) unpricedModels.add(s.result.model)
+        } else {
+          sum += r.metrics.costUsd
+        }
+      }
+    } else if (s.result) {
+      if (s.result.costUsd === undefined) {
+        hasUnpriced = true
+        if (s.result.model) unpricedModels.add(s.result.model)
+      } else {
+        sum += s.result.costUsd
+      }
+    }
+  }
+
+  const costUsd = hasUnpriced ? undefined : sum
+  const costWarning = unpricedModels.size > 0 ? `no price for ${Array.from(unpricedModels).join(', ')}` : undefined
+
   const frame: RunFrameModel = {
     chainName: chain.name,
     moment: chain.moment || chain.description,
     seedSource: describeSeed(seed),
     status,
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
-    costUsd: costOf(states),
+    costUsd,
   }
+  if (costWarning) frame.costWarning = costWarning
   if (models.length > 0) frame.models = models
   if (error) frame.error = error
   if (parameter) frame.parameter = parameter

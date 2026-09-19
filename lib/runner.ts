@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { resolveRefs } from './resolver'
-import { calcCost } from './pricing'
+import { calcCost, priceWarningFor } from './pricing'
 import { resolveProvider } from './provider'
 import { injectSkills } from './prompt'
 import { runToolLoop, ToolLoopError, ChatCall, ChatCallHooks, ChatCallResponse, WireMessage } from './tools/loop'
@@ -213,13 +213,16 @@ async function runAgentWithTools(
       maxToolTurns: agent.max_tool_turns ?? DEFAULT_MAX_TOOL_TURNS,
     }, narrate)
     const { output, thought } = splitThought(res.finalText)
+    const costUsd = calcCost(agent.model, res.tokensIn, res.tokensOut)
+    const costWarning = priceWarningFor(agent.model)
     return {
       ...base,
       output,
       thought: thought || res.reasoning,
       tokensIn: res.tokensIn,
       tokensOut: res.tokensOut,
-      costUsd: calcCost(agent.model, res.tokensIn, res.tokensOut),
+      costUsd,
+      costWarning,
       latencyMs: Date.now() - start,
       status: 'success',
       toolCalls: res.toolCalls,
@@ -232,12 +235,15 @@ async function runAgentWithTools(
     const partial = err instanceof ToolLoopError ? err : null
     const tokensIn = partial?.tokensIn ?? 0
     const tokensOut = partial?.tokensOut ?? 0
+    const costUsd = calcCost(agent.model, tokensIn, tokensOut)
+    const costWarning = priceWarningFor(agent.model)
     return {
       ...base,
       output: '',
       tokensIn,
       tokensOut,
-      costUsd: calcCost(agent.model, tokensIn, tokensOut),
+      costUsd,
+      costWarning,
       latencyMs: Date.now() - start,
       status: 'error',
       error: err instanceof Error ? err.message : String(err),
@@ -303,6 +309,9 @@ export async function runAgent(
     narrator.flush()
     const { output, thought, reasoning } = narrator.result()
 
+    const costUsd = calcCost(agent.model, tokensIn, tokensOut)
+    const costWarning = priceWarningFor(agent.model)
+
     return {
       agentName: agent.name,
       input: userMessage,
@@ -311,7 +320,8 @@ export async function runAgent(
       thought: thought || reasoning,
       tokensIn,
       tokensOut,
-      costUsd: calcCost(agent.model, tokensIn, tokensOut),
+      costUsd,
+      costWarning,
       latencyMs: Date.now() - start,
       model: agent.model,
       modelSource: agent.resolution?.sources.model,
@@ -320,6 +330,8 @@ export async function runAgent(
     }
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err)
+    const costUsd = calcCost(agent.model, tokensIn, tokensOut)
+    const costWarning = priceWarningFor(agent.model)
     return {
       agentName: agent.name,
       input: userMessage,
@@ -327,7 +339,8 @@ export async function runAgent(
       output: '',
       tokensIn,
       tokensOut,
-      costUsd: 0,
+      costUsd,
+      costWarning,
       latencyMs: Date.now() - start,
       model: agent.model,
       modelSource: agent.resolution?.sources.model,

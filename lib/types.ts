@@ -192,7 +192,8 @@ export interface AgentOutput {
   thought?: string
   tokensIn: number
   tokensOut: number
-  costUsd: number
+  costUsd?: number
+  costWarning?: string
   latencyMs: number
   model: string
   modelSource?: FieldSource
