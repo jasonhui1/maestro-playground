@@ -3,7 +3,8 @@ import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import type { AgentOutput, ChatMessage, HoldRecord, RunMeta, ToolCallRecord } from '../lib/types'
+import type { SectionWarning } from '../lib/sectionWarning'
 
 const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
 
@@ -138,4 +139,188 @@ test('json export is the raw meta, every agentOutputs record intact', async () =
   assert.strictEqual(body.agentOutputs.length, 2)
   assert.strictEqual(body.agentOutputs[0].output, 'first pass')
   assert.strictEqual(body.agentOutputs[1].output, 'second pass')
+})
+
+test('markdown export renders tool loops with turn, tool name, args, and result', async () => {
+  const wp = newWorkspace()
+  const toolCalls: ToolCallRecord[] = [{
+    turn: 1,
+    name: 'retrieve',
+    args: { query: 'history' },
+    result: 'archive entry found',
+    latencyMs: 42,
+    isError: false,
+  }]
+  writeRun(wp, meta({
+    runId: 'tool-run',
+    agentOutputs: [
+      { ...output('worker', 'Worker', 'final answer'), toolCalls, toolTurns: 1 },
+    ],
+  }))
+
+  const response = await callGET('tool-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('## Tool Loop'))
+  assert.ok(md.includes('### Turn 1 — 1 call, 42 ms total'))
+  assert.ok(md.includes('#### 1.1 retrieve (42 ms)'))
+  assert.ok(md.includes('"query": "history"'))
+  assert.ok(md.includes('archive entry found'))
+  assert.ok(md.includes('## Output'))
+  assert.ok(md.includes('final answer'))
+})
+
+test('markdown export renders conversation turns with human and agent responses', async () => {
+  const wp = newWorkspace()
+  const conversation: ChatMessage[] = [
+    { role: 'user', content: 'can you make it shorter?' },
+    { role: 'assistant', content: 'here is the condensed version' },
+  ]
+  writeRun(wp, meta({
+    runId: 'chat-run',
+    agentOutputs: [
+      { ...output('editor', 'Editor', 'first draft'), conversation },
+    ],
+  }))
+
+  const response = await callGET('chat-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('## Conversation'))
+  assert.ok(md.includes('**human:** can you make it shorter?'))
+  assert.ok(md.includes('**Editor:** here is the condensed version'))
+  assert.ok(md.includes('first draft'))
+})
+
+test('markdown export renders section warnings', async () => {
+  const wp = newWorkspace()
+  const warnings: SectionWarning[] = [
+    { fromNode: 'researcher', section: 'findings', toNode: 'synthesizer', toSocket: 'notes' },
+  ]
+  writeRun(wp, meta({
+    runId: 'warning-run',
+    agentOutputs: [
+      { ...output('researcher', 'Researcher', 'partial notes'), warnings },
+    ],
+  }))
+
+  const response = await callGET('warning-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('## Warnings'))
+  assert.ok(md.includes('researcher\'s output has no "findings" section — {notes} on synthesizer resolved to empty.'))
+})
+
+test('markdown export renders earlier turns for promoted outputs', async () => {
+  const wp = newWorkspace()
+  const priorTranscript: ChatMessage[] = [
+    { role: 'user', content: 'try another angle' },
+    { role: 'assistant', content: 'initial angle' },
+  ]
+  writeRun(wp, meta({
+    runId: 'earlier-turns-run',
+    agentOutputs: [
+      { ...output('writer', 'Writer', 'refined angle'), priorTranscript },
+    ],
+  }))
+
+  const response = await callGET('earlier-turns-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('## Earlier turns'))
+  assert.ok(md.includes('**human:** try another angle'))
+  assert.ok(md.includes('**Writer:** initial angle'))
+  assert.ok(md.includes('refined angle'))
+})
+
+test('markdown export renders hold picks and records', async () => {
+  const wp = newWorkspace()
+  const holds: HoldRecord[] = [{
+    nodeId: 'gate',
+    prompt: 'Which layout direction should we proceed with?',
+    input: 'raw input content',
+    candidates: [{ heading: 'Candidate 1', body: 'Option 1' }],
+    reachedAt: '2026-01-01T00:00:00.000Z',
+    chosen: 'Candidate 1',
+    direction: 'keep minimalism',
+    resolvedAt: '2026-01-01T00:01:00.000Z',
+  }]
+  writeRun(wp, meta({
+    runId: 'hold-run',
+    holds,
+    agentOutputs: [
+      {
+        ...output('gate', 'hold', 'PICK: Candidate 1\n\nkeep minimalism'),
+        chosen: 'Candidate 1',
+      },
+    ],
+  }))
+
+  const response = await callGET('hold-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('Which layout direction should we proceed with?'))
+  assert.ok(md.includes('Candidate 1'))
+  assert.ok(md.includes('- **Hold Pick:** Candidate 1'))
+  assert.ok(md.includes('## Holds'))
+  assert.ok(md.includes('### Hold: gate'))
+  assert.ok(md.includes('- **Status:** resolved'))
+  assert.ok(md.includes('- **Resolved At:** 2026-01-01T00:01:00.000Z'))
+  assert.ok(md.includes('- **Pick:** Candidate 1'))
+  assert.ok(md.includes('- **Direction:** keep minimalism'))
+})
+
+test('markdown export renders custom hold picks', async () => {
+  const wp = newWorkspace()
+  const holds: HoldRecord[] = [{
+    nodeId: 'gate-custom',
+    input: 'What is your preferred alternative?',
+    candidates: [],
+    reachedAt: '2026-01-01T00:00:00.000Z',
+    custom: 'My custom layout approach',
+    direction: 'execute quickly',
+    resolvedAt: '2026-01-01T00:01:00.000Z',
+  }]
+  writeRun(wp, meta({
+    runId: 'custom-hold-run',
+    holds,
+  }))
+
+  const response = await callGET('custom-hold-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('What is your preferred alternative?'))
+  assert.ok(md.includes('My custom layout approach'))
+  assert.ok(md.includes('- **Custom Pick:** My custom layout approach'))
+})
+
+test('markdown export renders thought blockquote', async () => {
+  const wp = newWorkspace()
+  writeRun(wp, meta({
+    runId: 'thought-run',
+    agentOutputs: [
+      { ...output('thinker', 'Thinker', 'answer'), thought: 'pondering the options' },
+    ],
+  }))
+
+  const response = await callGET('thought-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('> pondering the options'))
+  assert.ok(md.includes('answer'))
+})
+
+test('markdown export renders custom pick on node header', async () => {
+  const wp = newWorkspace()
+  writeRun(wp, meta({
+    runId: 'node-custom-pick-run',
+    agentOutputs: [
+      { ...output('gate', 'hold', 'PICK: custom\n\ndirection'), custom: 'custom solution' },
+    ],
+  }))
+
+  const response = await callGET('node-custom-pick-run', 'markdown')
+  const md = await response.text()
+
+  assert.ok(md.includes('- **Custom Pick:** custom solution'))
 })

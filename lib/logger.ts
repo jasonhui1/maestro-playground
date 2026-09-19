@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
 import { nanoid } from 'nanoid'
-import { RunMeta, AgentOutput, ToolCallRecord, ChatMessage } from './types'
+import { RunMeta, AgentOutput, ToolCallRecord, ChatMessage, HoldRecord } from './types'
 import { getWorkspacePath } from './fs/workspace'
 import { groupToolCallsByTurn } from './tools/logFormat'
 import { sectionWarningText } from './sectionWarning'
@@ -112,6 +112,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     thought: output.thought,
     tool_turns: output.toolTurns,
     chosen: output.chosen,
+    custom: output.custom,
   }
 
   // Remove undefined properties to prevent js-yaml from throwing
@@ -121,6 +122,16 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     }
   })
 
+  const body = renderStepLogBody(output)
+
+  const fileContent = matter.stringify(body, frontmatter)
+  fs.writeFileSync(path.join(dir, filename), fileContent)
+}
+
+export function renderStepLogBody(
+  output: AgentOutput,
+  options?: { alwaysHeading?: boolean }
+): string {
   // A plain node keeps the body it has always had: the output, alone, from line 1.
   // The headings only appear once there is something to separate it from.
   const preamble = [
@@ -128,14 +139,39 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     ...(output.warnings?.length ? [renderWarnings(output.warnings)] : []),
     // A promoted output's earlier turns come before it, as they did in time (#98).
     ...(output.priorTranscript?.length ? [renderConversation(output.priorTranscript, output.agentName, '## Earlier turns')] : []),
+    ...(output.thought ? [output.thought.split('\n').map(l => `> ${l}`).join('\n') + '\n'] : []),
   ]
-  const headed = [...preamble, `## Output\n\n${output.output}`].join('\n')
-  const body = output.conversation?.length
+  const hasExtras = preamble.length > 0 || Boolean(output.conversation?.length)
+  const showHeading = hasExtras || Boolean(options?.alwaysHeading)
+  const outputHeading = options?.alwaysHeading && !hasExtras ? '### Output' : '## Output'
+  const headed = [...preamble, `${outputHeading}\n\n${output.output}`].join('\n')
+  return output.conversation?.length
     ? `${headed}\n\n${renderConversation(output.conversation, output.agentName)}`
-    : preamble.length ? headed : output.output
+    : showHeading ? headed : output.output
+}
 
-  const fileContent = matter.stringify(body, frontmatter)
-  fs.writeFileSync(path.join(dir, filename), fileContent)
+export function renderHoldRecord(hold: HoldRecord): string {
+  const asked = hold.prompt || hold.input
+  const lines: string[] = [
+    `### Hold: ${hold.nodeId}`,
+    '',
+    `- **Status:** ${hold.resolvedAt ? 'resolved' : 'open'}`,
+  ]
+  if (hold.resolvedAt) {
+    lines.push(`- **Resolved At:** ${hold.resolvedAt}`)
+  }
+  if (asked) {
+    lines.push(`- **Prompt:** ${asked}`)
+  }
+  if (hold.chosen) {
+    lines.push(`- **Pick:** ${hold.chosen}`)
+  } else if (hold.custom) {
+    lines.push(`- **Custom Pick:** ${hold.custom}`)
+  }
+  if (hold.direction) {
+    lines.push(`- **Direction:** ${hold.direction}`)
+  }
+  return lines.join('\n')
 }
 
 /** The step after the highest one logged; a run's outputs can outnumber its step logs. */

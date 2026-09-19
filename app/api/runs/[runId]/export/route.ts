@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadRunFor } from '@/lib/loadRun'
 import { toResponse } from '@/lib/refusal'
 import { latestOutputsByNode } from '@/lib/runHistoryState'
+import { renderStepLogBody, renderHoldRecord } from '@/lib/logger'
 
 export async function GET(
   request: NextRequest,
@@ -36,9 +37,23 @@ export async function GET(
   for (const output of latestOutputsByNode(meta.agentOutputs)) {
     md += `## Agent: ${output.agentName}\n\n`
     md += `- **Model:** ${output.model}\n`
-    md += `- **Timestamp:** ${output.timestamp}\n\n`
+    md += `- **Timestamp:** ${output.timestamp}\n`
+    if (output.chosen) {
+      md += `- **Hold Pick:** ${output.chosen}\n`
+    } else if (output.custom) {
+      md += `- **Custom Pick:** ${output.custom}\n`
+    }
+    md += `\n`
     md += `### Input\n\n${output.input}\n\n`
-    md += `### Output\n\n${output.output}\n\n`
+    md += `${renderStepLogBody(output, { alwaysHeading: true })}\n\n`
+    md += `---\n\n`
+  }
+
+  if (meta.holds?.length) {
+    md += `## Holds\n\n`
+    for (const hold of meta.holds) {
+      md += `${renderHoldRecord(hold)}\n\n`
+    }
     md += `---\n\n`
   }
 

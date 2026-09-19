@@ -107,7 +107,7 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
     output: {
       nodeId: hold.nodeId, agentName: 'hold', systemPrompt: '', input: hold.input, output: text,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: at, status: 'success',
-      ...chosen,
+      ...recorded,
     },
     record,
     holds: holds.map(h => (sameHold(h, hold) ? record : h)),
