@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
 import { readAnswerRequest } from '@/lib/hold'
-import { loadRunFor } from '@/lib/loadRun'
 import { toResponse } from '@/lib/refusal'
 
 // Resume is replay, in the same run folder, of every output plus the hold's answer (#94);
@@ -15,8 +14,5 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const answer = readAnswerRequest(body ?? {})
   if ('error' in answer) return toResponse(answer)
-
-  const meta = loadRunFor(runId, { mustNotBeRunning: true })
-  if ('error' in meta) return toResponse(meta)
-  return continueRun(loadWorkspace(), meta, { answer }, body?.context)
+  return continueRun(loadWorkspace(), runId, { answer }, body?.context)
 }

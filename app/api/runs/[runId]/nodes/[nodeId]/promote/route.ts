@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
 import { readPromoteRequest } from '@/lib/promote'
-import { loadRunFor } from '@/lib/loadRun'
 import { toResponse } from '@/lib/refusal'
 
 // Use this: in place on a waiting run, rerunning to the hold (#98);
@@ -15,8 +14,5 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const promote = readPromoteRequest(nodeId, body ?? {})
   if ('error' in promote) return toResponse(promote)
-
-  const meta = loadRunFor(runId, { mustNotBeRunning: true })
-  if ('error' in meta) return toResponse(meta)
-  return continueRun(loadWorkspace(), meta, { promote }, body?.context)
+  return continueRun(loadWorkspace(), runId, { promote }, body?.context)
 }

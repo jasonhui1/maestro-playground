@@ -14,7 +14,11 @@ const store = vi.hoisted(() => ({
 vi.mock('@/lib/logger', () => ({
   newRunId: () => 'fork-1',
   initRunDir: (meta: RunMeta) => { store.metas.set(meta.runId, structuredClone(meta)) },
-  readRunMeta: (runId: string) => structuredClone(store.metas.get(runId)!),
+  readRunMeta: (runId: string) => {
+    const meta = store.metas.get(runId)
+    if (!meta) throw new Error('no such run')
+    return structuredClone(meta)
+  },
   updateRunMeta: (runId: string, updates: Partial<RunMeta>) => {
     store.metas.set(runId, structuredClone({ ...store.metas.get(runId)!, ...updates }))
   },
@@ -115,7 +119,7 @@ const newLogs = () => store.logs.slice(2).map(({ runId, step, nodeId, output }) 
 
 test('an answer in place logs the answer and what follows it, numbered after the last log', async () => {
   const meta = waitingRun()
-  const res = continueRun(workspace, meta, { answer: { direction: 'go on' } })
+  const res = continueRun(workspace, meta.runId, { answer: { direction: 'go on' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -130,7 +134,7 @@ test('an answer in place logs the answer and what follows it, numbered after the
 
 test('a promote in place relogs its source and numbers the rerun after the last log', async () => {
   const meta = waitingRun()
-  const res = continueRun(workspace, meta, { promote: { nodeId: 'prop' } })
+  const res = continueRun(workspace, meta.runId, { promote: { nodeId: 'prop' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -147,7 +151,7 @@ test('a promote in place relogs its source and numbers the rerun after the last 
 
 test('a record kept by a promote is the one on disk: not logged again, not recorded twice', async () => {
   const meta = waitingRun()
-  const res = continueRun(workspace, meta, { promote: { nodeId: 'dec' } })
+  const res = continueRun(workspace, meta.runId, { promote: { nodeId: 'dec' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -161,7 +165,7 @@ test('a record kept by a promote is the one on disk: not logged again, not recor
 test('a fork logs every replayed record afresh in a new run, from step 0', async () => {
   const meta = waitingRun()
   meta.status = 'complete'
-  const res = continueRun(workspace, meta, { fork: { from: 'dec' } })
+  const res = continueRun(workspace, meta.runId, { fork: { from: 'dec' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -170,4 +174,16 @@ test('a fork logs every replayed record afresh in a new run, from step 0', async
     ['fork-1', 1, 'dec'],
   ])
   assert.equal(store.metas.get('fork-1')!.branchedFromRunId, 'run-1')
+})
+
+test('a running run is refused before any plan is read', async () => {
+  const meta = waitingRun()
+  store.metas.set(meta.runId, { ...meta, status: 'running' })
+  const res = continueRun(workspace, meta.runId, { answer: { direction: 'go on' } })
+  assert.equal(res.status, 409)
+  assert.deepStrictEqual(newLogs(), [])
+})
+
+test('an unknown run is refused', async () => {
+  assert.equal(continueRun(workspace, 'no-such-run', { answer: { direction: 'go on' } }).status, 404)
 })

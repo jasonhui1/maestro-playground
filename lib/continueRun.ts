@@ -4,7 +4,8 @@ import { forkRun, planFork, type ForkRequest } from './fork'
 import { runLog } from './partialRun'
 import { nextStep, updateRunMeta, writeAgentLog } from './logger'
 import { loggedStep } from './nodeChat'
-import { toResponse } from './refusal'
+import { loadRunFor } from './loadRun'
+import { conflict, toResponse } from './refusal'
 import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -15,16 +16,18 @@ export type ContinuePlan =
   | { fork: ForkRequest }
 
 /**
- * Continues `meta`'s run by `plan`, in place or as a fork (#99, #107); refusals come back as JSON.
- * `meta` is not running: the caller loads it with `mustNotBeRunning` (#104).
- * In place, earlier records replay as the objects in `meta.agentOutputs` and keep their logs (ADR-0011).
+ * Continues run `runId` by `plan`, in place or as a fork (#99, #107); refusals come back as JSON.
+ * A running run is refused (#104). In place, earlier records replay as the objects in
+ * `meta.agentOutputs` and keep their logs (ADR-0011).
  */
 export function continueRun(
   workspace: LiveWorkspace,
-  meta: RunMeta,
+  runId: string,
   plan: ContinuePlan,
   requestContext?: unknown,
 ): Response {
+  const meta = loadRunFor(runId, { mustNotBeRunning: true })
+  if ('error' in meta) return toResponse(meta)
   const context = contextOverrides(requestContext)
   const res = 'answer' in plan ? answer(workspace, meta, plan.answer, context)
     : 'promote' in plan ? promote(workspace, meta, plan.promote, context)
@@ -46,7 +49,7 @@ function answer(
   if (answered.mode === 'fork') {
     return forkRun(workspace, meta, { anchors: [hold.nodeId], outputs: [answered.output], hold: answered.record }, context)
   }
-  if (meta.status !== 'waiting') return { error: `Run is ${meta.status}, not waiting`, status: 409 }
+  if (meta.status !== 'waiting') return conflict(`Run is ${meta.status}, not waiting`)
 
   // The answer is recorded up front, so a run that fails after it still shows what was said.
   const { holds, output } = answered
