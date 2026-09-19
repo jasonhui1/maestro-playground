@@ -60,6 +60,8 @@ A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates 
 
 **Fork** revisits a run's history without rewriting it: a new run of the same recorded graph whose `branchedFromRunId` names the source and `branchedFromNode` the anchor, the promoted node or the re-answered hold. It replays every output but the anchor and its descendants (a node's repeated records collapse to the latest), then the anchor's new output; holds below the anchor are asked again. Promote forks on a finished run or past an answered hold; resume forks when the hold is already answered. The source run keeps its history (#99). A **branch** is the older form, anchored by `branchedFromStep` and replayed from a client-supplied list. _Avoid_: rewind, parent run.
 
+A **continuation** is one of resume, promote or fork handed to `continueRun` as a plan — `answer`, `promote` or `fork` — which decides in place or fork and streams the stretch. In place, the earlier records replay as the very objects on disk, so they are never logged again (#107).
+
 ## Static vs dynamic width
 
 **Static** width means the N producers into a `join` are known when you read the chain file. That is all v1 supports, and it is what keeps the tier-1 promise: the graph is fixed before the run starts. **Dynamic** width — one producer spawned per runtime item — is deliberately not built.

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
+import { nanoid } from 'nanoid'
 import { RunMeta, AgentOutput, ToolCallRecord, ChatMessage } from './types'
 import { getWorkspacePath } from './fs/workspace'
 import { groupToolCallsByTurn } from './tools/logFormat'
@@ -68,6 +69,11 @@ function renderConversation(messages: ChatMessage[], agentName: string, heading 
     }
   }
   return lines.join('\n')
+}
+
+/** A new run's folder name: its start date, then a short random suffix. */
+export function newRunId(): string {
+  return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
 }
 
 export function getRunDir(runId: string): string {

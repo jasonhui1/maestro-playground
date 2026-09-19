@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readRunMeta, updateRunMeta, nextStep, latestStepOf, writeAgentLog } from '@/lib/logger'
-import { CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
-import { planPromotion, type PromoteRefusal } from '@/lib/promote'
-import { forkRun } from '@/lib/fork'
-import { runLog } from '@/lib/partialRun'
-import { streamChainRun, contextOverrides, loadContinuation, refusalResponse } from '@/lib/runSession'
+import { readRunMeta } from '@/lib/logger'
+import { loadWorkspace } from '@/lib/fs/workspace'
+import { continueRun } from '@/lib/continueRun'
 import type { RunMeta } from '@/lib/types'
-
-const REFUSAL_STATUS: Record<PromoteRefusal, number> = {
-  ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400,
-}
 
 // Use this: in place on a waiting run, rerunning to the hold (#98);
 // a finished run, or one past an answered hold, forks instead (#99).
@@ -30,45 +23,5 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Run not found' }, { status: 404 })
   }
-  if (meta.status === 'running') {
-    return NextResponse.json({ error: 'Run is running' }, { status: 409 })
-  }
-
-  const plan = planPromotion(meta, nodeId, turn ?? undefined)
-  if ('refused' in plan) return NextResponse.json({ error: plan.reason }, { status: REFUSAL_STATUS[plan.refused] })
-  const sourceStep = latestStepOf(meta.runId, nodeId)
-  if (sourceStep === undefined) {
-    return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
-  }
-
-  if (meta.status !== 'waiting' || plan.forks) {
-    const fork = forkRun(meta, { anchors: [nodeId], outputs: [plan.revision], context })
-    if ('error' in fork) return refusalResponse(fork)
-    // The source keeps its history; only the flag on the promoted reply is new.
-    updateRunMeta(meta.runId, { agentOutputs: plan.flaggedOutputs })
-    writeAgentLog(meta.runId, sourceStep, plan.source)
-    return fork
-  }
-
-  const continuation = loadContinuation(meta)
-  if ('error' in continuation) return refusalResponse(continuation)
-
-  // No await since the status read: the run is claimed before a second promote or resume can read it.
-  // The revision is recorded up front, so a run that fails after it still shows what was promoted.
-  const history = plan.flaggedOutputs
-  const { replay: kept } = runLog({ agentOutputs: history, graph: meta.graph, holds: meta.holds }).replayFor([nodeId])
-  updateRunMeta(meta.runId, { status: 'running', agentOutputs: [...history, plan.revision] })
-  writeAgentLog(meta.runId, sourceStep, plan.source)
-
-  return streamChainRun({
-    ...continuation,
-    runId: meta.runId,
-    seedPrompt: meta.seedPrompt,
-    paramValue: meta.parameter?.value ?? '',
-    context: contextOverrides(context),
-    replay: [...kept, plan.revision],
-    resumeFrom: { logged: kept.length, nextStep: nextStep(meta.runId) },
-    holds: meta.holds,
-    history,
-  })
+  return continueRun(loadWorkspace(), meta, { promote: { nodeId, turn: turn ?? undefined } }, context)
 }

@@ -1,10 +1,9 @@
-import { nanoid } from 'nanoid'
-import { getWorkspacePath, loadWorkspace } from './fs/workspace'
+import { getWorkspacePath, type loadWorkspace } from './fs/workspace'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinRunVersions, versionKey } from './runVersions'
 import { pinnedWorkspace } from './pinnedWorkspace'
-import { writeAgentLog, updateRunMeta, readRunMeta } from './logger'
+import { writeAgentLog, updateRunMeta, readRunMeta, initRunDir, newRunId } from './logger'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
@@ -17,23 +16,14 @@ export function contextOverrides(value: unknown): Record<string, string> {
   return value && typeof value === 'object' ? value as Record<string, string> : {}
 }
 
-/** A new run's folder name: its start date, then a short random suffix. */
-export function newRunId(): string {
-  return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
-}
-
-export type { Refusal }
-
-/** A refusal as the JSON response a route returns. */
-export function refusalResponse({ error, errors, status }: Refusal): Response {
-  return Response.json({ error, errors }, { status })
-}
-
 /** Which files a continuation runs: the live ones, or the source run's pins (ADR-0011). */
 export type ContinuationVersions = 'current' | 'pinned'
 
+/** The workspace as loaded from disk: what a run starts or continues over. */
+export type LiveWorkspace = ReturnType<typeof loadWorkspace>
+
 /** A run's recorded graph over live or pinned files, ready to continue or fork, with those files' pins; or why it cannot. */
-export function loadContinuation(meta: RunMeta, from: ContinuationVersions = 'current'):
+export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: ContinuationVersions = 'current'):
   | {
       chain: ChainDef
       workspace: RunSession['workspace']
@@ -43,7 +33,6 @@ export function loadContinuation(meta: RunMeta, from: ContinuationVersions = 'cu
       pinnedContext: Record<string, string>
     }
   | Refusal {
-  const live = loadWorkspace()
   if (from === 'pinned') {
     if (!meta.versions) return { error: 'Run has no pinned versions', status: 422 }
     const pinned = pinnedWorkspace(live, meta.versions)
@@ -75,42 +64,37 @@ export interface RunSession {
   seedPrompt: string
   paramValue: string
   context: Record<string, string>
-  /** Outputs handed to the graph as already done; their out-edges are live. */
-  replay: AgentOutput[]
-  /** A resumed run: the leading `replay` records already logged, and the step the next log takes. */
-  resumeFrom?: { logged: number; nextStep: number }
+  /** Outputs handed to the graph as done: `logged` are already on disk here, never logged again (ADR-0011); `fresh` are logged first. */
+  replay: { logged: AgentOutput[]; fresh: AgentOutput[] }
+  /** The step the first new log takes; 0 for a new run folder. */
+  firstStep: number
   /** Stamped on every newly logged record; 0 stamps nothing. */
   versionNumber: number
   /** Hold records the run carries before this stretch. */
   holds?: HoldRecord[]
-  /** Every record the run holds before this stretch, including ones it reruns; the new records follow them in log order. */
+  /** Every record the run holds before this stretch, including ones it reruns; the new records follow it. */
   history?: AgentOutput[]
 }
 
-function afterHistory(results: AgentOutput[], history?: AgentOutput[]): AgentOutput[] {
-  if (!history) return results
-  const had = new Set(history)
-  return [...history, ...results.filter(o => !had.has(o))]
-}
-
 /**
- * One stretch of a run — a fresh run, a branch, or a resume — executed and streamed
+ * One stretch of a run — a fresh run, a fork, a resume or a promote — executed and streamed
  * as SSE, ending with the run's meta.json written as complete, waiting or error.
  */
 export function streamChainRun(s: RunSession): Response {
   const { runId, chain, workspace: { agents, skills, chains, tools } } = s
-  const onDisk = new Set(s.replay.slice(0, s.resumeFrom?.logged ?? 0))
+  const replay = [...s.replay.logged, ...s.replay.fresh]
+  const onDisk = new Set(s.replay.logged)
 
   return sseResponse(async send => {
     send({ type: 'run_start', runId })
 
     // Every hop re-sends the panels, so a view drawing mid-run reads the finished
     // run's projection rather than porting the rule (#76).
-    const soFar: AgentOutput[] = [...s.replay]
+    const soFar: AgentOutput[] = [...replay]
     const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar) })
     sendLayout()
 
-    let step = s.resumeFrom?.nextStep ?? 0
+    let step = s.firstStep
     const stepOf = new Map<string, number>()
     const nameOf = new Map<string, string>()
     // A warning is found downstream, after its node's log is already on disk —
@@ -135,7 +119,6 @@ export function streamChainRun(s: RunSession): Response {
             send({ type: 'token', agentName: nameOf.get(nodeId), nodeId, token, tokenType, step: stepOf.get(nodeId), kind: kindById.get(nodeId), turn })
           },
           onDone: (nodeId, output) => {
-            // A resumed run's earlier steps keep the log and version they were written with (ADR-0011).
             if (onDisk.has(output)) return
             let n = stepOf.get(nodeId)
             if (n === undefined) { n = step++; stepOf.set(nodeId, n); nameOf.set(nodeId, output.agentName) }
@@ -158,7 +141,7 @@ export function streamChainRun(s: RunSession): Response {
           onHold: hold => { reached.push(hold) },
         },
         undefined,
-        s.replay,
+        replay,
         chains,
         tools,
         0,
@@ -166,7 +149,8 @@ export function streamChainRun(s: RunSession): Response {
         s.context,
       )
 
-      const agentOutputs = keepConversations(afterHistory(results, s.history), readRunMeta(runId).agentOutputs)
+      const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
+      const agentOutputs = keepConversations(stretch, readRunMeta(runId).agentOutputs)
       if (reached.length > 0) {
         updateRunMeta(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
         // Wave-mate holds pause together, so each is announced (#93).
@@ -183,5 +167,47 @@ export function streamChainRun(s: RunSession): Response {
       send({ type: 'error', error: errorMessage })
       updateRunMeta(runId, { status: 'error' })
     }
+  })
+}
+
+/** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
+export function startRun(run: {
+  chain: ChainDef
+  workspace: RunSession['workspace']
+  title: string
+  seedPrompt: string
+  parameter?: RunMeta['parameter']
+  /** A request's context overrides, laid over a fork's pinned context files. */
+  context?: unknown
+  pinnedContext?: Record<string, string>
+  versions: Record<string, number>
+  /** The entry point's version, stamped on every log; 0 stamps nothing. */
+  versionNumber: number
+  replay?: AgentOutput[]
+  holds?: HoldRecord[]
+  forkedFrom?: { runId: string; nodeId: string }
+}): Response {
+  const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
+  const runId = newRunId()
+  initRunDir({
+    runId,
+    chainName: run.title,
+    seedPrompt,
+    parameter,
+    startedAt: new Date().toISOString(),
+    status: 'running',
+    agentOutputs: [],
+    ...(holds ? { holds } : {}),
+    graph: { nodes: chain.nodes, edges: chain.edges },
+    ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
+    versionNumber: versionNumber > 0 ? versionNumber : undefined,
+    versions: run.versions,
+  })
+  return streamChainRun({
+    runId, chain, workspace, seedPrompt, versionNumber, holds,
+    context: { ...run.pinnedContext, ...contextOverrides(run.context) },
+    paramValue: parameter?.value ?? '',
+    replay: { logged: [], fresh: run.replay ?? [] },
+    firstStep: 0,
   })
 }

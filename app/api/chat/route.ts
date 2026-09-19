@@ -2,9 +2,8 @@ import { NextRequest } from 'next/server'
 import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
-import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta } from '@/lib/logger'
+import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta, newRunId } from '@/lib/logger'
 import { sseResponse } from '@/lib/sse'
-import { newRunId } from '@/lib/runSession'
 
 export async function POST(req: NextRequest) {
   try {

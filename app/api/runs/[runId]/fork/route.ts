@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta } from '@/lib/logger'
-import { forkRun, planFork } from '@/lib/fork'
-import { refusalResponse } from '@/lib/runSession'
+import { loadWorkspace } from '@/lib/fs/workspace'
+import { continueRun } from '@/lib/continueRun'
 import type { RunMeta } from '@/lib/types'
 
 // A new run from this one: rerun from a node, or set revised outputs; either way their
@@ -12,6 +12,7 @@ export async function POST(
 ) {
   const { runId } = await params
   const body = await req.json().catch(() => ({}))
+  const { from, revisions, versions, context } = body ?? {}
 
   let meta: RunMeta
   try {
@@ -19,12 +20,5 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Run not found' }, { status: 404 })
   }
-  if (meta.status === 'running') {
-    return NextResponse.json({ error: 'Run is running' }, { status: 409 })
-  }
-
-  const fork = planFork(meta, body ?? {})
-  if ('error' in fork) return refusalResponse(fork)
-  const res = forkRun(meta, fork)
-  return 'error' in res ? refusalResponse(res) : res
+  return continueRun(loadWorkspace(), meta, { fork: { from, revisions, versions } }, context)
 }

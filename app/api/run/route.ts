@@ -1,11 +1,9 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
-import { initRunDir } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
-import { RunMeta } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
-import { streamChainRun, contextOverrides, newRunId } from '@/lib/runSession'
+import { startRun } from '@/lib/runSession'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -34,29 +32,10 @@ export async function POST(req: NextRequest) {
   // for an agent run — so a step log keeps the one number it has always carried.
   const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
-  const runId = newRunId()
-  const meta: RunMeta = {
-    runId,
-    chainName: runTitle,
-    seedPrompt,
-    parameter: chain.parameter && paramValue ? { name: chain.parameter.name, value: paramValue } : undefined,
-    startedAt: new Date().toISOString(),
-    status: 'running',
-    agentOutputs: [],
-    graph: { nodes: chain.nodes, edges: chain.edges },
-    versionNumber: currentVersion > 0 ? currentVersion : undefined,
-    versions,
-  }
-  initRunDir(meta)
-
-  return streamChainRun({
-    runId,
-    chain,
-    workspace,
-    seedPrompt,
-    paramValue: typeof paramValue === 'string' ? paramValue : '',
-    context: contextOverrides(context),
-    replay: [],
-    versionNumber: currentVersion,
+  return startRun({
+    chain, workspace, title: runTitle, seedPrompt,
+    parameter: chain.parameter && typeof paramValue === 'string' && paramValue
+      ? { name: chain.parameter.name, value: paramValue } : undefined,
+    context, versions, versionNumber: currentVersion,
   })
 }

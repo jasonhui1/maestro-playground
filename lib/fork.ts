@@ -1,9 +1,5 @@
-import { initRunDir } from './logger'
-import { runLog } from './partialRun'
-import {
-  contextOverrides, loadContinuation, newRunId, streamChainRun, type ContinuationVersions, type Refusal,
-} from './runSession'
-import type { AgentOutput, HoldRecord, RunMeta } from './types'
+import type { ContinuationVersions } from './runSession'
+import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
 export interface Fork {
   /** The nodes whose output changes; each one's descendants rerun. The first names the fork. */
@@ -13,47 +9,6 @@ export interface Fork {
   /** The re-answered hold, when an anchor is one. */
   hold?: HoldRecord
   versions?: ContinuationVersions
-  context?: unknown
-}
-
-/** A new run of the source's graph, replaying what the anchors leave standing (#99, #103). */
-export function forkRun(source: RunMeta, fork: Fork): Response | Refusal {
-  const continuation = loadContinuation(source, fork.versions)
-  if ('error' in continuation) return continuation
-  const graph = source.graph!
-  const kept = runLog(source).replayFor(fork.anchors)
-  const replay = [...kept.replay, ...(fork.outputs ?? [])]
-  const holds = [...kept.holds, ...(fork.hold ? [fork.hold] : [])]
-
-  const { chain, workspace, versionNumber, versions, pinnedContext } = continuation
-  const runId = newRunId()
-  initRunDir({
-    runId,
-    chainName: source.chainName,
-    seedPrompt: source.seedPrompt,
-    parameter: source.parameter,
-    startedAt: new Date().toISOString(),
-    status: 'running',
-    agentOutputs: [],
-    holds,
-    graph,
-    branchedFromRunId: source.runId,
-    branchedFromNode: fork.anchors[0],
-    versionNumber: versionNumber > 0 ? versionNumber : undefined,
-    versions,
-  })
-
-  return streamChainRun({
-    chain,
-    workspace,
-    runId,
-    seedPrompt: source.seedPrompt,
-    paramValue: source.parameter?.value ?? '',
-    context: { ...pinnedContext, ...contextOverrides(fork.context) },
-    replay,
-    versionNumber,
-    holds,
-  })
 }
 
 /** `POST /api/runs/:id/fork`'s body, as sent; `planFork` reads it (capability `runFork`). */
@@ -71,7 +26,7 @@ export interface ForkRequest {
  */
 export function planFork(
   source: RunMeta,
-  { from, revisions, versions, context }: ForkRequest,
+  { from, revisions, versions }: ForkRequest,
 ): Fork | Refusal {
   const graph = source.graph
   if (!graph) return { error: 'Run has no recorded graph', status: 422 }
@@ -102,7 +57,7 @@ export function planFork(
     if (!record) return { error: `Node ${nodeId} has no output in this run`, status: 400 }
     outputs.push(revisedOutput(record, text))
   }
-  return { anchors, outputs, versions, context }
+  return { anchors, outputs, versions }
 }
 
 function isTextMap(value: unknown): value is Record<string, string> {
