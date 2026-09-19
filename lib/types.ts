@@ -70,7 +70,7 @@ export const AGENT_FIELDS = [
 ] as const satisfies readonly (keyof AgentDef)[]
 
 export type AgentField = typeof AGENT_FIELDS[number]
-export type FieldSource = 'file' | 'defaults' | 'variant' | 'built-in' | 'env'
+export type FieldSource = 'file' | 'defaults' | 'variant' | 'built-in' | 'env' | 'env override'
 
 /** Where each resolved field came from, and any inheritance field the file may not state (ADR-0010). */
 export interface AgentResolution {
@@ -195,6 +195,7 @@ export interface AgentOutput {
   costUsd: number
   latencyMs: number
   model: string
+  modelSource?: FieldSource
   timestamp: string
   status: 'success' | 'error' | 'skipped'
   error?: string

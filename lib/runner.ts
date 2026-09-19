@@ -204,6 +204,7 @@ async function runAgentWithTools(
     input: userMessage,
     systemPrompt: resolvedSystemPrompt,
     model: agent.model,
+    modelSource: agent.resolution?.sources.model,
     timestamp: new Date().toISOString(),
   }
 
@@ -313,6 +314,7 @@ export async function runAgent(
       costUsd: calcCost(agent.model, tokensIn, tokensOut),
       latencyMs: Date.now() - start,
       model: agent.model,
+      modelSource: agent.resolution?.sources.model,
       timestamp: new Date().toISOString(),
       status: 'success',
     }
@@ -328,6 +330,7 @@ export async function runAgent(
       costUsd: 0,
       latencyMs: Date.now() - start,
       model: agent.model,
+      modelSource: agent.resolution?.sources.model,
       timestamp: new Date().toISOString(),
       status: 'error',
       error: errorMessage,

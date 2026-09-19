@@ -62,6 +62,16 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, actions, chil
                 <dd className="text-zinc-600 break-words">{frame.parameter.value}</dd>
               </div>
             )}
+            {frame.models && frame.models.length > 0 && (
+              <div className="flex flex-col">
+                <dt className={TYPE.label}>{frame.models.length === 1 ? 'model' : 'models'}</dt>
+                {frame.models.map((m, idx) => (
+                  <dd key={idx} className="font-mono text-zinc-600 break-words">
+                    {m.model}{m.source ? ` (${m.source})` : ''}
+                  </dd>
+                ))}
+              </div>
+            )}
             <div className="flex flex-col">
               <dt className={TYPE.label}>elapsed</dt>
               <dd className="font-mono text-zinc-600">{formatElapsed(frame.elapsedMs)}</dd>

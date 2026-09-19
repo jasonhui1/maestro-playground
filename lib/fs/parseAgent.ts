@@ -92,12 +92,34 @@ export function parseAgent(
     )) as AgentResolution['sources'],
     forbidden: forbiddenAgentFields(data),
   }
-  if (envModel) resolution.sources.model = 'env'
+
+  // #127
+  const isOverride = process.env.AI_MODEL_OVERRIDE === 'true'
+  const fileModel = typeof stated.model === 'string' && stated.model.trim() ? stated.model.trim() : undefined
+  const defaultModel = typeof statedDefaults.model === 'string' && statedDefaults.model.trim() ? statedDefaults.model.trim() : undefined
+
+  let model: string
+  if (isOverride && envModel) {
+    model = envModel
+    resolution.sources.model = 'env override'
+  } else if (fileModel) {
+    model = fileModel
+    resolution.sources.model = 'file'
+  } else if (defaultModel) {
+    model = defaultModel
+    resolution.sources.model = 'defaults'
+  } else if (envModel) {
+    model = envModel
+    resolution.sources.model = 'env'
+  } else {
+    model = 'anthropic/claude-3.5-sonnet'
+    resolution.sources.model = 'built-in'
+  }
 
   return {
     slug,
     name: merged.name,
-    model: envModel || merged.model || 'anthropic/claude-3.5-sonnet',
+    model,
     description: merged.description ?? '',
     skills: merged.skills ?? [],
     context: merged.context ?? [],

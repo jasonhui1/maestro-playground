@@ -1,4 +1,4 @@
-import { ChainDef } from './types'
+import { ChainDef, FieldSource } from './types'
 import { RunStateMap } from './runState'
 
 /** Where the run's seed came from — the two shapes the result view offers (#66), plus
@@ -25,6 +25,7 @@ export interface RunFrameModel {
   seedSource: string
   /** The dropdown the chain declared and what it was set to, when it declared one (#65). */
   parameter?: { name: string; value: string }
+  models?: Array<{ model: string; source?: FieldSource }>
   status: RunStatus
   /** Why the run failed — the engine's message, or the request error. */
   error?: string
@@ -85,6 +86,19 @@ export function buildRunFrame(input: {
   // stream closes, however it closed.
   const status: RunStatus = endedAt === undefined ? 'running' : error ? 'failed' : 'done'
 
+  // #127
+  const models: Array<{ model: string; source?: FieldSource }> = []
+  const seen = new Set<string>()
+  for (const s of Object.values(states)) {
+    if (s.result?.model) {
+      const key = `${s.result.model}|${s.result.modelSource ?? ''}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        models.push({ model: s.result.model, source: s.result.modelSource })
+      }
+    }
+  }
+
   const frame: RunFrameModel = {
     chainName: chain.name,
     moment: chain.moment || chain.description,
@@ -93,6 +107,7 @@ export function buildRunFrame(input: {
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
     costUsd: costOf(states),
   }
+  if (models.length > 0) frame.models = models
   if (error) frame.error = error
   if (parameter) frame.parameter = parameter
   return frame

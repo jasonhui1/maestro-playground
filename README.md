@@ -43,7 +43,7 @@ Agents are defined as markdown templates. The YAML frontmatter specifies:
 * `inputs`: (Optional) Metadata listing input socket names and descriptions.
 * `outputs`: Declared output sockets (e.g., `summary` to extract a specific markdown section). The main text output socket (`output`) is always implicitly present.
 
-Any field the file omits comes from `workspace/defaults.md`. The merge is override, per field — an agent file `skills` list takes the place of the default list rather than adding to it — and inheritance is one level, so an agent file may not name a `parent` or `extends`. The drawer's **Resolved agent** block shows the merged result and names the file each field came from. See [ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md).
+Any field the file omits comes from `workspace/defaults.md`. The merge is override, per field — an agent file `skills` list takes the place of the default list rather than adding to it — and inheritance is one level, so an agent file may not name a `parent` or `extends`. The drawer's **Resolved agent** block shows the merged result and names the file each field came from. See [ADR-0010](docs/adr/0010-agent-files-inherit-one-defaults-file.md). For models, precedence is `file > defaults.md > env` (the environment model serves as a fallback only when neither file nor defaults declare a model). Setting `AI_MODEL_OVERRIDE=true` in `.env.local` forces the environment model to override every agent file. Either way, the run frame and each step log record which model ran and why (`file`, `defaults`, `env`, `env override`, or `built-in`).
 
 ### 2. Skills (`workspace/skills/`)
 Skills are reusable prompt fragments injected dynamically into agent system prompts. They belong to two categories:
@@ -174,6 +174,7 @@ can consume without reimplementing Maestro's chain/run logic.
    ```env
    AI_API_KEY=your-api-key-here
    AI_BASE_URL=https://openrouter.ai/api/v1 # Defaults to OpenRouter, or configure for OpenAI
+   # AI_MODEL_OVERRIDE=true # Set to true to force env model across all agents (default false: file > defaults.md > env)
    WORKSPACE_PATH=./workspace
    ```
 

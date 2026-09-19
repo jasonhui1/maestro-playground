@@ -104,6 +104,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
     cost_usd: Number(output.costUsd.toFixed(6)),
     latency_ms: output.latencyMs,
     model: output.model,
+    model_source: output.modelSource,
     status: output.status,
     input: output.input,
     system_prompt: output.systemPrompt,

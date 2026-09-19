@@ -146,3 +146,19 @@ test('a run launched without a parameter says nothing about one', () => {
   const frame = buildRunFrame({ chain: chain(), seed: paste, states: {}, now: 0 })
   assert.strictEqual(frame.parameter, undefined)
 })
+
+test('the frame collects unique models and their sources from node results (#127)', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, now: 0,
+    states: states({
+      first: { status: 'success', result: { ...output(0.01), model: 'model-a', modelSource: 'file' } },
+      second: { status: 'success', result: { ...output(0.02), model: 'model-b', modelSource: 'defaults' } },
+      third: { status: 'success', result: { ...output(0.01), model: 'model-a', modelSource: 'file' } },
+    }),
+  })
+  assert.deepStrictEqual(frame.models, [
+    { model: 'model-a', source: 'file' },
+    { model: 'model-b', source: 'defaults' },
+  ])
+})
+
