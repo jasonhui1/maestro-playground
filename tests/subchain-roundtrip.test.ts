@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import { serializeChain } from '../lib/serializeChain'
 import { parseChainContent } from '../lib/parseChain'
-import { ChainNode, ChainEdge } from '../lib/types'
+import { ChainDef, ChainNode, ChainEdge } from '../lib/types'
 
 test('subchain-roundtrip', () => {
   const nodes: ChainNode[] = [
@@ -11,10 +11,17 @@ test('subchain-roundtrip', () => {
   ]
   const edges: ChainEdge[] = [{ fromNode: 'seedA', fromSocket: 'output', toNode: 'sub', toSocket: 'topic' }]
 
-  const raw = serializeChain(
-    { name: 'Has Subchain', description: '', inputs: [{ name: 'topic', node: 'seedA' }], outputs: [{ name: 'verdict', node: 'w', socket: 'output' }] },
-    nodes, edges,
-  )
+  const chain: ChainDef = {
+    slug: 'has-subchain',
+    name: 'Has Subchain',
+    description: '',
+    filePath: '',
+    nodes,
+    edges,
+    inputs: [{ name: 'topic', node: 'seedA' }],
+    outputs: [{ name: 'verdict', node: 'w', socket: 'output' }],
+  }
+  const raw = serializeChain(chain)
   const parsed = parseChainContent(raw, 'has-subchain')
 
   const sub = parsed.nodes.find(n => n.id === 'sub')!

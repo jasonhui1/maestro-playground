@@ -100,14 +100,15 @@ test('node-kinds', () => {
     return node as unknown as ChainNode
   })
 
-  const serialized = chainToData({ name: 'parity' }, populated, [])
+  const parityChain: ChainDef = { slug: 'parity', name: 'parity', description: '', filePath: '', nodes: populated, edges: [] }
+  const serialized = chainToData(parityChain)
   for (const [i, kind] of allKinds.entries()) {
     const emitted = Object.keys((serialized.nodes as Record<string, unknown>[])[i]).filter(k => !COMMON_KEYS.has(k)).sort()
     const declared = kindOf(kind).fields.map(f => f.key).sort()
     assert.deepStrictEqual(emitted, declared, `serializeChain keys mismatch for ${kind}`)
   }
 
-  const reparsed = parseChainContent(serializeChain({ name: 'parity' }, populated, []), 'parity')
+  const reparsed = parseChainContent(serializeChain(parityChain), 'parity')
   for (const [i, kind] of allKinds.entries()) {
     const node = reparsed.nodes[i] as unknown as Record<string, unknown>
     for (const f of kindOf(kind).fields) {

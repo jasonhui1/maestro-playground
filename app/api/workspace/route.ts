@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       if (fs.existsSync(forkPath)) {
         return NextResponse.json({ error: alreadyExistsMessage('chain', forked.slug) }, { status: 409 })
       }
-      const data = chainToData({ name: forked.name, description: forked.description }, forked.nodes, forked.edges)
+      const data = chainToData({ ...forked, filePath: '' })
       const result = saveWorkspaceEntity({ type: 'chain', slug: forked.slug, data, content: '', folder })
       return NextResponse.json({ success: true, ...result, seedPrompt: tmpl.seedPrompt })
     }

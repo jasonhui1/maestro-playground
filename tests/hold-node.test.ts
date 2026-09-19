@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { kindOf } from '../lib/nodeKinds'
-import { serializeChain, chainMeta } from '../lib/serializeChain'
+import { serializeChain } from '../lib/serializeChain'
 import { parseChainContent } from '../lib/parseChain'
 import { validateChain } from '../lib/chainGraph'
 import type { ChainDef, ChainNode } from '../lib/types'
@@ -26,7 +26,7 @@ test('hold descriptor: one input `in`, one output `output`, a prompt field, unde
 })
 
 test('a chain file with a hold round-trips byte-identically', () => {
-  const raw = serializeChain({ name: 'held' }, [
+  const raw = serializeChain({ ...empty, name: 'held' }, [
     { id: 'seed', kind: 'seed', pos: [0, 0] },
     { id: 'h', kind: 'hold', prompt: 'pick a verdict, then direct', pos: [200, 0] },
   ], [seedToHold])
@@ -35,7 +35,7 @@ test('a chain file with a hold round-trips byte-identically', () => {
   assert.strictEqual(hold.kind, 'hold')
   assert.strictEqual(hold.kind === 'hold' && hold.prompt, 'pick a verdict, then direct')
   assert.deepStrictEqual(hold.pos, [200, 0])
-  assert.strictEqual(serializeChain(chainMeta(parsed), parsed.nodes, parsed.edges), raw)
+  assert.strictEqual(serializeChain(parsed), raw)
 })
 
 test('a wired hold outside any zone or subchain is valid', () => {

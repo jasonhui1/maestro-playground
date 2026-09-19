@@ -160,7 +160,7 @@ edges: []
   assert.deepStrictEqual(parsed.nodes[0]['skills!' as never], ['red-teaming'])
   assert.deepStrictEqual(parsed.nodes[1]['skills+' as never], ['red-teaming'])
 
-  const roundTripped = serializeChain({ name: parsed.name, description: parsed.description }, parsed.nodes, parsed.edges)
+  const roundTripped = serializeChain(parsed)
   const reparsed = parseChainContent(roundTripped, 'panel')
   assert.deepStrictEqual(reparsed.nodes[0]['skills!' as never], ['red-teaming'])
   assert.deepStrictEqual(reparsed.nodes[1]['skills+' as never], ['red-teaming'])

@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useReducer } from 'react'
 import dagre from 'dagre'
 import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
-import { serializeChain, chainMeta } from '@/lib/serializeChain'
+import { serializeChain } from '@/lib/serializeChain'
 import { validateChain } from '@/lib/chainGraph'
 import { kindOf } from '@/lib/nodeKinds'
 import { uniqueNodeId } from '@/lib/editorOps'
@@ -76,11 +76,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
   }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
-  // Fields this editor never edits (`view`, `moment`) still travel through it, because
-  // every graph change reserializes the whole frontmatter (#66, #73).
-  const meta = useMemo(() => chainMeta(initialChain), [initialChain])
-
-  const initialMarkdown = useMemo(() => serializeChain(meta, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [meta, initialChain])
+  const initialMarkdown = useMemo(() => serializeChain(initialChain, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
   const { setContent, status, content, getLastSaved } = useAutoSave('chain', slug, initialMarkdown)
 
   // Mirror graph-view autosave status up so the page header can show it (page's own
@@ -120,12 +116,18 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   const currentInstance = useRunStore(state => state.byFile[fileKey]?.currentInstance ?? 0)
   const instanceCount = useRunStore(state => state.byFile[fileKey]?.instanceCount ?? 0)
 
-  // Push every graph change into the autosave pipeline as serialized markdown.
-  useEffect(() => {
-    setContent(serializeChain({ ...meta, inputs: iface.inputs, outputs: iface.outputs }, nodes, edges))
-  }, [meta, nodes, edges, iface, setContent])
+  const chain: ChainDef = useMemo(() => ({
+    ...initialChain,
+    inputs: iface.inputs,
+    outputs: iface.outputs,
+    nodes,
+    edges,
+  }), [initialChain, iface, nodes, edges])
 
-  const chain: ChainDef = useMemo(() => ({ ...initialChain, nodes, edges }), [initialChain, nodes, edges])
+  useEffect(() => {
+    setContent(serializeChain(chain))
+  }, [chain, setContent])
+
   const validation = useMemo(() => validateChain(chain, agents, chains, tools, skills), [chain, agents, chains, tools, skills])
 
   const issuesByNode = useMemo(() => {
@@ -149,14 +151,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
       type: 'chain',
       slug,
       buildBody: (seed) => ({
-        chain: {
-          name: meta.name,
-          description: meta.description,
-          inputs: iface.inputs,
-          outputs: iface.outputs,
-          nodes,
-          edges,
-        },
+        chain: { ...chain, inputs: iface.inputs, outputs: iface.outputs, nodes, edges },
         seedPrompt: seed,
         type: 'chain',
         slug,
@@ -165,19 +160,18 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     return () => {
       clearRunTarget(fileKey)
     }
-  }, [fileKey, slug, meta, iface, nodes, edges])
+  }, [fileKey, slug, chain, iface, nodes, edges])
 
   const run = useCallback(() => triggerRun(fileKey), [triggerRun, fileKey])
 
   const runUpTo = useCallback((targetId: string) => {
-    const sub = upstreamSubgraph({ ...initialChain, nodes, edges }, targetId)
+    const sub = upstreamSubgraph(chain, targetId)
     // Partial "run from here" is single-instance (design §2) — never fan out.
     return triggerRun(fileKey, {
       parallel: 1,
       bodyOverride: (seed) => ({
         chain: {
-          name: meta.name,
-          description: meta.description,
+          ...chain,
           inputs: iface.inputs,
           outputs: iface.outputs,
           nodes: sub.nodes,
@@ -188,7 +182,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
         slug,
       }),
     })
-  }, [triggerRun, fileKey, slug, initialChain, nodes, edges, meta, iface])
+  }, [triggerRun, fileKey, slug, chain, iface])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch({ type: 'updateNode', id, patch }), [])
   const moveNode = useCallback((id: string, pos: [number, number]) => {
