@@ -14,7 +14,6 @@ import type { BoundTool } from '../lib/tools/registry'
 import type { ChatCall, ChatCallResponse } from '../lib/tools/loop'
 
 const ORIGINAL_ENV = {
-  WORKSPACE_PATH: process.env.WORKSPACE_PATH,
   AI_PROVIDER: process.env.AI_PROVIDER,
   AI_MODEL_NAME: process.env.AI_MODEL_NAME,
   OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,

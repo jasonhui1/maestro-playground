@@ -114,7 +114,7 @@ function inPlace(
   },
   context: Record<string, string>,
 ): Response | Refusal {
-  const continuation = loadContinuation(workspace, meta)
+  const continuation = loadContinuation(ws.root, workspace, meta)
   if ('error' in continuation) return continuation
   const { chain, workspace: defs, versionNumber } = continuation
 

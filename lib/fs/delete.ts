@@ -25,8 +25,8 @@ export interface DeletePlan {
 }
 
 /** The file a delete acts on: the named file, or the file declaring the named variant. */
-function resolveTarget(type: EntityType, slug: string, variants: Map<string, { filePath: string; fileSlug: string }>) {
-  const own = findBySlug(typeDir(type), slug)
+function resolveTarget(root: string, type: EntityType, slug: string, variants: Map<string, { filePath: string; fileSlug: string }>) {
+  const own = findBySlug(typeDir(root, type), slug)
   if (own) return { filePath: own }
   const variant = variants.get(slug)
   if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
@@ -47,14 +47,14 @@ function describe(blockers: (RefHit & { name: string })[]): string {
  * addressable by its own name (ADR-0013), so the references that block it are the ones
  * naming its variants — never its own slug.
  */
-export function planDelete(type: EntityType, slug: string): DeletePlan {
-  const variants = variantIndex(type)
-  const { filePath, variantOf } = resolveTarget(type, slug, variants)
+export function planDelete(root: string, type: EntityType, slug: string): DeletePlan {
+  const variants = variantIndex(root, type)
+  const { filePath, variantOf } = resolveTarget(root, type, slug, variants)
 
   const declared = variantOf ? [] : declaredVariants(filePath)
   const removed = variantOf || !declared.length ? [slug] : declared
 
-  const blockers = removed.flatMap(name => inboundRefs(type, name).map(hit => ({ ...hit, name })))
+  const blockers = removed.flatMap(name => inboundRefs(root, type, name).map(hit => ({ ...hit, name })))
 
   const remaining = variantOf ? declaredVariants(filePath).filter(id => id !== slug) : []
   const promotes = variantOf && !remaining.length ? path.basename(filePath, '.md') : undefined
@@ -67,14 +67,14 @@ export function planDelete(type: EntityType, slug: string): DeletePlan {
  * names what is going — an unresolvable reference stops the whole workspace loading
  * (ADR-0012), so the delete may not create one (#63).
  */
-export function deleteWorkspaceEntity(type: EntityType, slug: string) {
+export function deleteWorkspaceEntity(root: string, type: EntityType, slug: string) {
   // resolveEntityPath is kept for the not-found path so a missing file of any type still
   // reports the same message, whether or not the type directory exists.
-  if (type !== 'agent' && !fs.existsSync(resolveEntityPath(type, slug))) {
+  if (type !== 'agent' && !fs.existsSync(resolveEntityPath(root, type, slug))) {
     throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
   }
 
-  const plan = planDelete(type, slug)
+  const plan = planDelete(root, type, slug)
 
   if (plan.blockers.length) {
     throw new WorkspaceError(
@@ -91,7 +91,7 @@ export function deleteWorkspaceEntity(type: EntityType, slug: string) {
   // Promotion mints the file's own name into the flat namespace it was never in, so it
   // must be free — a duplicate is a hard load failure (ADR-0012, ADR-0014).
   if (plan.promotes) {
-    const clash = variantIndex(type).get(plan.promotes)
+    const clash = variantIndex(root, type).get(plan.promotes)
     if (clash && clash.filePath !== plan.filePath) {
       throw new WorkspaceError(
         'ALREADY_EXISTS',

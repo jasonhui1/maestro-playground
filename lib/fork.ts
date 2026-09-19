@@ -62,7 +62,7 @@ export function planFork(source: RunMeta, { from, revisions, versions }: ForkReq
 export function forkRun(
   ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
 ): Response | Refusal {
-  const continuation = loadContinuation(workspace, source, fork.versions)
+  const continuation = loadContinuation(ws.root, workspace, source, fork.versions)
   if ('error' in continuation) return continuation
   const kept = runLog(source).replayFor(fork.anchors)
   const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation

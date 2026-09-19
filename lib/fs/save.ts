@@ -17,7 +17,7 @@ export interface SaveEntityRequest {
   folder?: string
 }
 
-export function saveWorkspaceEntity({ type, slug, data, content, folder }: SaveEntityRequest) {
+export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder }: SaveEntityRequest) {
   const cleanSlug = sanitizeSlug(slug)
 
   // Validate frontmatter data if it's provided as a string
@@ -29,14 +29,14 @@ export function saveWorkspaceEntity({ type, slug, data, content, folder }: SaveE
   }
 
   // resolveEntityPath handles sanitization and security checks
-  const filePath = resolveEntityPath(type, cleanSlug, folder)
+  const filePath = resolveEntityPath(root, type, cleanSlug, folder)
   const fileContent = matter.stringify(content, data)
 
   fs.writeFileSync(filePath, fileContent, 'utf-8')
   return { filePath, slug: cleanSlug }
 }
 
-export function createWorkspaceEntity({ type, name, slug, folder }: CreationParams) {
+export function createWorkspaceEntity(root: string, { type, name, slug, folder }: CreationParams) {
   const cleanSlug = sanitizeSlug(slug)
   let template: any
 
@@ -66,7 +66,7 @@ export function createWorkspaceEntity({ type, name, slug, folder }: CreationPara
   const { systemPrompt, content, ...data } = template
   const body = systemPrompt || content || ''
 
-  return saveWorkspaceEntity({
+  return saveWorkspaceEntity(root, {
     type,
     slug: cleanSlug,
     data,
@@ -77,23 +77,23 @@ export function createWorkspaceEntity({ type, name, slug, folder }: CreationPara
 
 // Never writes a marker file into the new directory (#49) — an empty folder is
 // local-only on disk until it holds a file, and that's an accepted cost.
-export function createWorkspaceFolder(type: string, folder: string) {
-  const folderPath = resolveFolderPath(type, folder)
+export function createWorkspaceFolder(root: string, type: string, folder: string) {
+  const folderPath = resolveFolderPath(root, type, folder)
   fs.mkdirSync(folderPath, { recursive: true })
   return { folderPath }
 }
 
 // A move only ever changes the path a slug resolves to (ADR-0012): the slug, .versions
 // history, and every chain reference by slug are untouched.
-export function moveWorkspaceEntity(type: EntityType, slug: string, folder: string) {
-  const currentPath = resolveEntityPath(type, slug)
+export function moveWorkspaceEntity(root: string, type: EntityType, slug: string, folder: string) {
+  const currentPath = resolveEntityPath(root, type, slug)
   if (!fs.existsSync(currentPath)) {
     throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
   }
 
   // resolveFolderPath already confines destDir to the type directory, and a
   // basename carries no path separators, so targetPath can't escape it either.
-  const destDir = resolveFolderPath(type, folder)
+  const destDir = resolveFolderPath(root, type, folder)
   const targetPath = path.join(destDir, path.basename(currentPath))
 
   if (targetPath === currentPath) {
@@ -107,13 +107,13 @@ export function moveWorkspaceEntity(type: EntityType, slug: string, folder: stri
 
 // A folder rename only ever touches its own leaf segment (ADR-0012: a folder is never a
 // reference), so it's a plain fs.renameSync with no rewrite pass, unlike an entity rename.
-export function renameWorkspaceFolder(type: EntityType, folder: string, name: string) {
+export function renameWorkspaceFolder(root: string, type: EntityType, folder: string, name: string) {
   const cleanName = sanitizeFolder(name)
   if (!cleanName) {
     throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${name}\``)
   }
 
-  const oldPath = resolveFolderPath(type, folder)
+  const oldPath = resolveFolderPath(root, type, folder)
   if (!fs.existsSync(oldPath)) {
     throw new WorkspaceError('NOT_FOUND', `Folder not found: ${folder}`)
   }
@@ -121,7 +121,7 @@ export function renameWorkspaceFolder(type: EntityType, folder: string, name: st
   const slashIndex = folder.lastIndexOf('/')
   const parent = slashIndex === -1 ? '' : folder.slice(0, slashIndex)
   const newFolder = parent ? `${parent}/${cleanName}` : cleanName
-  const newPath = resolveFolderPath(type, newFolder)
+  const newPath = resolveFolderPath(root, type, newFolder)
 
   if (newPath === oldPath) {
     return { folderPath: oldPath, folder }
@@ -136,8 +136,8 @@ export function renameWorkspaceFolder(type: EntityType, folder: string, name: st
 
 // Recursive delete is deliberately not offered (#55): it would destroy files the user
 // isn't looking at. Refused with the file count so the user knows what's in the way.
-export function deleteWorkspaceFolder(type: EntityType, folder: string) {
-  const folderPath = resolveFolderPath(type, folder)
+export function deleteWorkspaceFolder(root: string, type: EntityType, folder: string) {
+  const folderPath = resolveFolderPath(root, type, folder)
   if (!fs.existsSync(folderPath)) {
     throw new WorkspaceError('NOT_FOUND', `Folder not found: ${folder}`)
   }

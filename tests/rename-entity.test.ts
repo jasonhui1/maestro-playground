@@ -1,15 +1,8 @@
-import { test, afterEach } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
-afterEach(() => {
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
-})
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -19,9 +12,7 @@ function write(root: string, rel: string, body: string) {
 }
 
 function newWorkspace() {
-  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-rename-'))
-  process.env.WORKSPACE_PATH = wp
-  return wp
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ws-rename-'))
 }
 
 const read = (p: string) => fs.readFileSync(p, 'utf-8')
@@ -44,7 +35,7 @@ test('renaming an agent moves the file, keeps its folder, and rewrites the call 
   )
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   assert.strictEqual(result.filePath, path.join(wp, 'agents', 'panel', 'optimist.md'))
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel', 'panel-optimist.md')))
@@ -52,7 +43,7 @@ test('renaming an agent moves the file, keeps its folder, and rewrites the call 
   assert.ok(!read(chainPath).includes('panel-optimist'))
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   assert.deepStrictEqual(ws.agents.map(a => a.slug), ['optimist'])
   assert.deepStrictEqual(
     ws.chains[0].nodes.map(n => (n.kind === 'agent' || n.kind === 'decider' ? n.agent : null)),
@@ -65,16 +56,16 @@ test('the .versions directory follows the new slug, so a pinned run still resolv
   write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nv2 body\n')
 
   const { snapshotVersion, getVersionContent, listVersions } = await import('../lib/fs/versions')
-  snapshotVersion('agent', 'panel-optimist', 'v1 body')
-  snapshotVersion('agent', 'panel-optimist', 'v2 body')
+  snapshotVersion(wp, 'agent', 'panel-optimist', 'v1 body')
+  snapshotVersion(wp, 'agent', 'panel-optimist', 'v2 body')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   assert.ok(!fs.existsSync(path.join(wp, '.versions', 'agent', 'panel-optimist')))
-  assert.strictEqual(getVersionContent('agent', 'optimist', 1), 'v1 body')
-  assert.strictEqual(getVersionContent('agent', 'optimist', 2), 'v2 body')
-  assert.deepStrictEqual(listVersions('agent', 'optimist').map(v => v.version), [2, 1])
+  assert.strictEqual(getVersionContent(wp, 'agent', 'optimist', 1), 'v1 body')
+  assert.strictEqual(getVersionContent(wp, 'agent', 'optimist', 2), 'v2 body')
+  assert.deepStrictEqual(listVersions(wp, 'agent', 'optimist').map(v => v.version), [2, 1])
 })
 
 test('a past run keeps resolving: its pinned key follows the slug, its version number does not', async () => {
@@ -91,20 +82,20 @@ test('a past run keeps resolving: its pinned key follows the slug, its version n
   )
 
   const { snapshotVersion, getVersionContent } = await import('../lib/fs/versions')
-  snapshotVersion('agent', 'panel-optimist', 'a')
-  snapshotVersion('agent', 'panel-optimist', 'b')
-  snapshotVersion('agent', 'panel-optimist', 'the pinned bytes')
+  snapshotVersion(wp, 'agent', 'panel-optimist', 'a')
+  snapshotVersion(wp, 'agent', 'panel-optimist', 'b')
+  snapshotVersion(wp, 'agent', 'panel-optimist', 'the pinned bytes')
 
   const { planRename, renameWorkspaceEntity } = await rename()
-  assert.deepStrictEqual(planRename('agent', 'panel-optimist', 'optimist').runs, ['2026-08-08-abc'])
-  renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  assert.deepStrictEqual(planRename(wp, 'agent', 'panel-optimist', 'optimist').runs, ['2026-08-08-abc'])
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   const meta = JSON.parse(read(path.join(wp, 'logs', '2026-08-08-abc', 'meta.json')))
   assert.deepStrictEqual(meta.versions, { 'chain/decision': 1, 'agent/optimist': 3, defaults: 2 })
   assert.strictEqual(meta.runId, '2026-08-08-abc', 'the rest of the run record is untouched')
 
   // what the pinned-versions view fetches, for the key the run now holds
-  assert.strictEqual(getVersionContent('agent', 'optimist', meta.versions['agent/optimist']), 'the pinned bytes')
+  assert.strictEqual(getVersionContent(wp, 'agent', 'optimist', meta.versions['agent/optimist']), 'the pinned bytes')
 })
 
 test('a run that never touched the renamed file is left alone', async () => {
@@ -114,7 +105,7 @@ test('a run that never touched the renamed file is left alone', async () => {
   const before = read(metaPath)
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   assert.deepStrictEqual(result.plan.runs, [])
   assert.strictEqual(read(metaPath), before)
@@ -135,7 +126,7 @@ test('a failure part-way leaves no half-rename behind', async () => {
   fs.mkdirSync(path.join(wp, 'agents', 'optimist.md'))
 
   const { renameWorkspaceEntity } = await rename()
-  assert.throws(() => renameWorkspaceEntity('agent', 'panel-optimist', 'optimist'))
+  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist'))
 
   assert.strictEqual(read(chainPath), chainBefore, 'the rewritten reference was rolled back')
   assert.ok(fs.existsSync(agentPath), 'the file is still at its old name')
@@ -146,7 +137,7 @@ test('a rename with no version history leaves no .versions directory behind', as
   write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   assert.ok(!fs.existsSync(path.join(wp, '.versions', 'agent', 'optimist')))
 })
@@ -162,7 +153,7 @@ test('renaming a skill rewrites its own name, the agent list, and both call-site
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('skill', 'concise', 'brief')
+  renameWorkspaceEntity(wp, 'skill', 'concise', 'brief')
 
   // the runtime matches a skill by its frontmatter `name`, so the name follows the slug
   assert.ok(!fs.existsSync(skillPath))
@@ -176,7 +167,7 @@ test('renaming a skill rewrites its own name, the agent list, and both call-site
   assert.ok(!read(chainPath).includes('concise'))
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   const { injectSkills } = await import('../lib/prompt')
   assert.ok(injectSkills(ws.agents[0], ws.skills, 'body').includes('Be brief.'))
 })
@@ -187,7 +178,7 @@ test('renaming a tool rewrites its own name and every agent that calls it', asyn
   const agentPath = write(wp, 'agents/world-builder.md', '---\nname: Builder\ntools:\n  - retrieve\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('tool', 'retrieve', 'lore-search')
+  renameWorkspaceEntity(wp, 'tool', 'retrieve', 'lore-search')
 
   // a tool is bound by frontmatter `name` (lib/tools/registry.ts), so the name follows too
   const renamed = read(path.join(wp, 'tools', 'search', 'lore-search.md'))
@@ -196,7 +187,7 @@ test('renaming a tool rewrites its own name and every agent that calls it', asyn
   assert.ok(read(agentPath).includes('- lore-search'))
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   const { bindAgentTools } = await import('../lib/tools/registry')
   assert.deepStrictEqual(bindAgentTools(ws.agents[0], ws.tools, wp).map(b => b.def.slug), ['lore-search'])
 })
@@ -205,14 +196,14 @@ test('a tool is a workspace file type like any other', async () => {
   const wp = newWorkspace()
   const { isValidEntityType, resolveEntityPath } = await load()
   assert.ok(isValidEntityType('tool'))
-  assert.strictEqual(resolveEntityPath('tool', 'retrieve'), path.join(wp, 'tools', 'retrieve.md'))
+  assert.strictEqual(resolveEntityPath(wp, 'tool', 'retrieve'), path.join(wp, 'tools', 'retrieve.md'))
 
   const { createWorkspaceEntity, moveWorkspaceEntity } = await import('../lib/fs/save')
-  createWorkspaceEntity({ type: 'tool', name: 'Lore Search', slug: 'lore-search' })
+  createWorkspaceEntity(wp, { type: 'tool', name: 'Lore Search', slug: 'lore-search' })
   const created = read(path.join(wp, 'tools', 'lore-search.md'))
   assert.ok(created.includes('name: Lore Search') && created.includes('executor: retrieve'))
 
-  moveWorkspaceEntity('tool', 'lore-search', 'search')
+  moveWorkspaceEntity(wp, 'tool', 'lore-search', 'search')
   assert.ok(fs.existsSync(path.join(wp, 'tools', 'search', 'lore-search.md')))
 })
 
@@ -227,7 +218,7 @@ test('renaming a context file rewrites the agent list and the context node', asy
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('context', 'tavern', 'inn')
+  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn')
 
   assert.ok(fs.existsSync(path.join(wp, 'context', 'lore', 'inn.md')))
   assert.ok(read(agentPath).includes('- inn'))
@@ -245,7 +236,7 @@ test('renaming a chain rewrites a subchain node and a template that names it', a
   const templatePath = write(wp, 'templates/kickoff.md', '---\nname: Kickoff\nchain: decision\n---\nseed\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('chain', 'decision', 'verdict')
+  renameWorkspaceEntity(wp, 'chain', 'decision', 'verdict')
 
   assert.ok(read(outerPath).includes('subchain: verdict'))
   assert.ok(read(templatePath).includes('chain: verdict'))
@@ -258,11 +249,11 @@ test('a prose {slug} placeholder is reported, never rewritten', async () => {
   const agentPath = write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nRead {tavern} and answer.\n')
 
   const { planRename, renameWorkspaceEntity } = await rename()
-  const plan = planRename('context', 'tavern', 'inn')
+  const plan = planRename(wp, 'context', 'tavern', 'inn')
   assert.deepStrictEqual(plan.manual.map(m => m.filePath), [agentPath])
   assert.deepStrictEqual(plan.rewrites, [])
 
-  renameWorkspaceEntity('context', 'tavern', 'inn')
+  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn')
   assert.ok(read(agentPath).includes('{tavern}'), 'the prose placeholder is left for the user')
 })
 
@@ -273,7 +264,7 @@ test('the plan names every file it will rewrite and the field it will touch', as
   write(wp, 'agents/other.md', '---\nname: Other\nskills: []\n---\nbody\n')
 
   const { planRename } = await rename()
-  const plan = planRename('skill', 'concise', 'brief')
+  const plan = planRename(wp, 'skill', 'concise', 'brief')
 
   assert.deepStrictEqual(plan.rewrites.map(r => r.filePath), [agentPath])
   assert.deepStrictEqual(plan.rewrites[0].fields, ['skills'])
@@ -288,7 +279,7 @@ test('planning never writes to disk', async () => {
   const before = read(agentPath)
 
   const { planRename } = await rename()
-  planRename('skill', 'concise', 'brief')
+  planRename(wp, 'skill', 'concise', 'brief')
 
   assert.strictEqual(read(agentPath), before)
   assert.ok(fs.existsSync(path.join(wp, 'skills', 'concise.md')))
@@ -302,13 +293,13 @@ test('a name already taken anywhere under the type is rejected', async () => {
   const { planRename } = await rename()
   // a duplicate leaf name anywhere under the type is a hard load failure (ADR-0012),
   // so the rename is refused before it can create one
-  assert.throws(() => planRename('agent', 'panel-optimist', 'optimist'), /already/i)
+  assert.throws(() => planRename(wp, 'agent', 'panel-optimist', 'optimist'), /already/i)
 })
 
 test('renaming a slug with no file is refused', async () => {
-  newWorkspace()
+  const wp = newWorkspace()
   const { planRename } = await rename()
-  assert.throws(() => planRename('agent', 'ghost', 'spirit'), /not found/i)
+  assert.throws(() => planRename(wp, 'agent', 'ghost', 'spirit'), /not found/i)
 })
 
 test('a new name that sanitizes to nothing is refused', async () => {
@@ -316,7 +307,7 @@ test('a new name that sanitizes to nothing is refused', async () => {
   write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { planRename } = await rename()
-  assert.throws(() => planRename('agent', 'optimist', '../..'), /invalid/i)
+  assert.throws(() => planRename(wp, 'agent', 'optimist', '../..'), /invalid/i)
 })
 
 test('renaming to the same slug changes nothing', async () => {
@@ -324,7 +315,7 @@ test('renaming to the same slug changes nothing', async () => {
   const filePath = write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity('agent', 'optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'optimist', 'optimist')
 
   assert.strictEqual(result.filePath, filePath)
   assert.deepStrictEqual(result.plan.rewrites, [])
@@ -354,10 +345,10 @@ test('the workspace loads cleanly after a rename, with no dangling reference', a
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity('agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   const node = ws.chains[0].nodes[0]
   assert.ok(node.kind === 'agent' && ws.agents.some(a => a.slug === node.agent))
 })

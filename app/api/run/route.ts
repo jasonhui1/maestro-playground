@@ -4,7 +4,7 @@ import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { startRun } from '@/lib/runSession'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Branch fields are retired; fork through POST /api/runs/:id/fork' }, { status: 400 })
   }
 
-  const workspace = loadWorkspace()
+  const ws = requestWorkspace()
+  const workspace = loadWorkspace(ws.root)
   const { agents, skills, chains, tools } = workspace
 
   const resolved = resolveRunChain(body, { agents, chains })
@@ -28,12 +29,12 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const versions = pinRunVersions(chain, workspace)
+  const versions = pinRunVersions(ws.root, chain, workspace)
   // The scalar still names the entry point — the chain for a chain run, the agent
   // for an agent run — so a step log keeps the one number it has always carried.
   const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
-  return startRun(diskWorkspace(), {
+  return startRun(ws, {
     chain, workspace, title: runTitle, seedPrompt,
     parameter: chain.parameter && typeof paramValue === 'string' && paramValue
       ? { name: chain.parameter.name, value: paramValue } : undefined,

@@ -6,14 +6,12 @@ import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
 import { discoverFiles, findBySlug } from './discover'
 import { variantIndex, type VariantSource } from './variantIndex'
-import { getWorkspacePath } from './workspacePath'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
 import { WorkspaceError } from './errors'
 
 export * from './errors'
-export { getWorkspacePath }
 export type { VariantSource }
 export const ENTITY_TYPES = ENTITY_DIRS;
 
@@ -40,14 +38,13 @@ export function sanitizeFolder(folder?: string) {
     .join('/')
 }
 
-export function resolveEntityPath(type: string, slug: string, folder?: string) {
-  const wp = getWorkspacePath()
+export function resolveEntityPath(root: string, type: string, slug: string, folder?: string) {
   if (!isValidEntityType(type)) {
     throw new WorkspaceError('INVALID_NAME', `Invalid entity type: ${type}`)
   }
 
   const subDir = ENTITY_TYPES[type]
-  const absoluteSubDir = path.join(wp, subDir)
+  const absoluteSubDir = path.join(root, subDir)
   if (!fs.existsSync(absoluteSubDir)) {
     fs.mkdirSync(absoluteSubDir, { recursive: true })
   }
@@ -58,7 +55,7 @@ export function resolveEntityPath(type: string, slug: string, folder?: string) {
   // path — rebuilding one from the slug would write a root twin of a file in a
   // sub-folder, and that twin then fails the load as a duplicate (ADR-0012).
   const existing = findBySlug(absoluteSubDir, path.basename(filename, '.md'))
-  const targetPath = existing ?? path.join(wp, subDir, sanitizeFolder(folder), filename)
+  const targetPath = existing ?? path.join(root, subDir, sanitizeFolder(folder), filename)
 
   // Belt-and-suspenders: sanitizeFolder already strips every '..' segment, so this
   // should be unreachable, but a resolved path outside the type dir is unsafe enough
@@ -71,13 +68,12 @@ export function resolveEntityPath(type: string, slug: string, folder?: string) {
 }
 
 /** Where a folder (not a file) should live under a type directory. Never creates it. */
-export function resolveFolderPath(type: string, folder: string) {
-  const wp = getWorkspacePath()
+export function resolveFolderPath(root: string, type: string, folder: string) {
   if (!isValidEntityType(type)) {
     throw new WorkspaceError('INVALID_NAME', `Invalid entity type: ${type}`)
   }
 
-  const absoluteSubDir = path.join(wp, ENTITY_TYPES[type])
+  const absoluteSubDir = path.join(root, ENTITY_TYPES[type])
   const targetPath = path.join(absoluteSubDir, sanitizeFolder(folder))
 
   if (!targetPath.startsWith(absoluteSubDir)) {
@@ -88,42 +84,41 @@ export function resolveFolderPath(type: string, folder: string) {
 }
 
 /** One agent, resolved against the workspace defaults file — never the raw agent file (ADR-0010). */
-export function loadAgent(filePath: string) {
-  return parseAgent(filePath, undefined, loadAgentDefaults(getWorkspacePath()))
+export function loadAgent(root: string, filePath: string) {
+  return parseAgent(filePath, undefined, loadAgentDefaults(root))
 }
 
 // File path and storage slug; maps variants to declaring file (#118, #123).
 export function resolveAddressedFile(
+  root: string,
   type: EntityType,
   slug: string,
   variants?: Map<string, VariantSource>,
 ): { filePath: string; storageSlug: string } {
   if (type === 'agent') {
-    const own = findBySlug(path.join(getWorkspacePath(), 'agents'), slug)
+    const own = findBySlug(path.join(root, 'agents'), slug)
     if (own) return { filePath: own, storageSlug: slug }
 
-    const hit = (variants ?? variantIndex('agent')).get(slug)
+    const hit = (variants ?? variantIndex(root, 'agent')).get(slug)
     if (hit) {
       return { filePath: hit.filePath, storageSlug: hit.fileSlug }
     }
   }
-  return { filePath: resolveEntityPath(type, slug), storageSlug: slug }
+  return { filePath: resolveEntityPath(root, type, slug), storageSlug: slug }
 }
 
-export function findAgentFile(slug: string): string | undefined {
-  const { filePath } = resolveAddressedFile('agent', slug)
+export function findAgentFile(root: string, slug: string): string | undefined {
+  const { filePath } = resolveAddressedFile(root, 'agent', slug)
   return fs.existsSync(filePath) ? filePath : undefined
 }
 
-export function declaringAgentSlug(slug: string): string | undefined {
-  const { filePath, storageSlug } = resolveAddressedFile('agent', slug)
+export function declaringAgentSlug(root: string, slug: string): string | undefined {
+  const { filePath, storageSlug } = resolveAddressedFile(root, 'agent', slug)
   return fs.existsSync(filePath) ? storageSlug : undefined
 }
 
-export function loadWorkspace() {
-  const wp = getWorkspacePath()
-  
-  const context = discoverFiles(path.join(wp, 'context')).map(f => ({
+export function loadWorkspace(root: string) {
+  const context = discoverFiles(path.join(root, 'context')).map(f => ({
     slug: f.slug,
     name: f.slug,
     filePath: f.filePath,
@@ -131,13 +126,13 @@ export function loadWorkspace() {
   }))
 
   return {
-    agents: loadAllAgents(wp),
-    skills: loadAllSkills(wp),
-    chains: loadAllChains(wp),
-    templates: loadAllTemplates(wp),
-    tools: loadAllTools(wp),
+    agents: loadAllAgents(root),
+    skills: loadAllSkills(root),
+    chains: loadAllChains(root),
+    templates: loadAllTemplates(root),
+    tools: loadAllTools(root),
     context,
-    defaults: loadAgentDefaults(wp),
-    defaultsRaw: readAgentDefaultsRaw(wp),
+    defaults: loadAgentDefaults(root),
+    defaultsRaw: readAgentDefaultsRaw(root),
   }
 }

@@ -1,15 +1,8 @@
-import { test, afterEach } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
-afterEach(() => {
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
-})
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -27,9 +20,7 @@ function chain(name: string) {
 }
 
 function newWorkspace() {
-  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-folders-'))
-  process.env.WORKSPACE_PATH = wp
-  return wp
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ws-folders-'))
 }
 
 async function load() {
@@ -47,7 +38,7 @@ test('every type loads from any depth, and a reference stays a bare slug', async
   write(wp, 'templates/starters/kickoff.md', '---\nname: Kickoff\nchain: decision\n---\nseed\n')
 
   const { loadWorkspace } = await load()
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
 
   assert.deepStrictEqual(ws.agents.map(a => a.slug).sort(), ['flat', 'optimist'])
   assert.deepStrictEqual(ws.skills.map(s => s.slug), ['red-teaming'])
@@ -73,14 +64,14 @@ test('a file moved between folders resolves unchanged', async () => {
   write(wp, 'chains/decision.md', chain('Decision'))
 
   const { loadWorkspace } = await load()
-  const flat = loadWorkspace()
+  const flat = loadWorkspace(wp)
   assert.strictEqual(flat.agents[0].slug, 'optimist')
 
   // move it into a folder — nothing else changes
   fs.mkdirSync(path.join(wp, 'agents', 'panel'))
   fs.renameSync(before, path.join(wp, 'agents', 'panel', 'optimist.md'))
 
-  const moved = loadWorkspace()
+  const moved = loadWorkspace(wp)
   assert.strictEqual(moved.agents[0].slug, 'optimist')
   assert.strictEqual(moved.chains[0].nodes[0].kind === 'agent' && moved.chains[0].nodes[0].agent, 'optimist')
 })
@@ -92,7 +83,7 @@ test('two files sharing a slug fail the load, naming both paths', async () => {
 
   const { loadWorkspace } = await load()
   assert.throws(
-    () => loadWorkspace(),
+    () => loadWorkspace(wp),
     (err: Error) => err.message.includes(a) && err.message.includes(b)
   )
 })
@@ -103,7 +94,7 @@ test('a flat workspace with no sub-folders still loads', async () => {
   write(wp, 'agents/two.md', agent('Two'))
 
   const { loadWorkspace } = await load()
-  assert.deepStrictEqual(loadWorkspace().agents.map(a => a.slug).sort(), ['one', 'two'])
+  assert.deepStrictEqual(loadWorkspace(wp).agents.map(a => a.slug).sort(), ['one', 'two'])
 })
 
 test('saving a nested file writes to that file; a new file defaults to the type root', async () => {
@@ -111,13 +102,13 @@ test('saving a nested file writes to that file; a new file defaults to the type 
   const nested = write(wp, 'agents/panel/optimist.md', agent('Optimist'))
 
   const { resolveEntityPath } = await load()
-  assert.strictEqual(resolveEntityPath('agent', 'optimist'), nested)
+  assert.strictEqual(resolveEntityPath(wp, 'agent', 'optimist'), nested)
 
   // a slug no file holds is a new file, and lands at the type directory root
-  assert.strictEqual(resolveEntityPath('agent', 'newcomer'), path.join(wp, 'agents', 'newcomer.md'))
+  assert.strictEqual(resolveEntityPath(wp, 'agent', 'newcomer'), path.join(wp, 'agents', 'newcomer.md'))
 
   const { saveWorkspaceEntity } = await import('../lib/fs/save')
-  saveWorkspaceEntity({ type: 'agent', slug: 'optimist', data: { name: 'Optimist' }, content: 'edited' })
+  saveWorkspaceEntity(wp, { type: 'agent', slug: 'optimist', data: { name: 'Optimist' }, content: 'edited' })
 
   assert.ok(fs.readFileSync(nested, 'utf-8').includes('edited'))
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'optimist.md')), 'no root twin was created')
@@ -129,7 +120,7 @@ test('resolveEntityPath honours an explicit folder for a genuinely new file', as
 
   const { resolveEntityPath } = await load()
   assert.strictEqual(
-    resolveEntityPath('agent', 'newcomer', 'panel'),
+    resolveEntityPath(wp, 'agent', 'newcomer', 'panel'),
     path.join(wp, 'agents', 'panel', 'newcomer.md'),
   )
 })
@@ -141,7 +132,7 @@ test('resolveEntityPath still resolves to the existing file when a folder is als
   const { resolveEntityPath } = await load()
   // the slug already exists elsewhere — the existing file wins over the requested folder,
   // preserving "duplicate leaf name anywhere under the type" as a hard load failure (ADR-0012)
-  assert.strictEqual(resolveEntityPath('agent', 'optimist', 'other'), nested)
+  assert.strictEqual(resolveEntityPath(wp, 'agent', 'optimist', 'other'), nested)
 })
 
 test('a folder value cannot escape the type directory', async () => {
@@ -150,10 +141,10 @@ test('a folder value cannot escape the type directory', async () => {
   const { resolveEntityPath } = await load()
   const absoluteSubDir = path.join(wp, 'agents')
   assert.strictEqual(
-    resolveEntityPath('agent', 'newcomer', '../../etc'),
+    resolveEntityPath(wp, 'agent', 'newcomer', '../../etc'),
     path.join(absoluteSubDir, 'etc', 'newcomer.md'),
   )
-  assert.ok(resolveEntityPath('agent', 'newcomer', '../../etc').startsWith(absoluteSubDir))
+  assert.ok(resolveEntityPath(wp, 'agent', 'newcomer', '../../etc').startsWith(absoluteSubDir))
 })
 
 test('sanitizeFolder strips a traversal-only name down to empty, not a lookalike sibling', async () => {
@@ -169,11 +160,11 @@ test('resolveFolderPath resolves under the type directory and cannot escape it',
   const wp = newWorkspace()
 
   const { resolveFolderPath } = await load()
-  assert.strictEqual(resolveFolderPath('agent', 'panel'), path.join(wp, 'agents', 'panel'))
-  assert.strictEqual(resolveFolderPath('agent', 'panel/deep'), path.join(wp, 'agents', 'panel', 'deep'))
+  assert.strictEqual(resolveFolderPath(wp, 'agent', 'panel'), path.join(wp, 'agents', 'panel'))
+  assert.strictEqual(resolveFolderPath(wp, 'agent', 'panel/deep'), path.join(wp, 'agents', 'panel', 'deep'))
 
   const absoluteSubDir = path.join(wp, 'agents')
-  assert.ok(resolveFolderPath('agent', '../../etc').startsWith(absoluteSubDir))
+  assert.ok(resolveFolderPath(wp, 'agent', '../../etc').startsWith(absoluteSubDir))
 })
 
 test('moveWorkspaceEntity relocates the file; the slug still resolves and chain refs are untouched', async () => {
@@ -182,14 +173,14 @@ test('moveWorkspaceEntity relocates the file; the slug still resolves and chain 
   write(wp, 'chains/decision.md', chain('Decision'))
 
   const { moveWorkspaceEntity } = await import('../lib/fs/save')
-  const result = moveWorkspaceEntity('agent', 'optimist', 'panel')
+  const result = moveWorkspaceEntity(wp, 'agent', 'optimist', 'panel')
   assert.strictEqual(result.filePath, path.join(wp, 'agents', 'panel', 'optimist.md'))
   assert.strictEqual(result.slug, 'optimist')
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'optimist.md')))
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'optimist.md')))
 
   const { loadWorkspace } = await load()
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   assert.strictEqual(ws.agents[0].slug, 'optimist')
   assert.strictEqual(ws.chains[0].nodes[0].kind === 'agent' && ws.chains[0].nodes[0].agent, 'optimist')
 })
@@ -199,7 +190,7 @@ test('moveWorkspaceEntity to the empty folder moves a file back to the type root
   write(wp, 'agents/panel/optimist.md', agent('Optimist'))
 
   const { moveWorkspaceEntity } = await import('../lib/fs/save')
-  const result = moveWorkspaceEntity('agent', 'optimist', '')
+  const result = moveWorkspaceEntity(wp, 'agent', 'optimist', '')
   assert.strictEqual(result.filePath, path.join(wp, 'agents', 'optimist.md'))
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'optimist.md')))
 })
@@ -211,16 +202,16 @@ test('moveWorkspaceEntity rejects a target outside the type directory', async ()
   const { moveWorkspaceEntity } = await import('../lib/fs/save')
   // sanitizeFolder strips every traversal segment, so this lands under the type dir
   // rather than escaping it — proving the guard holds even for an adversarial folder value
-  const result = moveWorkspaceEntity('agent', 'optimist', '../../etc')
+  const result = moveWorkspaceEntity(wp, 'agent', 'optimist', '../../etc')
   const absoluteSubDir = path.join(wp, 'agents')
   assert.ok(result.filePath.startsWith(absoluteSubDir))
 })
 
 test('moveWorkspaceEntity throws for a slug with no file', async () => {
-  newWorkspace()
+  const wp = newWorkspace()
   const { moveWorkspaceEntity } = await import('../lib/fs/save')
   assert.throws(
-    () => moveWorkspaceEntity('agent', 'ghost', 'panel'),
+    () => moveWorkspaceEntity(wp, 'agent', 'ghost', 'panel'),
     /Entity not found/,
   )
 })
@@ -229,7 +220,7 @@ test('createWorkspaceFolder makes an empty directory that a reload still sees', 
   const wp = newWorkspace()
 
   const { createWorkspaceFolder } = await import('../lib/fs/save')
-  const { folderPath } = createWorkspaceFolder('agent', 'panel/deep')
+  const { folderPath } = createWorkspaceFolder(wp, 'agent', 'panel/deep')
 
   assert.strictEqual(folderPath, path.join(wp, 'agents', 'panel', 'deep'))
   assert.ok(fs.statSync(folderPath).isDirectory())
@@ -241,7 +232,7 @@ test('renameWorkspaceFolder renames the leaf segment, keeping its parent and its
   write(wp, 'agents/panel/optimist.md', agent('Optimist'))
 
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  const result = renameWorkspaceFolder('agent', 'panel', 'roster')
+  const result = renameWorkspaceFolder(wp, 'agent', 'panel', 'roster')
 
   assert.strictEqual(result.folder, 'roster')
   assert.strictEqual(result.folderPath, path.join(wp, 'agents', 'roster'))
@@ -250,7 +241,7 @@ test('renameWorkspaceFolder renames the leaf segment, keeping its parent and its
 
   // a folder is never a reference (ADR-0012), so the file's slug still resolves unchanged
   const { loadWorkspace } = await load()
-  assert.strictEqual(loadWorkspace().agents[0].slug, 'optimist')
+  assert.strictEqual(loadWorkspace(wp).agents[0].slug, 'optimist')
 })
 
 test('renameWorkspaceFolder renames a nested folder without moving it out from under its parent', async () => {
@@ -258,7 +249,7 @@ test('renameWorkspaceFolder renames a nested folder without moving it out from u
   write(wp, 'agents/panel/deep/optimist.md', agent('Optimist'))
 
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  const result = renameWorkspaceFolder('agent', 'panel/deep', 'deeper')
+  const result = renameWorkspaceFolder(wp, 'agent', 'panel/deep', 'deeper')
 
   assert.strictEqual(result.folder, 'panel/deeper')
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'deeper', 'optimist.md')))
@@ -270,7 +261,7 @@ test('renameWorkspaceFolder rejects a name colliding with an existing sibling', 
   fs.mkdirSync(path.join(wp, 'agents', 'roster'), { recursive: true })
 
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => renameWorkspaceFolder('agent', 'panel', 'roster'), /already exists/)
+  assert.throws(() => renameWorkspaceFolder(wp, 'agent', 'panel', 'roster'), /already exists/)
 })
 
 test('renameWorkspaceFolder to the same name changes nothing', async () => {
@@ -278,15 +269,15 @@ test('renameWorkspaceFolder to the same name changes nothing', async () => {
   fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
 
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  const result = renameWorkspaceFolder('agent', 'panel', 'panel')
+  const result = renameWorkspaceFolder(wp, 'agent', 'panel', 'panel')
   assert.strictEqual(result.folder, 'panel')
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel')))
 })
 
 test('renameWorkspaceFolder throws for a folder that does not exist', async () => {
-  newWorkspace()
+  const wp = newWorkspace()
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => renameWorkspaceFolder('agent', 'ghost', 'spirit'), /not found/i)
+  assert.throws(() => renameWorkspaceFolder(wp, 'agent', 'ghost', 'spirit'), /not found/i)
 })
 
 test('renameWorkspaceFolder rejects a new name that sanitizes to nothing', async () => {
@@ -294,7 +285,7 @@ test('renameWorkspaceFolder rejects a new name that sanitizes to nothing', async
   fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
 
   const { renameWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => renameWorkspaceFolder('agent', 'panel', '../..'), /invalid/i)
+  assert.throws(() => renameWorkspaceFolder(wp, 'agent', 'panel', '../..'), /invalid/i)
 })
 
 test('deleteWorkspaceFolder removes an empty folder from disk', async () => {
@@ -302,7 +293,7 @@ test('deleteWorkspaceFolder removes an empty folder from disk', async () => {
   fs.mkdirSync(path.join(wp, 'agents', 'panel'), { recursive: true })
 
   const { deleteWorkspaceFolder } = await import('../lib/fs/save')
-  deleteWorkspaceFolder('agent', 'panel')
+  deleteWorkspaceFolder(wp, 'agent', 'panel')
 
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel')))
 })
@@ -313,7 +304,7 @@ test('deleteWorkspaceFolder refuses a folder holding files, naming the count', a
   write(wp, 'agents/panel/deep/second.md', agent('Second'))
 
   const { deleteWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => deleteWorkspaceFolder('agent', 'panel'), /2 files inside/)
+  assert.throws(() => deleteWorkspaceFolder(wp, 'agent', 'panel'), /2 files inside/)
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'optimist.md')))
 })
 
@@ -322,14 +313,14 @@ test('deleteWorkspaceFolder refuses a folder holding only an empty subfolder', a
   fs.mkdirSync(path.join(wp, 'agents', 'panel', 'deep'), { recursive: true })
 
   const { deleteWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => deleteWorkspaceFolder('agent', 'panel'))
+  assert.throws(() => deleteWorkspaceFolder(wp, 'agent', 'panel'))
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'panel', 'deep')))
 })
 
 test('deleteWorkspaceFolder throws for a folder that does not exist', async () => {
-  newWorkspace()
+  const wp = newWorkspace()
   const { deleteWorkspaceFolder } = await import('../lib/fs/save')
-  assert.throws(() => deleteWorkspaceFolder('agent', 'ghost'), /not found/i)
+  assert.throws(() => deleteWorkspaceFolder(wp, 'agent', 'ghost'), /not found/i)
 })
 
 test('a nested context file is readable at run time, by bare slug', async () => {

@@ -4,6 +4,7 @@ import chokidar from 'chokidar'
 import fs from 'fs'
 import path from 'path'
 import { SSE_HEADERS, sseFrame } from '@/lib/sse'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (!isValidEntityType(type) || !slug) return new Response('Bad request', { status: 400 })
 
   // Resolves to declaring file when slug is a variant (#123).
-  const { filePath } = resolveAddressedFile(type as EntityType, slug)
+  const { filePath } = resolveAddressedFile(requestWorkspace().root, type as EntityType, slug)
   const target = path.resolve(filePath)
 
   const stream = new ReadableStream({

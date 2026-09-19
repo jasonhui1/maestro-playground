@@ -3,7 +3,7 @@ import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
 import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
 import { loadRunFor } from '@/lib/loadRun'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
 import { sseResponse } from '@/lib/sse'
 import type { ChatMessage } from '@/lib/types'
@@ -19,10 +19,10 @@ export async function POST(
   if ('error' in chat) return toResponse(chat)
   const { message } = chat
 
-  const { runs } = diskWorkspace()
+  const { root, runs } = requestWorkspace()
   const meta = loadRunFor(runs, runId, { mustNotBeRunning: true })
   if ('error' in meta) return toResponse(meta)
-  const speaker = chatSpeaker(runs, meta, nodeId, loadWorkspace().agents)
+  const speaker = chatSpeaker(runs, meta, nodeId, loadWorkspace(root).agents)
   if ('error' in speaker) return toResponse(speaker)
   const { target, agent } = speaker
 

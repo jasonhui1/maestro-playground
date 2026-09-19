@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const slug = searchParams.get('slug')
     const branchedFromRunId = searchParams.get('branchedFromRunId')
 
-    let runs = diskWorkspace().runs.list()
+    let runs = requestWorkspace().runs.list()
 
     // Sort by startedAt descending
     runs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())

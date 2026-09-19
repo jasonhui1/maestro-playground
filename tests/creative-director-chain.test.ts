@@ -4,7 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import { loadWorkspace, getWorkspacePath } from '../lib/fs/workspace'
+import { loadWorkspace } from '../lib/fs/workspace'
 import { validateChain } from '../lib/chainGraph'
 import { runChainGraph } from '../lib/executor'
 import { buildLayoutModel } from '../lib/layoutModel'
@@ -43,15 +43,21 @@ const stub = async (a: AgentDef, sys: string): Promise<AgentOutput> => {
 }
 vi.mock('@/lib/runner', () => ({ runAgent: (a: AgentDef, sys: string) => stub(a, sys) }))
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
+})
+
+const REAL_WORKSPACE = path.resolve(__dirname, '../workspace')
+
 afterEach(() => {
   ran.length = 0
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
 
 function workspace() {
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(REAL_WORKSPACE)
   const chain = ws.chains.find(c => c.slug === 'creative-director')
   assert.ok(chain, 'creative-director chain exists')
   return { ...ws, chain }
@@ -195,13 +201,13 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
 
 // A copy of the real workspace, so the route run writes logs somewhere disposable.
 function copyWorkspace(): string {
-  const src = getWorkspacePath()
+  const src = REAL_WORKSPACE
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-creative-director-'))
   for (const dir of ['agents', 'chains', 'context', 'skills', 'templates', 'tools']) {
     const from = path.join(src, dir)
     if (fs.existsSync(from)) fs.cpSync(from, path.join(wp, dir), { recursive: true })
   }
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   return wp
 }
 

@@ -18,12 +18,15 @@ import {
   PATCH as entityPATCH,
 } from '../app/api/workspace/[type]/[slug]/route'
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
 
 function write(root: string, rel: string, body: string) {
@@ -35,7 +38,7 @@ function write(root: string, rel: string, body: string) {
 
 function newWorkspace() {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-addressed-file-'))
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   return wp
 }
 
@@ -63,30 +66,30 @@ test('resolveAddressedFile maps variants to declaring file and preserves entity 
   const contextPath = write(wp, 'context/brand.md', 'Brand guidelines.\n')
 
   // Agent variant resolves to declaring file
-  const variantRes = resolveAddressedFile('agent', 'rot')
+  const variantRes = resolveAddressedFile(wp, 'agent', 'rot')
   assert.strictEqual(variantRes.filePath, agentPath)
   assert.strictEqual(variantRes.storageSlug, 'premortem')
 
   // Regular agent resolves to its own file
-  const plainRes = resolveAddressedFile('agent', 'plain')
+  const plainRes = resolveAddressedFile(wp, 'agent', 'plain')
   assert.strictEqual(plainRes.filePath, plainPath)
   assert.strictEqual(plainRes.storageSlug, 'plain')
 
   // Other entity types
-  assert.deepStrictEqual(resolveAddressedFile('skill', 'concise'), { filePath: skillPath, storageSlug: 'concise' })
-  assert.deepStrictEqual(resolveAddressedFile('chain', 'decision'), { filePath: chainPath, storageSlug: 'decision' })
-  assert.deepStrictEqual(resolveAddressedFile('template', 'base'), { filePath: templatePath, storageSlug: 'base' })
-  assert.deepStrictEqual(resolveAddressedFile('tool', 'search'), { filePath: toolPath, storageSlug: 'search' })
-  assert.deepStrictEqual(resolveAddressedFile('context', 'brand'), { filePath: contextPath, storageSlug: 'brand' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'skill', 'concise'), { filePath: skillPath, storageSlug: 'concise' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'chain', 'decision'), { filePath: chainPath, storageSlug: 'decision' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'template', 'base'), { filePath: templatePath, storageSlug: 'base' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'tool', 'search'), { filePath: toolPath, storageSlug: 'search' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'context', 'brand'), { filePath: contextPath, storageSlug: 'brand' })
 
   // Custom variants map override and own-file precedence (#118, #123)
   const customVariants = new Map([['custom', { filePath: agentPath, fileSlug: 'premortem' }]])
-  assert.deepStrictEqual(resolveAddressedFile('agent', 'custom', customVariants), { filePath: agentPath, storageSlug: 'premortem' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'agent', 'custom', customVariants), { filePath: agentPath, storageSlug: 'premortem' })
   const shadowVariants = new Map([['plain', { filePath: agentPath, fileSlug: 'premortem' }]])
-  assert.deepStrictEqual(resolveAddressedFile('agent', 'plain', shadowVariants), { filePath: plainPath, storageSlug: 'plain' })
+  assert.deepStrictEqual(resolveAddressedFile(wp, 'agent', 'plain', shadowVariants), { filePath: plainPath, storageSlug: 'plain' })
 
   // Invalid entity type throws
-  assert.throws(() => resolveAddressedFile('invalid' as any, 'foo'), /Invalid entity type/)
+  assert.throws(() => resolveAddressedFile(wp, 'invalid' as any, 'foo'), /Invalid entity type/)
 })
 
 // #118, #123: findAgentFile and declaringAgentSlug over resolveAddressedFile.
@@ -95,14 +98,14 @@ test('findAgentFile and declaringAgentSlug resolve variants and report undefined
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
   const plainPath = write(wp, 'agents/plain.md', '---\nname: Plain\n---\nPlain agent body.\n')
 
-  assert.strictEqual(findAgentFile('rot'), agentPath)
-  assert.strictEqual(declaringAgentSlug('rot'), 'premortem')
+  assert.strictEqual(findAgentFile(wp, 'rot'), agentPath)
+  assert.strictEqual(declaringAgentSlug(wp, 'rot'), 'premortem')
 
-  assert.strictEqual(findAgentFile('plain'), plainPath)
-  assert.strictEqual(declaringAgentSlug('plain'), 'plain')
+  assert.strictEqual(findAgentFile(wp, 'plain'), plainPath)
+  assert.strictEqual(declaringAgentSlug(wp, 'plain'), 'plain')
 
-  assert.strictEqual(findAgentFile('missing'), undefined)
-  assert.strictEqual(declaringAgentSlug('missing'), undefined)
+  assert.strictEqual(findAgentFile(wp, 'missing'), undefined)
+  assert.strictEqual(declaringAgentSlug(wp, 'missing'), undefined)
 })
 
 // #118: tolerant variant index does not fail lookups when sibling agent files are malformed.
@@ -114,14 +117,14 @@ test('malformed variants block in one file does not break lookups of other agent
   const plainPath = write(wp, 'agents/plain.md', '---\nname: Plain\n---\nPlain agent body.\n')
 
   // Variant lookup in premortem succeeds despite broken files
-  assert.strictEqual(findAgentFile('rot'), agentPath)
-  assert.strictEqual(declaringAgentSlug('rot'), 'premortem')
+  assert.strictEqual(findAgentFile(wp, 'rot'), agentPath)
+  assert.strictEqual(declaringAgentSlug(wp, 'rot'), 'premortem')
 
   // Regular agent lookup succeeds
-  assert.strictEqual(findAgentFile('plain'), plainPath)
-  assert.strictEqual(declaringAgentSlug('plain'), 'plain')
+  assert.strictEqual(findAgentFile(wp, 'plain'), plainPath)
+  assert.strictEqual(declaringAgentSlug(wp, 'plain'), 'plain')
 
-  const res = resolveAddressedFile('agent', 'rot')
+  const res = resolveAddressedFile(wp, 'agent', 'rot')
   assert.strictEqual(res.filePath, agentPath)
   assert.strictEqual(res.storageSlug, 'premortem')
 })
@@ -131,8 +134,8 @@ test('a variant versions tab lists its declaring file snapshots', async () => {
   const wp = newWorkspace()
   write(wp, 'agents/premortem.md', PREMORTEM)
 
-  snapshotVersion('agent', 'premortem', 'v1 snapshot')
-  snapshotVersion('agent', 'premortem', 'v2 snapshot')
+  snapshotVersion(wp, 'agent', 'premortem', 'v1 snapshot')
+  snapshotVersion(wp, 'agent', 'premortem', 'v2 snapshot')
 
   // List versions for variant 'rot'
   const listReq = new NextRequest('http://localhost/api/workspace/agent/rot/versions')
@@ -162,7 +165,7 @@ test('watching a variant resolves to declaring file and streams updates', async 
   const wp = newWorkspace()
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
 
-  const { filePath } = resolveAddressedFile('agent', 'rot')
+  const { filePath } = resolveAddressedFile(wp, 'agent', 'rot')
   assert.strictEqual(filePath, agentPath)
 
   const ac = new AbortController()

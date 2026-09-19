@@ -1,4 +1,4 @@
-import { test, afterEach } from 'vitest'
+import { test, vi } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -7,11 +7,11 @@ import { NextRequest } from 'next/server'
 import { validateEntityFrontmatter } from '../lib/fs/validate'
 import { PUT as entityPUT } from '../app/api/workspace/[type]/[slug]/route'
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
-afterEach(() => {
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
 })
 
 function write(root: string, rel: string, body: string) {
@@ -23,7 +23,7 @@ function write(root: string, rel: string, body: string) {
 
 function newWorkspace() {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-validate-entity-'))
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   return wp
 }
 

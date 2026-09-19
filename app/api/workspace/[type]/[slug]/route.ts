@@ -8,7 +8,7 @@ import { saveWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
 import { deleteWorkspaceEntity } from '@/lib/fs/delete'
 import { validateYaml, validateEntityFrontmatter, forbiddenAgentFields, forbiddenAgentFieldMessage } from '@/lib/fs/validate'
 import { loadAgentDefaults } from '@/lib/fs/defaults'
-import { getWorkspacePath } from '@/lib/fs/workspacePath'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 import { workspaceErrorResponse } from '../../errors'
 import fs from 'fs'
 import yaml from 'js-yaml'
@@ -26,15 +26,16 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
+    const { root } = requestWorkspace()
     // Resolves to declaring file when slug is a variant (#118, #123).
-    const { filePath } = resolveAddressedFile(type as EntityType, slug)
+    const { filePath } = resolveAddressedFile(root, type as EntityType, slug)
 
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
     }
 
     let data
-    if (type === 'agent') data = loadAgent(filePath)
+    if (type === 'agent') data = loadAgent(root, filePath)
     else if (type === 'skill') data = parseSkill(filePath)
     else if (type === 'chain') data = parseChain(filePath)
     else if (type === 'template') data = parseTemplate(filePath)
@@ -81,14 +82,15 @@ export async function PUT(
       }
     }
 
+    const { root } = requestWorkspace()
     // Server warns on missing required fields without rejecting save (#122).
-    const defaults = type === 'agent' ? loadAgentDefaults(getWorkspacePath()) : undefined
+    const defaults = type === 'agent' ? loadAgentDefaults(root) : undefined
     const validationResult = validateEntityFrontmatter(type, data, defaults)
 
     // Variants save into their declaring file (#118, #123).
-    const { storageSlug } = resolveAddressedFile(type as EntityType, slug)
+    const { storageSlug } = resolveAddressedFile(root, type as EntityType, slug)
 
-    const saved = saveWorkspaceEntity({
+    const saved = saveWorkspaceEntity(root, {
       type: type as EntityType,
       slug: storageSlug,
       data,
@@ -123,8 +125,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Missing folder' }, { status: 400 })
     }
 
+    const { root } = requestWorkspace()
     // Reject moving a variant declared in another file (#118, #123).
-    const { storageSlug } = resolveAddressedFile(type as EntityType, slug)
+    const { storageSlug } = resolveAddressedFile(root, type as EntityType, slug)
     if (storageSlug !== slug) {
       return NextResponse.json(
         { error: `"${slug}" is a variant declared in ${storageSlug}.md — edit that file instead.` },
@@ -132,7 +135,7 @@ export async function PATCH(
       )
     }
 
-    const result = moveWorkspaceEntity(type as EntityType, slug, folder)
+    const result = moveWorkspaceEntity(root, type as EntityType, slug, folder)
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
@@ -150,7 +153,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
-    const result = deleteWorkspaceEntity(type as EntityType, slug)
+    const result = deleteWorkspaceEntity(requestWorkspace().root, type as EntityType, slug)
     return NextResponse.json(result)
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

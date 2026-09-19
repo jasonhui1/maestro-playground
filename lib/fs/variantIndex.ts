@@ -5,7 +5,6 @@ import { walkMarkdown } from './discover'
 import { normalizeVariants } from './parseAgent'
 import { VariantDecl } from '../types'
 import { ENTITY_DIRS } from '../entityDirs'
-import { getWorkspacePath } from './workspacePath'
 
 export interface VariantSource {
   filePath: string
@@ -17,10 +16,10 @@ function parseFile(filePath: string) {
 }
 
 // Every variant declared under agents/, by name (#118). Tolerant of malformed files.
-export function variantIndex(type: string): Map<string, VariantSource> {
+export function variantIndex(root: string, type: string): Map<string, VariantSource> {
   const found = new Map<string, VariantSource>()
   if (type !== 'agent') return found
-  const agentsDir = path.join(getWorkspacePath(), ENTITY_DIRS.agent)
+  const agentsDir = path.join(root, ENTITY_DIRS.agent)
   for (const filePath of walkMarkdown(agentsDir)) {
     let declared: VariantDecl[]
     try {

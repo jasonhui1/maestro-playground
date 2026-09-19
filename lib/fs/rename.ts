@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { EntityType, ENTITY_TYPES, getWorkspacePath, sanitizeSlug } from './workspace'
+import { EntityType, ENTITY_TYPES, sanitizeSlug } from './workspace'
 import { WorkspaceError } from './errors'
 import { walkMarkdown, findBySlug } from './discover'
 import { getVersionsDir } from './versions'
@@ -39,17 +39,17 @@ export interface RenamePlan {
   manual: { filePath: string; type: EntityType }[]
 }
 
-function logsDir() {
-  return path.join(getWorkspacePath(), 'logs')
+function logsDir(root: string) {
+  return path.join(root, 'logs')
 }
 
-function collectManual(type: EntityType, from: string): { filePath: string; type: EntityType }[] {
+function collectManual(root: string, type: EntityType, from: string): { filePath: string; type: EntityType }[] {
   const kind = PROSE_REF_KIND[type]
   if (!kind) return []
 
   const found: { filePath: string; type: EntityType }[] = []
   for (const holder of Object.keys(ENTITY_TYPES) as EntityType[]) {
-    for (const filePath of walkMarkdown(typeDir(holder))) {
+    for (const filePath of walkMarkdown(typeDir(root, holder))) {
       const { content } = parseFile(filePath)
       if (parseRefs(content).some(ref => ref.kind === kind && ref.target === from)) {
         found.push({ filePath, type: holder })
@@ -65,9 +65,9 @@ function pinnedType(type: EntityType): TouchedFile['type'] | undefined {
 }
 
 /** Every run whose `meta.json` pins the old `type/slug` key (ADR-0011). */
-function collectRuns(type: EntityType, from: string): string[] {
+function collectRuns(root: string, type: EntityType, from: string): string[] {
   const pinned = pinnedType(type)
-  const dir = logsDir()
+  const dir = logsDir(root)
   if (!pinned || !fs.existsSync(dir)) return []
   const key = versionKey(pinned, from)
   return fs.readdirSync(dir).filter(runId => {
@@ -83,11 +83,12 @@ function collectRuns(type: EntityType, from: string): string[] {
 
 /** The file a rename acts on: the named file, or the file declaring the named variant. Throws for neither. */
 function resolveRenameTarget(
+  root: string,
   type: EntityType,
   from: string,
   variants: Map<string, VariantSource>,
 ): { filePath: string; variantOf?: string } {
-  const own = findBySlug(typeDir(type), from)
+  const own = findBySlug(typeDir(root, type), from)
   if (own) return { filePath: own }
   const variant = variants.get(from)
   if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
@@ -99,8 +100,8 @@ function resolveRenameTarget(
  * failure (ADR-0012), and under `agents/` a file name and a variant name share the one
  * namespace (ADR-0013). The message names the source so the user knows which to look at.
  */
-function assertNameFree(type: EntityType, to: string, variants: Map<string, VariantSource>) {
-  const file = findBySlug(typeDir(type), to)
+function assertNameFree(root: string, type: EntityType, to: string, variants: Map<string, VariantSource>) {
+  const file = findBySlug(typeDir(root, type), to)
   if (file) throw new WorkspaceError('ALREADY_EXISTS', `a ${type} file named \`${to}\` already exists: ${path.basename(file)}`)
   const variant = variants.get(to)
   if (variant) {
@@ -115,20 +116,20 @@ function assertNameFree(type: EntityType, to: string, variants: Map<string, Vari
  * What a rename would do, without touching disk. Throws for a name that cannot be taken —
  * the dialog shows that inline rather than as a plan.
  */
-export function planRename(type: EntityType, from: string, to: string): RenamePlan {
+export function planRename(root: string, type: EntityType, from: string, to: string): RenamePlan {
   const cleanTo = sanitizeSlug(to)
   if (!cleanTo || cleanTo === '.' || cleanTo === '..') {
     throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${to}\``)
   }
 
-  const variants = variantIndex(type)
-  const { filePath, variantOf } = resolveRenameTarget(type, from, variants)
+  const variants = variantIndex(root, type)
+  const { filePath, variantOf } = resolveRenameTarget(root, type, from, variants)
 
   if (cleanTo === from) {
     return { type, from, to: cleanTo, filePath, variantOf, rewrites: [], runs: [], manual: [] }
   }
 
-  assertNameFree(type, cleanTo, variants)
+  assertNameFree(root, type, cleanTo, variants)
 
   // A file that declares variants yields its variants and nothing else, so its own name
   // addresses no chain and moving it rewrites nothing (ADR-0013).
@@ -141,11 +142,11 @@ export function planRename(type: EntityType, from: string, to: string): RenamePl
     to: cleanTo,
     filePath,
     variantOf,
-    rewrites: addressable ? [...ownEdit, ...inboundRefs(type, from)] : [],
+    rewrites: addressable ? [...ownEdit, ...inboundRefs(root, type, from)] : [],
     // A run keys on the declaring file's slug (ADR-0011), which a variant rename never
     // changes, so there is no pinned key to repoint.
-    runs: variantOf ? [] : collectRuns(type, from),
-    manual: collectManual(type, from),
+    runs: variantOf ? [] : collectRuns(root, type, from),
+    manual: collectManual(root, type, from),
   }
 }
 
@@ -155,8 +156,8 @@ export function planRename(type: EntityType, from: string, to: string): RenamePl
  * and the slug is the reference. A failure part-way restores every file already written,
  * so the workspace never loads with half a rename applied.
  */
-export function renameWorkspaceEntity(type: EntityType, from: string, to: string) {
-  const plan = planRename(type, from, to)
+export function renameWorkspaceEntity(root: string, type: EntityType, from: string, to: string) {
+  const plan = planRename(root, type, from, to)
   if (plan.to === from) return { filePath: plan.filePath, slug: from, plan }
 
   const written = new Map<string, string>()
@@ -177,7 +178,7 @@ export function renameWorkspaceEntity(type: EntityType, from: string, to: string
       rewriteRefs(data as Record<string, unknown>, sites.filter(s => s.holder === edit.type), from, plan.to)
       write(edit.filePath, matter.stringify(content, data))
     }
-    for (const runId of plan.runs) repointRun(runId, type, from, plan.to, write)
+    for (const runId of plan.runs) repointRun(root, runId, type, from, plan.to, write)
 
     if (plan.variantOf) {
       renameVariantId(plan.filePath, from, plan.to, write)
@@ -185,7 +186,7 @@ export function renameWorkspaceEntity(type: EntityType, from: string, to: string
       renameOwnName(plan.filePath, type, from, plan.to, write)
       fs.renameSync(plan.filePath, targetPath)
       moved = true
-      renameVersions(type, from, plan.to)
+      renameVersions(root, type, from, plan.to)
     }
   } catch (err) {
     // The file moves back first: restoring bytes to the old path while the new path
@@ -223,6 +224,7 @@ function renameVariantId(
  * Only the key changes — the version number, and everything else the run recorded, stands.
  */
 function repointRun(
+  root: string,
   runId: string,
   type: EntityType,
   from: string,
@@ -231,7 +233,7 @@ function repointRun(
 ) {
   const pinned = pinnedType(type)
   if (!pinned) return
-  const metaPath = path.join(logsDir(), runId, 'meta.json')
+  const metaPath = path.join(logsDir(root), runId, 'meta.json')
   const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
   meta.versions = Object.fromEntries(
     Object.entries(meta.versions as Record<string, number>).map(([key, version]) => {
@@ -262,8 +264,8 @@ function renameOwnName(
 }
 
 /** Snapshots are keyed by slug (ADR-0011), so the history directory follows the rename. */
-function renameVersions(type: EntityType, from: string, to: string) {
-  const oldDir = getVersionsDir(type, from)
+function renameVersions(root: string, type: EntityType, from: string, to: string) {
+  const oldDir = getVersionsDir(root, type, from)
   if (!fs.existsSync(oldDir)) return
-  fs.renameSync(oldDir, getVersionsDir(type, to))
+  fs.renameSync(oldDir, getVersionsDir(root, type, to))
 }

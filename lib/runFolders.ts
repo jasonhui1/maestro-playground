@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { getWorkspacePath } from './fs/workspacePath'
 import { stepLabel, stepLog } from './logger'
 import type { AgentOutput, RunMeta } from './types'
 
@@ -27,7 +26,7 @@ export interface Workspace {
   runs: RunFolders
 }
 
-export function diskWorkspace(root = getWorkspacePath()): Workspace {
+export function diskWorkspace(root: string): Workspace {
   return { root, runs: diskRunFolders(root) }
 }
 

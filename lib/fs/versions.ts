@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { getWorkspacePath } from './workspace';
 
 interface VersionIndex {
   latestVersion: number;
@@ -12,8 +11,8 @@ interface VersionIndex {
   }[];
 }
 
-export function getVersionsDir(type: string, slug: string): string {
-  return path.join(getWorkspacePath(), '.versions', type, slug);
+export function getVersionsDir(root: string, type: string, slug: string): string {
+  return path.join(root, '.versions', type, slug);
 }
 
 function calculateHash(content: string): string {
@@ -24,8 +23,8 @@ function calculateHash(content: string): string {
  * Checks if the current content differs from the latest version and creates a new one if it does.
  * Returns the version number associated with this content.
  */
-export function snapshotVersion(type: string, slug: string, content: string): number {
-  const versionsDir = getVersionsDir(type, slug);
+export function snapshotVersion(root: string, type: string, slug: string, content: string): number {
+  const versionsDir = getVersionsDir(root, type, slug);
   const indexPath = path.join(versionsDir, 'index.json');
   
   if (!fs.existsSync(versionsDir)) {
@@ -68,16 +67,16 @@ export function snapshotVersion(type: string, slug: string, content: string): nu
   return newVersion;
 }
 
-export function getVersionContent(type: string, slug: string, version: number): string | null {
-  const versionsDir = getVersionsDir(type, slug);
+export function getVersionContent(root: string, type: string, slug: string, version: number): string | null {
+  const versionsDir = getVersionsDir(root, type, slug);
   const versionPath = path.join(versionsDir, `v${version}.md`);
   
   if (!fs.existsSync(versionPath)) return null;
   return fs.readFileSync(versionPath, 'utf-8');
 }
 
-export function listVersions(type: string, slug: string): VersionIndex['versions'] {
-  const versionsDir = getVersionsDir(type, slug);
+export function listVersions(root: string, type: string, slug: string): VersionIndex['versions'] {
+  const versionsDir = getVersionsDir(root, type, slug);
   const indexPath = path.join(versionsDir, 'index.json');
   
   if (!fs.existsSync(indexPath)) return [];

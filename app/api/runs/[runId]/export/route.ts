@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadRunFor } from '@/lib/loadRun'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
 import { latestOutputsByNode } from '@/lib/runHistoryState'
 import { renderStepLogBody, renderHoldRecord } from '@/lib/logger'
@@ -13,7 +13,7 @@ export async function GET(
   const { searchParams } = new URL(request.url)
   const format = searchParams.get('format') || 'markdown'
 
-  const meta = loadRunFor(diskWorkspace().runs, runId)
+  const meta = loadRunFor(requestWorkspace().runs, runId)
   if ('error' in meta) return toResponse(meta)
 
   if (format === 'json') {

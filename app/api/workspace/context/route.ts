@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveWorkspaceEntity } from '@/lib/fs/save'
 import { validateContext } from '@/lib/fs/validate'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 })
     }
 
-    const result = saveWorkspaceEntity({
+    const result = saveWorkspaceEntity(requestWorkspace().root, {
       type: 'context',
       slug: filename,
       data: {},

@@ -98,10 +98,10 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
 }
 
 /** Snapshots every touched file and returns the map `meta.json` records (ADR-0011). */
-export function pinRunVersions(chain: ChainDef, ws: VersionedWorkspace): Record<string, number> {
+export function pinRunVersions(root: string, chain: ChainDef, ws: VersionedWorkspace): Record<string, number> {
   const versions: Record<string, number> = {}
   for (const [key, file] of collectTouchedFiles(chain, ws)) {
-    versions[key] = snapshotVersion(file.type, file.slug, file.content)
+    versions[key] = snapshotVersion(root, file.type, file.slug, file.content)
   }
   return versions
 }

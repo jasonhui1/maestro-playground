@@ -3,7 +3,7 @@ import { loadWorkspace } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 import { sseResponse } from '@/lib/sse'
 
 export async function POST(req: NextRequest) {
@@ -18,14 +18,14 @@ export async function POST(req: NextRequest) {
       return new Response('messages array is required', { status: 400 })
     }
 
-    const { agents, skills } = loadWorkspace()
+    const { root, runs } = requestWorkspace()
+    const { agents, skills } = loadWorkspace(root)
     const agentDef = agents.find(a => a.name === agentName || a.slug === agentName)
     
     if (!agentDef) {
       return new Response(`Agent "${agentName}" not found`, { status: 404 })
     }
 
-    const { root: wp, runs } = diskWorkspace()
     const lastUserMessage = history[history.length - 1].content
 
     // Handle Run Metadata
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       agentDef, 
       skills, 
       [], // For chat, we don't want history to resolve into {input}, we want history as messages
-      wp, 
+      root, 
       lastUserMessage
     )
 

@@ -25,7 +25,7 @@ export type ContinuationVersions = 'current' | 'pinned'
 export type LiveWorkspace = ReturnType<typeof loadWorkspace>
 
 /** A run's recorded graph over live or pinned files, ready to continue or fork, with those files' pins; or why it cannot. */
-export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: ContinuationVersions = 'current'):
+export function loadContinuation(root: string, live: LiveWorkspace, meta: RunMeta, from: ContinuationVersions = 'current'):
   | {
       chain: ChainDef
       workspace: RunSession['workspace']
@@ -37,7 +37,7 @@ export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: Conti
   | Refusal {
   if (from === 'pinned') {
     if (!meta.versions) return unprocessable('Run has no pinned versions')
-    const pinned = pinnedWorkspace(live, meta.versions)
+    const pinned = pinnedWorkspace(root, live, meta.versions)
     if ('error' in pinned) return pinned
     const { context: pinnedContext, ...workspace } = pinned
     const chain = graphOver(meta, workspace)
@@ -47,7 +47,7 @@ export function loadContinuation(live: LiveWorkspace, meta: RunMeta, from: Conti
   const chain = graphOver(meta, live)
   if ('error' in chain) return chain
   // Live files run by default; the pins in meta stay what the run started with (ADR-0011).
-  const versions = pinRunVersions(chain, live)
+  const versions = pinRunVersions(root, chain, live)
   return { chain, workspace: live, versionNumber: versions[versionKey('chain', chain.slug)] ?? 0, versions, pinnedContext: {} }
 }
 

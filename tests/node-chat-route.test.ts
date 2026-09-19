@@ -6,6 +6,13 @@ import os from 'os'
 import matter from 'gray-matter'
 import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
 
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
+})
+
 // The model is the only stand-in: the executor, routes and logger are real.
 const chats: ChatMessage[][] = []
 const chatModels: string[] = []
@@ -35,14 +42,10 @@ vi.mock('@/lib/runner', () => ({
   },
 }))
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
 afterEach(() => {
   chats.length = 0
   chatModels.length = 0
   duringAfter = undefined
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
 
 const chain = `---
@@ -78,7 +81,7 @@ edges:
 
 function newWorkspace(): string {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-node-chat-'))
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   const write = (rel: string, body: string) => {
     const p = path.join(wp, rel)
     fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -117,7 +120,7 @@ async function chat(runId: string, nodeId: string, body: object): Promise<Respon
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   return runs.read(runId)
 }
 
@@ -222,7 +225,7 @@ test('chat to a join, report, hold, or a node with no output is refused', async 
 test('chat on a running run is refused, so a live stretch cannot overwrite it', async () => {
   newWorkspace()
   const runId = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   runs.update(runId, { status: 'running' })
   assert.strictEqual((await chat(runId, 'dec', { message: 'hi' })).status, 409)
 })
@@ -230,7 +233,7 @@ test('chat on a running run is refused, so a live stretch cannot overwrite it', 
 test('a tool-using proposer is replayed without its tool turns (#92), and its log keeps the Tool Loop', async () => {
   const wp = newWorkspace()
   const runId = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   const meta = await readMeta(runId)
   const toolCalls = [{ turn: 1, name: 'retrieve', args: { q: 'x' }, result: 'hit', latencyMs: 1, isError: false }]
   const agentOutputs = meta.agentOutputs.map(o => o.nodeId === 'dec' ? { ...o, toolCalls, toolTurns: 1 } : o)
@@ -261,7 +264,7 @@ test('a turn written while a resume runs survives the resume ending', async () =
   newWorkspace()
   const runId = await startRun()
   const { appendTurn } = await import('../lib/nodeChat')
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   duringAfter = () => appendTurn(runs, runId, 'dec', 'mid-resume', { role: 'assistant', content: 'still here' })
 
   const { POST } = await import('../app/api/runs/[runId]/resume/route')
@@ -275,7 +278,7 @@ test('a turn written while a resume runs survives the resume ending', async () =
 test('a node whose latest record failed is refused, so the log and record never disagree', async () => {
   newWorkspace()
   const runId = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   const meta = await readMeta(runId)
   const dec = meta.agentOutputs.find(o => o.nodeId === 'dec')!
   runs.update(runId, { agentOutputs: [...meta.agentOutputs, { ...dec, status: 'error', output: '' }] })

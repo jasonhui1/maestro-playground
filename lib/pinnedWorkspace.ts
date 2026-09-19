@@ -2,7 +2,6 @@ import path from 'path'
 import { unprocessable } from './refusal'
 import matter from 'gray-matter'
 import { getVersionContent } from './fs/versions'
-import { getWorkspacePath } from './fs/workspacePath'
 import { parseAgentFile } from './fs/parseAgent'
 import { parseSkill } from './fs/parseSkill'
 import { parseTool } from './fs/parseTool'
@@ -40,13 +39,14 @@ const PINNABLE: Record<string, {
  * what a fork asked for with `versions: 'pinned'` runs against. A pin whose version is gone refuses.
  */
 export function pinnedWorkspace(
+  root: string,
   live: Defs & { defaults: Record<string, unknown> },
   versions: Record<string, number>,
 ): PinnedWorkspace | Refusal {
   const pins: { type: string; slug: string; raw: string }[] = []
   for (const [key, version] of Object.entries(versions)) {
     const { type, slug } = parseVersionKey(key)
-    const raw = getVersionContent(type, slug, version)
+    const raw = getVersionContent(root, type, slug, version)
     if (raw === null) return unprocessable(`Pinned ${key} v${version} is missing`)
     pins.push({ type, slug, raw })
   }
@@ -61,7 +61,7 @@ export function pinnedWorkspace(
     if (!pinnable) continue
     const entries = live[pinnable.list] as { slug: string; variantOf?: string; filePath: string }[]
     const filePath = entries.find(d => pinnable.ofFile(d, slug))?.filePath
-      ?? path.join(getWorkspacePath(), pinnable.dir, `${slug}.md`)
+      ?? path.join(root, pinnable.dir, `${slug}.md`)
     const kept = (ws[pinnable.list] as typeof entries).filter(d => !pinnable.ofFile(d, slug))
     ;(ws[pinnable.list] as unknown[]) = [...kept, ...pinnable.parse(filePath, raw, defaults)]
   }

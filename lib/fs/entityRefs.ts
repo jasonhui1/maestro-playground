@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { EntityType, ENTITY_TYPES, getWorkspacePath } from './workspace'
+import { EntityType, ENTITY_TYPES } from './workspace'
 import { walkMarkdown } from './discover'
 import { allFields } from '../nodeKinds'
 export { variantIndex, declaredVariants, type VariantSource } from './variantIndex'
@@ -48,8 +48,8 @@ export function parseFile(filePath: string) {
   return matter(fs.readFileSync(filePath, 'utf-8'), {})
 }
 
-export function typeDir(type: EntityType) {
-  return path.join(getWorkspacePath(), ENTITY_TYPES[type])
+export function typeDir(root: string, type: EntityType) {
+  return path.join(root, ENTITY_TYPES[type])
 }
 
 /** One holder file that names a slug, and the typed fields it names it in. */
@@ -125,7 +125,7 @@ export function rewriteRefs(
  * Every file naming `slug` at a typed site — what a rename rewrites and what a delete is
  * refused for (#63). Prose placeholders are not here: see `refSitesFor`.
  */
-export function inboundRefs(type: EntityType, slug: string): RefHit[] {
+export function inboundRefs(root: string, type: EntityType, slug: string): RefHit[] {
   const byHolder = new Map<EntityType, RefSite[]>()
   for (const site of refSitesFor(type)) {
     byHolder.set(site.holder, [...(byHolder.get(site.holder) ?? []), site])
@@ -133,7 +133,7 @@ export function inboundRefs(type: EntityType, slug: string): RefHit[] {
 
   const hits: RefHit[] = []
   for (const [holder, sites] of byHolder) {
-    for (const filePath of walkMarkdown(typeDir(holder))) {
+    for (const filePath of walkMarkdown(typeDir(root, holder))) {
       const fields = refFieldsIn(parseFile(filePath).data as Record<string, unknown>, sites, slug)
       if (fields.length) hits.push({ filePath, type: holder, fields })
     }

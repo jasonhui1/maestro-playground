@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
-import { diskWorkspace } from '@/lib/runFolders'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 import { readPromoteRequest } from '@/lib/promote'
 import { toResponse } from '@/lib/refusal'
 
@@ -15,5 +15,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const promote = readPromoteRequest(nodeId, body ?? {})
   if ('error' in promote) return toResponse(promote)
-  return continueRun(diskWorkspace(), loadWorkspace(), runId, { promote }, body?.context)
+  const ws = requestWorkspace()
+  return continueRun(ws, loadWorkspace(ws.root), runId, { promote }, body?.context)
 }

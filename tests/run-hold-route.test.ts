@@ -5,6 +5,13 @@ import path from 'path'
 import os from 'os'
 import type { AgentOutput, RunMeta } from '../lib/types'
 
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
+})
+
 // The model is the only stand-in: the executor, route, logger and run-read routes are real.
 const ran: string[] = []
 vi.mock('@/lib/runner', () => ({
@@ -17,12 +24,8 @@ vi.mock('@/lib/runner', () => ({
   },
 }))
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
 afterEach(() => {
   ran.length = 0
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
 
 const heldChain = `---
@@ -51,7 +54,7 @@ edges:
 
 function newWorkspace(): string {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-hold-'))
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   const write = (rel: string, body: string) => {
     const p = path.join(wp, rel)
     fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -138,7 +141,7 @@ edges:
 
   const waiting = events.filter(e => e.type === 'run_waiting')
   assert.deepStrictEqual(waiting.map(e => e.nodeId).sort(), ['hold', 'hold2'])
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
   const meta = runs.read(waiting[0].runId as string)
   assert.strictEqual(meta.status, 'waiting')
   assert.deepStrictEqual(meta.holds?.map(h => h.nodeId).sort(), ['hold', 'hold2'])

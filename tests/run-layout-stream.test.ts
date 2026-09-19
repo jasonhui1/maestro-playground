@@ -6,6 +6,13 @@ import os from 'os'
 import type { AgentOutput } from '../lib/types'
 import type { LayoutModel } from '../lib/layoutModel'
 
+// Routes take their root from the one request entry; a test hands in its own (#116).
+const entry = vi.hoisted(() => ({ root: '' }))
+vi.mock('@/lib/requestWorkspace', async () => {
+  const { diskWorkspace } = await import('../lib/runFolders')
+  return { requestWorkspace: () => diskWorkspace(entry.root) }
+})
+
 // The only test in the repo that stands a module in for a real one: the contract under
 // test is the frame sequence /api/run emits, and reaching it otherwise means calling a
 // model. Everything else here is the real route over a real workspace on disk.
@@ -23,12 +30,8 @@ vi.mock('@/lib/executor', () => ({
   },
 }))
 
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
 afterEach(() => {
   hops.length = 0
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
 })
 
 function output(nodeId: string, text: string, round?: number): AgentOutput {
@@ -47,7 +50,7 @@ say something
 
 function newWorkspace(chainFile: string, body: string) {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-stream-'))
-  process.env.WORKSPACE_PATH = wp
+  entry.root = wp
   write(wp, path.join('chains', chainFile), body)
   write(wp, path.join('agents', 'relay.md'), agentFile)
   return wp

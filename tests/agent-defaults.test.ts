@@ -1,15 +1,8 @@
-import { test, afterEach } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
-afterEach(() => {
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
-})
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -19,9 +12,7 @@ function write(root: string, rel: string, body: string) {
 }
 
 function newWorkspace() {
-  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-defaults-'))
-  process.env.WORKSPACE_PATH = wp
-  return wp
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ws-defaults-'))
 }
 
 const DEFAULTS = `---
@@ -33,9 +24,9 @@ outputs:
 ---
 `
 
-async function agentsOf() {
+async function agentsOf(wp: string) {
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  return loadWorkspace().agents
+  return loadWorkspace(wp).agents
 }
 
 test('the defaults file supplies every field the agent file omits', async () => {
@@ -43,7 +34,7 @@ test('the defaults file supplies every field the agent file omits', async () => 
   write(wp, 'defaults.md', DEFAULTS)
   write(wp, 'agents/triage.md', '---\nname: triage\nskills:\n  - base-protocol\n---\nClassify {input}.\n')
 
-  const [a] = await agentsOf()
+  const [a] = await agentsOf(wp)
   assert.strictEqual(a.model, 'defaults/model')
   assert.strictEqual(a.input_from, 'user')
   assert.strictEqual(a.output_format, 'markdown')
@@ -58,7 +49,7 @@ test('an agent field overrides the default field, per field, with no deep merge'
   write(wp, 'defaults.md', '---\nmodel: defaults/model\nskills:\n  - base-protocol\n  - concise\noutputs:\n  - summary\n---\n')
   write(wp, 'agents/triage.md', '---\nname: triage\nmodel: own/model\nskills:\n  - red-teaming\n---\nbody\n')
 
-  const [a] = await agentsOf()
+  const [a] = await agentsOf(wp)
   assert.strictEqual(a.model, 'own/model')
   // the default list is gone, not extended
   assert.deepStrictEqual(a.skills, ['red-teaming'])
@@ -70,7 +61,7 @@ test('a workspace with no defaults file behaves exactly as it does today', async
   const wp = newWorkspace()
   write(wp, 'agents/triage.md', '---\nname: triage\nmodel: own/model\n---\nbody\n')
 
-  const [a] = await agentsOf()
+  const [a] = await agentsOf(wp)
   assert.strictEqual(a.model, 'own/model')
   assert.strictEqual(a.input_from, 'user')
   assert.strictEqual(a.output_format, 'markdown')
@@ -82,7 +73,7 @@ test('a field stated with no value reads as omitted, not as an override', async 
   write(wp, 'defaults.md', DEFAULTS)
   write(wp, 'agents/triage.md', '---\nname: triage\nmodel:\n---\nbody\n')
 
-  const [a] = await agentsOf()
+  const [a] = await agentsOf(wp)
   assert.strictEqual(a.model, 'defaults/model')
   assert.strictEqual(a.resolution?.sources.model, 'defaults')
 })
@@ -94,7 +85,7 @@ test('an agent node draws the output sockets its defaults file declares', async 
   write(wp, 'chains/decision.md', '---\nname: Decision\nnodes:\n  - id: t\n    kind: agent\n    agent: triage\nedges: []\n---\n')
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   const { kindOf } = await import('../lib/nodeKinds')
   const node = ws.chains[0].nodes[0]
   const lookup = { chain: ws.chains[0], agents: ws.agents, chains: ws.chains }
@@ -108,7 +99,7 @@ test('the resolved agent records which file each field came from', async () => {
   write(wp, 'defaults.md', DEFAULTS)
   write(wp, 'agents/triage.md', '---\nname: triage\nmodel: own/model\n---\nbody\n')
 
-  const [a] = await agentsOf()
+  const [a] = await agentsOf(wp)
   assert.strictEqual(a.resolution?.sources.model, 'file')
   assert.strictEqual(a.resolution?.sources.outputs, 'defaults')
   assert.strictEqual(a.resolution?.sources.name, 'file')
@@ -137,7 +128,7 @@ test('a chain using an agent that names a parent fails validation', async () => 
   write(wp, 'chains/decision.md', '---\nname: Decision\nnodes:\n  - id: t\n    kind: agent\n    agent: triage\nedges: []\n---\n')
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
-  const ws = loadWorkspace()
+  const ws = loadWorkspace(wp)
   const { validateChain } = await import('../lib/chainGraph')
   const result = validateChain(ws.chains[0], ws.agents, ws.chains)
 

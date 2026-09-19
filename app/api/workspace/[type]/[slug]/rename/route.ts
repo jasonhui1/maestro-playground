@@ -3,6 +3,7 @@ import path from 'path'
 import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
 import { planRename, renameWorkspaceEntity, RenamePlan } from '@/lib/fs/rename'
 import { workspaceErrorResponse } from '../../../errors'
+import { requestWorkspace } from '@/lib/requestWorkspace'
 
 type Params = Promise<{ type: string; slug: string }>
 
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
     const to = request.nextUrl.searchParams.get('to')
     if (!to) return NextResponse.json({ error: 'Missing to' }, { status: 400 })
 
-    return NextResponse.json(forDisplay(planRename(type as EntityType, slug, to)))
+    return NextResponse.json(forDisplay(planRename(requestWorkspace().root, type as EntityType, slug, to)))
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
   }
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       return NextResponse.json({ error: 'Missing to' }, { status: 400 })
     }
 
-    const result = renameWorkspaceEntity(type as EntityType, slug, to)
+    const result = renameWorkspaceEntity(requestWorkspace().root, type as EntityType, slug, to)
     return NextResponse.json({ success: true, ...result, plan: forDisplay(result.plan) })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

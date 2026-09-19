@@ -1,15 +1,8 @@
-import { test, afterEach } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-
-const ORIGINAL_WORKSPACE = process.env.WORKSPACE_PATH
-
-afterEach(() => {
-  if (ORIGINAL_WORKSPACE === undefined) delete process.env.WORKSPACE_PATH
-  else process.env.WORKSPACE_PATH = ORIGINAL_WORKSPACE
-})
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -19,9 +12,7 @@ function write(root: string, rel: string, body: string) {
 }
 
 function newWorkspace() {
-  const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'run-versions-'))
-  process.env.WORKSPACE_PATH = wp
-  return wp
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'run-versions-'))
 }
 
 /** chain → context node + agent node + subchain node; the inner chain holds one more agent. */
@@ -55,9 +46,9 @@ async function load() {
 }
 
 test('the walk pins every file the graph reaches, and nothing else', async () => {
-  seedWorkspace()
+  const wp = seedWorkspace()
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
   const touched = rv.collectTouchedFiles(chain, workspace)
@@ -73,9 +64,9 @@ test('the walk pins every file the graph reaches, and nothing else', async () =>
 })
 
 test('a touched file carries its raw bytes, frontmatter included', async () => {
-  seedWorkspace()
+  const wp = seedWorkspace()
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
   const agent = rv.collectTouchedFiles(chain, workspace).get('agent/panel-member')!
@@ -91,7 +82,7 @@ test('a call-site skills! marker decides which skills the walk reaches', async (
     `---\nname: Decision Panel\nnodes:\n` +
     `  - id: panel\n    kind: agent\n    agent: panel-member\n    skills!:\n      - Idle\nedges: []\n---\n`)
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
   const keys = new Set(rv.collectTouchedFiles(chain, workspace).keys())
@@ -105,7 +96,7 @@ test('a subchain cycle terminates', async () => {
   write(wp, 'chains/scoring.md',
     `---\nname: Scoring\nnodes:\n  - id: back\n    kind: subchain\n    subchain: decision-panel\nedges: []\n---\n`)
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
   const keys = new Set(rv.collectTouchedFiles(chain, workspace).keys())
@@ -113,9 +104,9 @@ test('a subchain cycle terminates', async () => {
 })
 
 test('an agent run pins the agent but no chain file', async () => {
-  seedWorkspace()
+  const wp = seedWorkspace()
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const { resolveRunChain } = await import('../lib/resolveRunChain')
   const resolved = resolveRunChain({ agentName: 'Panel Member' }, workspace)
   assert.ok('chain' in resolved)
@@ -134,14 +125,14 @@ test('parseVersionKey inverts versionKey, including the bare defaults key', asyn
 test('pinning writes one version per touched file, and repeats it unchanged', async () => {
   const wp = seedWorkspace()
   const { ws, rv } = await load()
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
-  const first = rv.pinRunVersions(chain, workspace)
+  const first = rv.pinRunVersions(wp, chain, workspace)
   assert.strictEqual(first['agent/panel-member'], 1)
   assert.strictEqual(first['defaults'], 1)
 
-  const second = rv.pinRunVersions(chain, ws.loadWorkspace())
+  const second = rv.pinRunVersions(wp, chain, ws.loadWorkspace(wp))
   assert.deepStrictEqual(second, first, 'an unchanged file keeps its number')
   assert.deepStrictEqual(
     fs.readdirSync(path.join(wp, '.versions', 'agent', 'panel-member')).sort(),
@@ -153,15 +144,15 @@ test('pinning writes one version per touched file, and repeats it unchanged', as
 test('a frontmatter-only edit produces a new version', async () => {
   const wp = seedWorkspace()
   const { ws, rv } = await load()
-  const chain0 = ws.loadWorkspace().chains.find(c => c.slug === 'decision-panel')!
-  rv.pinRunVersions(chain0, ws.loadWorkspace())
+  const chain0 = ws.loadWorkspace(wp).chains.find(c => c.slug === 'decision-panel')!
+  rv.pinRunVersions(wp, chain0, ws.loadWorkspace(wp))
 
   write(wp, 'agents/panel-member.md',
     `---\nname: Panel Member\nmodel: other/model\nskills:\n  - Red Teaming\ntools:\n  - Retrieve\n---\nPanel body\n`)
-  const workspace = ws.loadWorkspace()
+  const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
-  const pinned = rv.pinRunVersions(chain, workspace)
+  const pinned = rv.pinRunVersions(wp, chain, workspace)
   assert.strictEqual(pinned['agent/panel-member'], 2)
   assert.strictEqual(pinned['agent/scorer'], 1, 'an untouched-by-the-edit file stays put')
 })

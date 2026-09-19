@@ -28,7 +28,7 @@ The `{ chain, agents, chains }` bundle of already-loaded workspace files passed 
 
 ## Run folders
 
-The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs }` value, built once per request. _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
+The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
 
 ## Section warning
 
