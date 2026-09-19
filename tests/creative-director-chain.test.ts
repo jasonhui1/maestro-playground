@@ -178,7 +178,7 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
     assert.ok(extractSections(p.text).includes('proposed-canon'), `${p.node} panel keeps canon`)
   }
 
-  const { output: answer } = answerHold(holds[0], DIRECTION)
+  const { output: answer } = answerHold(holds, holds[0], DIRECTION)
   const resumed = await runChainGraph(chain, agents, skills, seed,
     '/nonexistent', noop, stub as never, [...results, answer], chains, tools, 0, dial, overrides)
 

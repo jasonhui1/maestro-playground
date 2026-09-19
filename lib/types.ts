@@ -210,6 +210,9 @@ export interface AgentOutput {
 
 export type HoldCandidate = MarkdownSection
 
+/** Why a request is refused, and the HTTP status it answers with. */
+export interface Refusal { error: string; status: number; errors?: unknown[] }
+
 export interface HoldRecord {
   nodeId: string
   prompt?: string

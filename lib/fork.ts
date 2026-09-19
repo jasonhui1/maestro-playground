@@ -1,3 +1,4 @@
+import { holdsKeptByFork } from './hold'
 import { initRunDir } from './logger'
 import { downstreamIds, withoutNodes } from './partialRun'
 import { contextOverrides, loadContinuation, newRunId, streamChainRun, type Refusal } from './runSession'
@@ -25,8 +26,7 @@ export function forkRun(
   const latest = new Map(kept.map(o => [recordKey(o), o]))
   const replay = [...kept.filter(o => latest.get(recordKey(o)) === o), replacement.output]
   const holds = [
-    // An open hold carries no answer to replay; the fork reaches it again.
-    ...(source.holds ?? []).filter(h => h.resolvedAt && !dropped.has(h.nodeId)),
+    ...holdsKeptByFork(source.holds, dropped),
     ...(replacement.hold ? [replacement.hold] : []),
   ]
 

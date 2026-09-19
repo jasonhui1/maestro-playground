@@ -1,3 +1,4 @@
+import { hasAnsweredHold } from './hold'
 import { chatTarget, type ChatRefusal } from './nodeChat'
 import { downstreamIds } from './partialRun'
 import type { AgentOutput, RunMeta } from './types'
@@ -39,7 +40,7 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
   const reply = conversation[at]
 
   const downstream = downstreamIds(target.graph, nodeId)
-  const forks = (meta.holds ?? []).some(h => h.resolvedAt && downstream.has(h.nodeId))
+  const forks = hasAnsweredHold(meta.holds, downstream)
 
   const { record } = target
   const source: AgentOutput = {

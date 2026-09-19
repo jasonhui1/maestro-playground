@@ -346,12 +346,11 @@ export async function runChainGraph(
       // An answered hold never gets here: it is replayed from startOutputs above.
       // Out-edges stay dead; nothing is recorded until the human answers.
       held = true
-      const hold = openHold(nodeId, inValue(nodeId), node.prompt)
       const inEdge = liveEdgeForSlot(nodeId, 'in')
-      if (hold.candidates.length === 0 && inEdge !== undefined) {
-        reportWarning({ fromNode: chain.edges[inEdge].fromNode, section: 'Candidate 1', toNode: nodeId, toSocket: 'candidates' })
-      }
-      callbacks.onHold?.(hold)
+      const { record, warning } = openHold(nodeId, inValue(nodeId), node.prompt,
+        inEdge === undefined ? undefined : chain.edges[inEdge].fromNode)
+      if (warning) reportWarning(warning)
+      callbacks.onHold?.(record)
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {
       // Loop boundaries are consumed by runZone/zonesByStart above; one only reaches
       // here if it carries no registered zone (a malformed chain). No-op — its

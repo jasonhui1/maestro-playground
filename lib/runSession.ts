@@ -9,7 +9,7 @@ import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
 import { keepConversations } from './nodeChat'
-import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta, SkillDef, ToolDef } from './types'
+import type { AgentDef, AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta, SkillDef, ToolDef } from './types'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -21,7 +21,7 @@ export function newRunId(): string {
   return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
 }
 
-export interface Refusal { error: string; status: number; errors?: unknown[] }
+export type { Refusal }
 
 /** A refusal as the JSON response a route returns. */
 export function refusalResponse({ error, errors, status }: Refusal): Response {
