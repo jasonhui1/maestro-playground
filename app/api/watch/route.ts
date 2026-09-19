@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { resolveEntityPath, isValidEntityType } from '@/lib/fs/workspace'
+import { isValidEntityType, resolveAddressedFile, EntityType } from '@/lib/fs/workspace'
 import chokidar from 'chokidar'
 import fs from 'fs'
 import path from 'path'
@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get('slug') ?? ''
   if (!isValidEntityType(type) || !slug) return new Response('Bad request', { status: 400 })
 
-  const filePath = resolveEntityPath(type, slug)
+  // Resolves to declaring file when slug is a variant (#123).
+  const { filePath } = resolveAddressedFile(type as EntityType, slug)
   const target = path.resolve(filePath)
 
   const stream = new ReadableStream({

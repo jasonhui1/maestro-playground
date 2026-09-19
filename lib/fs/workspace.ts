@@ -4,25 +4,23 @@ import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
-import { discoverFiles, findBySlug, walkMarkdown } from './discover'
+import { discoverFiles, findBySlug } from './discover'
+import { variantIndex, type VariantSource } from './variantIndex'
+import { getWorkspacePath } from './workspacePath'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
 import { WorkspaceError } from './errors'
 
 export * from './errors'
+export { getWorkspacePath }
+export type { VariantSource }
 export const ENTITY_TYPES = ENTITY_DIRS;
 
 export type EntityType = keyof typeof ENTITY_TYPES;
 
 export function isValidEntityType(type: string): type is EntityType {
   return type in ENTITY_TYPES;
-}
-
-export function getWorkspacePath() {
-  // Read per call, not once at import: the workspace root must stay overridable
-  // after this module is loaded.
-  return path.resolve(process.env.WORKSPACE_PATH ?? './workspace')
 }
 
 export function sanitizeSlug(slug: string) {
@@ -94,28 +92,32 @@ export function loadAgent(filePath: string) {
   return parseAgent(filePath, undefined, loadAgentDefaults(getWorkspacePath()))
 }
 
-/**
- * The slug of the file behind an agent name — the name itself for a file, and the
- * declaring file for a variant (ADR-0013). Undefined when nothing claims the name.
- */
-export function declaringAgentSlug(slug: string): string | undefined {
-  const filePath = findAgentFile(slug)
-  return filePath ? path.basename(filePath, '.md') : undefined
+// File path and storage slug; maps variants to declaring file (#118, #123).
+export function resolveAddressedFile(
+  type: EntityType,
+  slug: string,
+  variants?: Map<string, VariantSource>,
+): { filePath: string; storageSlug: string } {
+  if (type === 'agent') {
+    const own = findBySlug(path.join(getWorkspacePath(), 'agents'), slug)
+    if (own) return { filePath: own, storageSlug: slug }
+
+    const hit = (variants ?? variantIndex('agent')).get(slug)
+    if (hit) {
+      return { filePath: hit.filePath, storageSlug: hit.fileSlug }
+    }
+  }
+  return { filePath: resolveEntityPath(type, slug), storageSlug: slug }
 }
 
-/**
- * The file behind an agent name. A variant has no file of its own, so its name
- * resolves to the file that declares it (ADR-0013); undefined when nothing claims it.
- */
 export function findAgentFile(slug: string): string | undefined {
-  const agentsDir = path.join(getWorkspacePath(), 'agents')
-  const own = findBySlug(agentsDir, slug)
-  if (own) return own
-  for (const filePath of walkMarkdown(agentsDir)) {
-    const declared = parseAgent(filePath).variants ?? []
-    if (declared.some(v => v.id === slug)) return filePath
-  }
-  return undefined
+  const { filePath } = resolveAddressedFile('agent', slug)
+  return fs.existsSync(filePath) ? filePath : undefined
+}
+
+export function declaringAgentSlug(slug: string): string | undefined {
+  const { filePath, storageSlug } = resolveAddressedFile('agent', slug)
+  return fs.existsSync(filePath) ? storageSlug : undefined
 }
 
 export function loadWorkspace() {

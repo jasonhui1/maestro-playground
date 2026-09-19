@@ -3,9 +3,8 @@ import fs from 'fs'
 import path from 'path'
 import { EntityType, ENTITY_TYPES, getWorkspacePath } from './workspace'
 import { walkMarkdown } from './discover'
-import { normalizeVariants } from './parseAgent'
 import { allFields } from '../nodeKinds'
-import { VariantDecl } from '../types'
+export { variantIndex, declaredVariants, type VariantSource } from './variantIndex'
 
 /**
  * A typed field that holds a slug — the parser knows a slug sits there and nowhere else.
@@ -142,43 +141,4 @@ export function inboundRefs(type: EntityType, slug: string): RefHit[] {
   return hits
 }
 
-/** One variant name, and the file whose frontmatter declares it (ADR-0013). */
-export interface VariantSource {
-  filePath: string
-  fileSlug: string
-}
 
-/**
- * Every variant declared under `agents/`, by name — empty for any other type, which has
- * no variants (ADR-0013). Built once per operation and passed down: it reads every agent
- * file, so a workspace of any size pays for it once.
- *
- * A duplicate keeps its first source and a malformed block is skipped: both are load-time
- * errors the workspace already reports (ADR-0012), and neither may block editing an
- * unrelated agent — or editing the broken file back into shape.
- */
-export function variantIndex(type: EntityType): Map<string, VariantSource> {
-  const found = new Map<string, VariantSource>()
-  if (type !== 'agent') return found
-  for (const filePath of walkMarkdown(typeDir('agent'))) {
-    let declared: VariantDecl[]
-    try {
-      declared = normalizeVariants(parseFile(filePath).data.variants, filePath)
-    } catch {
-      continue
-    }
-    for (const variant of declared) {
-      if (!found.has(variant.id)) found.set(variant.id, { filePath, fileSlug: path.basename(filePath, '.md') })
-    }
-  }
-  return found
-}
-
-/** The variant names one file declares, in file order. Empty for a file declaring none. */
-export function declaredVariants(filePath: string): string[] {
-  try {
-    return normalizeVariants(parseFile(filePath).data.variants, filePath).map(v => v.id)
-  } catch {
-    return []
-  }
-}
