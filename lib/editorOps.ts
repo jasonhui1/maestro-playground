@@ -1,5 +1,6 @@
 import { ChainNode, ChainEdge } from './types'
 import { kindOf } from './nodeKinds'
+import { edgeShapeError } from './chainGraph'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
   const set = new Set(existing)
@@ -232,4 +233,10 @@ export const editorOps = {
   }),
   undo: () => ({ type: 'undo' as const }),
   redo: () => ({ type: 'redo' as const }),
+}
+
+// A dragged connection becomes an edge unless validation would reject its shape.
+export function edgeFromConnection(c: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }): ChainEdge | null {
+  const edge: ChainEdge = { fromNode: c.source, fromSocket: c.sourceHandle ?? '', toNode: c.target, toSocket: c.targetHandle ?? '' }
+  return edgeShapeError(edge) ? null : edge
 }

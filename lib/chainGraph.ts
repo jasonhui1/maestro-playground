@@ -1,4 +1,4 @@
-import { ChainDef, ChainNode, AgentDef, ToolDef, SkillDef, ValidationResult } from './types'
+import { ChainDef, ChainNode, ChainEdge, AgentDef, ToolDef, SkillDef, ValidationIssue, ValidationResult } from './types'
 import { slugify } from './graph'
 import { kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
@@ -27,7 +27,23 @@ export function topoOrder(chain: ChainDef): string[] {
   return order
 }
 
-import { ValidationIssue } from './types'
+// Shape rules an edge breaks on its own, before any node or socket lookup. The canvas
+// refuses a drag that breaks one (edgeFromConnection), so it enforces nothing more (#119).
+export function edgeShapeError(e: ChainEdge): string | null {
+  if (!e.fromSocket || !e.toSocket) return `Edge "${e.fromNode}" -> "${e.toNode}" has an unnamed socket`
+  if (e.fromNode === e.toNode) return `Edge "${e.fromNode}.${e.fromSocket}" -> "${e.toNode}.${e.toSocket}" connects a node to itself`
+  return null
+}
+
+export function issuesByNode(issues: ValidationIssue[]): Map<string, string[]> {
+  const m = new Map<string, string[]>()
+  for (const i of issues) {
+    const id = i.nodeId ?? i.edge?.toNode
+    if (!id) continue
+    m.set(id, [...(m.get(id) ?? []), i.message])
+  }
+  return m
+}
 
 export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = [], tools: ToolDef[] = [], skills: SkillDef[] = []): ValidationResult {
   const errors: string[] = []
@@ -134,6 +150,8 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
 
   const incoming = new Map<string, number>()
   for (const e of chain.edges) {
+    const shape = edgeShapeError(e)
+    if (shape) { add(shape, { edge: e }); continue }
     const src = nodeById.get(e.fromNode)
     const dst = nodeById.get(e.toNode)
     if (!src) { add(`Edge from unknown node "${e.fromNode}"`, { edge: e }); continue }

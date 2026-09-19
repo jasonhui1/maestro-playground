@@ -3,13 +3,13 @@ import React, { useCallback, useEffect, useMemo, useState, useReducer } from 're
 import dagre from 'dagre'
 import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
-import { validateChain } from '@/lib/chainGraph'
+import { validateChain, issuesByNode } from '@/lib/chainGraph'
 import { kindOf } from '@/lib/nodeKinds'
 import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph } from '@/lib/editorOps'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
-import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort, ToolDef, SkillDef } from '@/lib/types'
+import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort, ToolDef, SkillDef, ValidationIssue } from '@/lib/types'
 import type { RunStateMap } from '@/lib/runState'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -41,7 +41,7 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, tools, skills, onSaveStatus }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, tools, skills, onSaveStatus, onValidation }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
@@ -52,6 +52,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   tools?: ToolDef[]
   skills?: SkillDef[]
   onSaveStatus?: (status: SaveStatus) => void
+  onValidation?: (issues: ValidationIssue[]) => void
 }) {
   const historied = useMemo(() => withHistory(applyOp, (op: EditorOp) => !NON_HISTORIC.has(op.type)), [])
   const [hist, dispatch] = useReducer(historied, undefined, () => ({
@@ -129,15 +130,9 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const validation = useMemo(() => validateChain(chain, agents, chains, tools, skills), [chain, agents, chains, tools, skills])
 
-  const issuesByNode = useMemo(() => {
-    const m = new Map<string, string[]>()
-    for (const i of validation.issues) {
-      const id = i.nodeId ?? i.edge?.toNode
-      if (!id) continue
-      m.set(id, [...(m.get(id) ?? []), i.message])
-    }
-    return m
-  }, [validation])
+  const nodeIssues = useMemo(() => issuesByNode(validation.issues), [validation])
+  useEffect(() => { onValidation?.(validation.issues) }, [validation, onValidation])
+  useEffect(() => () => onValidation?.([]), [onValidation])
 
   useEffect(() => {
     if (initialSeedPrompt !== undefined) {
@@ -236,12 +231,12 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     agents: agents.map(a => ({ slug: a.slug, name: a.name })),
     contextFiles,
     run: runState[node.id],
-    issues: issuesByNode.get(node.id) ?? [],
+    issues: nodeIssues.get(node.id) ?? [],
     onChange: patch => updateNode(node.id, patch),
     onEditAgent: (s: string) => setDrawerSlug(s),
     onRunFromHere: (id: string) => { setSelectedIds([id]); runUpTo(id) },
     chains: chains.map(c => ({ slug: c.slug, name: c.name })),
-  }), [chain, agents, contextFiles, runState, issuesByNode, updateNode, runUpTo, chains, setSelectedIds])
+  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds])
 
   return (
     <div className="h-full flex flex-col">

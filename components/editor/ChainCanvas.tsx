@@ -8,6 +8,7 @@ import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
 import { computeZoneFrames } from '@/lib/zoneFrames'
+import { edgeFromConnection } from '@/lib/editorOps'
 import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
 import SeedNode from './nodes/SeedNode'
@@ -137,9 +138,8 @@ export default function ChainCanvas(props: ChainCanvasProps) {
           selectionKeyCode="Shift"
           multiSelectionKeyCode={['Meta', 'Control']}
           onConnect={props.readOnly ? undefined : (c) => {
-            if (!c.source || !c.target || !c.sourceHandle || !c.targetHandle) return
-            if (c.source === c.target) return
-            props.onConnect({ fromNode: c.source, fromSocket: c.sourceHandle, toNode: c.target, toSocket: c.targetHandle })
+            const edge = edgeFromConnection(c)
+            if (edge) props.onConnect(edge)
           }}
           onDelete={props.readOnly ? undefined : ({ nodes, edges }) => {
             nodes.forEach(n => props.onDeleteNode(n.id))

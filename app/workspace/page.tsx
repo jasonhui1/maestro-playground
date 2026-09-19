@@ -9,7 +9,7 @@ import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
 import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
-import { ChainDef, AgentDef, ToolDef, SkillDef } from '@/lib/types';
+import { ChainDef, AgentDef, ToolDef, SkillDef, ValidationIssue } from '@/lib/types';
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore';
 import { validateChain } from '@/lib/chainGraph';
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
@@ -74,12 +74,21 @@ function WorkspaceContent() {
     type === 'chain' ? (chainView === 'graph' && parsedChain ? 'graph' : 'yaml')
     : type === 'agent' ? 'agent' : 'none';
 
-  const dockIssues = useMemo(() => {
-    if (type !== 'chain' || !parsedChain) return []
-    return validateChain(parsedChain, editorAgents, editorChains, editorTools, editorSkills).issues
-  }, [type, parsedChain, editorAgents, editorChains, editorTools, editorSkills])
-
   const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
+
+  // Each view validates its own live buffer: the graph editor publishes its issues up;
+  // the YAML view's buffer is this page's autosave content.
+  const [graphIssues, setGraphIssues] = useState<ValidationIssue[]>([]);
+  const yamlIssues = useMemo(() => {
+    if (view !== 'yaml' || !slug) return []
+    try {
+      const live = { ...parseChainContent(content, slug), filePath: '' }
+      return validateChain(live, editorAgents, editorChains, editorTools, editorSkills).issues
+    } catch {
+      return []
+    }
+  }, [view, slug, content, editorAgents, editorChains, editorTools, editorSkills])
+  const dockIssues = view === 'graph' ? graphIssues : yamlIssues
 
   // Graph view's real autosave runs inside ChainEditor; mirror its status up so the
   // header reflects graph edits (the page-level useAutoSave above is inert there).
@@ -232,6 +241,7 @@ function WorkspaceContent() {
                   tools={editorTools}
                   skills={editorSkills}
                   onSaveStatus={setGraphSaveStatus}
+                  onValidation={setGraphIssues}
                 />
               ) : (
                 <div className="h-full p-6 pt-4">
