@@ -12,13 +12,13 @@ function StatusIcon({ status }: { status: NodeRunState['status'] }) {
   return <div className="w-3.5 h-3.5 shrink-0 rounded-full bg-zinc-200" />
 }
 
-export function RunTrace({ order, states, selection, branch }: {
+export function RunTrace({ order, states, selection, fork }: {
   order: string[]
   states: RunStateMap
   // History drives selection from a canvas as well as the rail, so the two agree (#64).
   // Left out, the rail owns it.
   selection?: { selected: string | null; onSelect: (id: string) => void }
-  branch?: { onBranch: (nodeId: string, round: number | null) => void; isBranching: boolean }
+  fork?: { onFork: (nodeId: string) => void; isForking: boolean }
 }) {
   const [own, setOwn] = useState<string | null>(null)
   const selected = selection ? selection.selected : own
@@ -66,7 +66,7 @@ export function RunTrace({ order, states, selection, branch }: {
             key={panel}
             nodeId={panel}
             state={states[panel]}
-            branch={branch && { onBranch: round => branch.onBranch(panel, round), isBranching: branch.isBranching }}
+            fork={fork && { onFork: () => fork.onFork(panel), isForking: fork.isForking }}
           />
         : <div className="p-6 text-sm text-zinc-300 italic">
             {selected

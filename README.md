@@ -11,7 +11,7 @@ Unlike heavy, opinionated frameworks that hide prompt logic and execution state 
 1. **Filesystem as the Source of Truth**: All configuration and prompts are stored as plain `.md` files with YAML frontmatter in your workspace. You can edit them in Maestro, in VS Code, or via git. Changes are loaded instantly without server restarts.
 2. **Explicit Graph-Based Variable Passing**: No hidden state, memory buffers, or black-box routing. Variable passing is configured using local `{slot}` slots in agent prompts, wired explicitly in the chain definition via edges connecting output sockets to input slots.
 3. **Log Transparency**: Every chain execution is saved as a structured directory of markdown logs on disk. You don't need the application running to inspect, audit, or share the outputs.
-4. **Branching & Fast Iteration**: Tweaked a prompt? You can branch from any node in a prior run graph, replaying the downstream topological order without wasting tokens re-running upstream nodes.
+4. **Branching & Fast Iteration**: Tweaked a prompt? You can fork a prior run from any node, replaying everything upstream without wasting tokens and rerunning only that node and what it feeds.
 
 ---
 
@@ -123,7 +123,7 @@ Maestro Playground is built as a responsive, premium Next.js application contain
 * **Run Trace Graph**: Visualizes the exact executed DAG snapshot. Review skipped paths, active branch routes, and gate decisions.
 * **Node Output Preview**: Collapsible inspection panel showing thought blocks, final outputs, exact cost/latency, and resolved prompts.
 * **Loop Iteration History**: Review history of every loop round with per-round output previews for zone body nodes.
-* **Run Branching**: Select any node in the trace, click "Branch from here", modify prompts, and rerun the remaining topological steps of the chain instantly.
+* **Run Forking**: Select any node in the trace, click "Fork from this node", and rerun it and its descendants as a new run. Answered holds above it carry over. `POST /api/runs/:id/fork` also takes revised outputs and `versions: 'pinned'` (ADR-0011).
 
 ### 💬 Agent Chat (`/chat`)
 * Play with individual agents in a chat interface with persistent session history to test prompts and behaviors before adding them to chains.

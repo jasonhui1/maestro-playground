@@ -83,6 +83,26 @@ it for those logs.
   back to A produces v3 holding A, beside v1 holding A. A version number is a
   point in time, not an identity. Do not use it as one.
 
+## Which versions a fork reruns (decided 2026-09-19, #103)
+
+A branch is now a fork (`POST /api/runs/:id/fork`). A fork replays the logged
+text of every step it keeps. It reruns the other steps against the **current
+files** by default. That is how edit-and-regenerate works elsewhere: you changed
+a file, so the rerun should see the change. The new run pins what it read,
+like any run.
+
+The fork request may ask for `versions: 'pinned'`. The rerun steps then read
+every file at the version the source run pinned, and the new run keeps the
+source's `versions` map. The caller chooses. A pin whose version file is
+gone refuses the fork rather than falling back to the live file.
+
+One limit: a pinned context file reaches a `context` node, but the `retrieve`
+tool still searches the live context folder. That follows from the open
+question on what "touched" means for a context file, below.
+
+Resume and in-place promote continue the same run. They keep running the
+current files, as before.
+
 ## Open
 
 - **When to snapshot.** Today a version appears only on a run. `lib/fs/save.ts`
@@ -95,5 +115,3 @@ it for those logs.
   run time and its search may reach any of them. Two readings are possible:
   pin only the files a `context` node names, or pin every file a retrieval
   returned. Not decided.
-- **Which versions a branch replay uses.** The pinned versions or the current
-  files. Not decided.

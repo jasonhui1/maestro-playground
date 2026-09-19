@@ -276,3 +276,87 @@ test('the run list filters by branchedFromRunId', async () => {
   const forks = await listRuns(`branchedFromRunId=${sourceId}`)
   assert.deepStrictEqual(forks.map(r => r.runId), [fork])
 })
+
+async function fork(runId: string, body: object): Promise<Response> {
+  const { POST } = await import('../app/api/runs/[runId]/fork/route')
+  return POST({ json: async () => body } as Req, { params: Promise.resolve({ runId }) })
+}
+
+test('fork from a node reruns it and its descendants, keeping answered holds above (#103)', async () => {
+  newWorkspace(withSecondHold)
+  const sourceId = await startRun()
+  await sse(await resume(sourceId, { direction: 'first answer' }))
+  ran.length = 0
+
+  const events = await sse(await fork(sourceId, { from: 'after' }))
+  assert.deepStrictEqual(ran.map(r => r.slug), ['after'])
+  assert.strictEqual(events.at(-1)!.type, 'run_waiting', 'the hold below the anchor is asked again')
+
+  const forked = await readMeta(events[0].runId as string)
+  assert.strictEqual(forked.branchedFromRunId, sourceId)
+  assert.strictEqual(forked.branchedFromNode, 'after')
+  assert.deepStrictEqual(forked.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', true], ['hold2', false]])
+})
+
+test('fork with revisions replays the revised text and reruns only what it feeds (#103)', async () => {
+  newWorkspace()
+  const sourceId = await completeRun()
+  ran.length = 0
+
+  const events = await sse(await fork(sourceId, { revisions: { prop: 'my own proposal' } }))
+  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'])
+  assert.ok(ran[0].systemPrompt.includes('my own proposal'))
+
+  const forked = await readMeta(events[0].runId as string)
+  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
+  assert.strictEqual(prop.output, 'my own proposal')
+  assert.strictEqual(prop.tokensIn, 0)
+  assert.strictEqual(forked.branchedFromNode, 'prop')
+})
+
+test('a fork runs current files by default, or the source run\'s pins when asked (#103, ADR-0011)', async () => {
+  const wp = newWorkspace()
+  const sourceId = await completeRun()
+  const source = await readMeta(sourceId)
+  fs.writeFileSync(path.join(wp, 'agents/after.md'), '---\nname: After\n---\nrebuild on {direction}\n')
+
+  ran.length = 0
+  const current = await readMeta((await sse(await fork(sourceId, { from: 'after' })))[0].runId as string)
+  assert.ok(ran[0].systemPrompt.startsWith('rebuild on'))
+  assert.notDeepStrictEqual(current.versions, source.versions)
+
+  ran.length = 0
+  const pinned = await readMeta((await sse(await fork(sourceId, { from: 'after', versions: 'pinned' })))[0].runId as string)
+  assert.ok(ran[0].systemPrompt.startsWith('build on'))
+  assert.deepStrictEqual(pinned.versions, source.versions)
+})
+
+test('a pinned fork refuses when a pinned version is gone (#103)', async () => {
+  const wp = newWorkspace()
+  const sourceId = await completeRun()
+  fs.rmSync(path.join(wp, '.versions', 'agent', 'after'), { recursive: true })
+  assert.strictEqual((await fork(sourceId, { from: 'after', versions: 'pinned' })).status, 422)
+})
+
+test('fork refuses a request it cannot read against the run (#103)', async () => {
+  newWorkspace()
+  const sourceId = await completeRun()
+  assert.strictEqual((await fork(sourceId, {})).status, 400, 'from or revisions is required')
+  assert.strictEqual((await fork(sourceId, { from: 'nope' })).status, 404)
+  assert.strictEqual((await fork(sourceId, { revisions: { hold: 'x' } })).status, 400, 'a hold is answered through resume')
+  assert.strictEqual((await fork(sourceId, { revisions: { prop: 3 } })).status, 400)
+  assert.strictEqual((await fork(sourceId, { from: 'prop', revisions: { prop: 'x' } })).status, 400)
+  assert.strictEqual((await fork(sourceId, { from: 'prop', versions: 'latest' })).status, 400)
+  assert.strictEqual((await fork('no-such-run', { from: 'prop' })).status, 404)
+  const { updateRunMeta } = await import('../lib/logger')
+  updateRunMeta(sourceId, { status: 'running' })
+  assert.strictEqual((await fork(sourceId, { from: 'prop' })).status, 409)
+})
+
+test('/api/run refuses the retired branch request rather than running from scratch (#103)', async () => {
+  newWorkspace()
+  const { POST } = await import('../app/api/run/route')
+  const res = await POST({ json: async () => ({ chainName: 'held', seedPrompt: 'go', branchOutputs: [] }) } as Req)
+  assert.strictEqual(res.status, 400)
+  assert.deepStrictEqual(ran, [])
+})

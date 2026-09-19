@@ -242,9 +242,9 @@ export interface RunMeta {
   holds?: HoldRecord[]
   graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
   branchedFromRunId?: string
-  /** A branch's anchor by step; forks name a node instead (#99). */
+  /** A branch's anchor by step, on runs from before branches became forks (#103). */
   branchedFromStep?: number
-  /** A fork's anchor: the promoted node or the re-answered hold (#99). */
+  /** A fork's first anchor: the node it reran from, revised, promoted or re-answered (#99, #103). */
   branchedFromNode?: string
   /** Scalar pin of the entry point; the only pin old logs carry (ADR-0011). */
   versionNumber?: number

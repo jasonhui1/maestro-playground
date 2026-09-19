@@ -12,15 +12,6 @@ export function runOrderOf(outputs: AgentOutput[]): string[] {
   return seen
 }
 
-// Where a node's round sits in the flat list, which is the step "branch from here" forks at.
-// A null round is the panel's "latest" — the node's last step. -1 when there is no such step.
-export function stepIndexOf(outputs: AgentOutput[], nodeId: string, round: number | null): number {
-  // A rerun can repeat a round number (#90), so the latest write, not the first, is
-  // the step "branch from here" should fork at.
-  if (round !== null) return outputs.findLastIndex(o => o.nodeId === nodeId && o.round === round)
-  return outputs.findLastIndex(o => o.nodeId === nodeId)
-}
-
 // Last write per node id, kept at first-appearance position (#90). No-nodeId
 // records predate graph capture and can't be matched, so they're kept as-is.
 export function latestOutputsByNode(outputs: AgentOutput[]): AgentOutput[] {

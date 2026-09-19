@@ -13,6 +13,9 @@ export const CAPABILITIES = {
   /** A failed run streams a final `layout` frame — pending panels `errored`, each
    *  carrying the message — before its `error` event. */
   runFailureFrame: true,
+  /** `POST /api/runs/:id/fork` takes `{ from?, revisions?, versions? }` and streams the new run;
+   *  `/api/run` no longer takes `branchOutputs` (#103). */
+  runFork: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

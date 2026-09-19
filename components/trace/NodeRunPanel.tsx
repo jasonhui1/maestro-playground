@@ -11,12 +11,11 @@ import { SaveToContextButton } from '@/components/SaveToContextButton'
 import { Markdown } from '@/components/ui/Markdown'
 import { RenderToggle } from '@/components/ui/RenderToggle'
 
-export function NodeRunPanel({ nodeId, state, branch }: {
+export function NodeRunPanel({ nodeId, state, fork }: {
   nodeId: string
   state: NodeRunState
-  // History forks a run from the round on screen, so the affordance belongs to the panel
-  // that owns `round` — a caller outside it could only ever branch from the last one (#64).
-  branch?: { onBranch: (round: number | null) => void; isBranching: boolean }
+  // A fork reruns the whole node, so it is offered per node, not per round (#103).
+  fork?: { onFork: () => void; isForking: boolean }
 }) {
   const [round, setRound] = useState<number | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
@@ -55,13 +54,13 @@ export function NodeRunPanel({ nodeId, state, branch }: {
           {state.status !== 'running' && shown && (
             <SaveToContextButton agentName={state.agentName ?? nodeId} output={shown} />
           )}
-          {branch && (
+          {fork && (
             <button
-              onClick={() => branch.onBranch(round)}
-              disabled={branch.isBranching}
+              onClick={fork.onFork}
+              disabled={fork.isForking}
               className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
             >
-              {branch.isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
+              {fork.isForking ? 'FORKING...' : 'FORK FROM THIS NODE'}
             </button>
           )}
         </div>

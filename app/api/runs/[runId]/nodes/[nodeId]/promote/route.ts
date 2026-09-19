@@ -3,7 +3,7 @@ import { readRunMeta, updateRunMeta, nextStep, latestStepOf, writeAgentLog } fro
 import { CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
 import { planPromotion, type PromoteRefusal } from '@/lib/promote'
 import { forkRun } from '@/lib/fork'
-import { withoutNodes } from '@/lib/partialRun'
+import { runLog } from '@/lib/partialRun'
 import { streamChainRun, contextOverrides, loadContinuation, refusalResponse } from '@/lib/runSession'
 import type { RunMeta } from '@/lib/types'
 
@@ -42,7 +42,7 @@ export async function POST(
   }
 
   if (meta.status !== 'waiting' || plan.forks) {
-    const fork = forkRun(meta, nodeId, { output: plan.revision }, context, plan.downstream)
+    const fork = forkRun(meta, { anchors: [nodeId], outputs: [plan.revision], context })
     if ('error' in fork) return refusalResponse(fork)
     // The source keeps its history; only the flag on the promoted reply is new.
     updateRunMeta(meta.runId, { agentOutputs: plan.flaggedOutputs })
@@ -56,7 +56,7 @@ export async function POST(
   // No await since the status read: the run is claimed before a second promote or resume can read it.
   // The revision is recorded up front, so a run that fails after it still shows what was promoted.
   const history = plan.flaggedOutputs
-  const kept = withoutNodes(history, plan.downstream)
+  const { replay: kept } = runLog({ agentOutputs: history, graph: meta.graph, holds: meta.holds }).replayFor([nodeId])
   updateRunMeta(meta.runId, { status: 'running', agentOutputs: [...history, plan.revision] })
   writeAgentLog(meta.runId, sourceStep, plan.source)
 

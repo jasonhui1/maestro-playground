@@ -9,8 +9,8 @@ import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { kindOf } from '@/lib/nodeKinds'
-import { buildRunStateMap, runOrderOf, stepIndexOf } from '@/lib/runHistoryState'
-import { branchRun } from '@/lib/branchRun'
+import { buildRunStateMap, runOrderOf } from '@/lib/runHistoryState'
+import { forkFromNode } from '@/lib/forkFromNode'
 import DockSplit from '@/components/workspace/DockSplit'
 import RunDock from '@/components/trace/RunDock'
 import { buildLayoutModel, isRenderableLayout } from '@/lib/layoutModel'
@@ -81,7 +81,7 @@ function RunDetail({ run }: { run: RunMeta }) {
   // Gates the view below on the one fetch classification needs, so a classified run
   // opens straight into its result view instead of flashing the trace first (#72).
   const [chainsLoaded, setChainsLoaded] = useState(false)
-  const [isBranching, setIsBranching] = useState(false)
+  const [isForking, setIsForking] = useState(false)
   const [seedOpen, setSeedOpen] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'result' | 'trace'>('trace')
@@ -165,22 +165,16 @@ function RunDetail({ run }: { run: RunMeta }) {
     }
   }, [chainDef, agents, overlay])
 
-  async function handleBranch(fromStep: number) {
-    setIsBranching(true)
+  async function handleFork(nodeId: string) {
+    setIsForking(true)
     try {
-      const newRunId = await branchRun(run, fromStep)
+      const newRunId = await forkFromNode(run.runId, nodeId)
       if (newRunId) router.push(`/history/${newRunId}`)
     } catch (err) {
-      console.error('Branch failed:', err)
+      console.error('Fork failed:', err)
     } finally {
-      setIsBranching(false)
+      setIsForking(false)
     }
-  }
-
-  // The trace names the round on screen; the fork point is that round's step in the log.
-  function handleBranchRound(nodeId: string, round: number | null) {
-    const step = stepIndexOf(run.agentOutputs, nodeId, round)
-    if (step !== -1) handleBranch(step)
   }
 
   return (
@@ -290,13 +284,6 @@ function RunDetail({ run }: { run: RunMeta }) {
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-                      <button
-                        onClick={() => handleBranch(idx)}
-                        disabled={isBranching}
-                        className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
-                      >
-                        {isBranching ? 'BRANCHING...' : 'BRANCH FROM HERE'}
-                      </button>
                       <div className="w-full sm:w-48">
                         <TokenCostBar tokensIn={output.tokensIn} tokensOut={output.tokensOut} costUsd={output.costUsd} />
                       </div>
@@ -315,7 +302,7 @@ function RunDetail({ run }: { run: RunMeta }) {
               order={traceOrder}
               states={overlay}
               selection={{ selected: selectedNodeId, onSelect: setSelectedNodeId }}
-              branch={{ onBranch: handleBranchRound, isBranching }}
+              fork={{ onFork: handleFork, isForking }}
             />
           }
         />

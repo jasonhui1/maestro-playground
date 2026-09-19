@@ -3,6 +3,7 @@ import { getWorkspacePath, loadWorkspace } from './fs/workspace'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinRunVersions, versionKey } from './runVersions'
+import { pinnedWorkspace } from './pinnedWorkspace'
 import { writeAgentLog, updateRunMeta, readRunMeta } from './logger'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
@@ -28,18 +29,43 @@ export function refusalResponse({ error, errors, status }: Refusal): Response {
   return Response.json({ error, errors }, { status })
 }
 
-/** A run's recorded graph over live files, ready to continue or fork, with those files' pins; or why it cannot. */
-export function loadContinuation(meta: RunMeta):
-  | { chain: ChainDef; workspace: RunSession['workspace']; versionNumber: number; versions: Record<string, number> }
+/** Which files a continuation runs: the live ones, or the source run's pins (ADR-0011). */
+export type ContinuationVersions = 'current' | 'pinned'
+
+/** A run's recorded graph over live or pinned files, ready to continue or fork, with those files' pins; or why it cannot. */
+export function loadContinuation(meta: RunMeta, from: ContinuationVersions = 'current'):
+  | {
+      chain: ChainDef
+      workspace: RunSession['workspace']
+      versionNumber: number
+      versions: Record<string, number>
+      /** Context files read back at their pins, for the executor's context overrides. */
+      pinnedContext: Record<string, string>
+    }
   | Refusal {
-  const workspace = loadWorkspace()
-  const chain = chainForResume(meta, workspace.chains)
+  const live = loadWorkspace()
+  if (from === 'pinned') {
+    if (!meta.versions) return { error: 'Run has no pinned versions', status: 422 }
+    const pinned = pinnedWorkspace(live, meta.versions)
+    if ('error' in pinned) return pinned
+    const { context: pinnedContext, ...workspace } = pinned
+    const chain = graphOver(meta, workspace)
+    if ('error' in chain) return chain
+    return { chain, workspace, versionNumber: meta.versionNumber ?? 0, versions: meta.versions, pinnedContext }
+  }
+  const chain = graphOver(meta, live)
+  if ('error' in chain) return chain
+  // Live files run by default; the pins in meta stay what the run started with (ADR-0011).
+  const versions = pinRunVersions(chain, live)
+  return { chain, workspace: live, versionNumber: versions[versionKey('chain', chain.slug)] ?? 0, versions, pinnedContext: {} }
+}
+
+function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refusal {
+  const chain = chainForResume(meta, ws.chains)
   if (!chain) return { error: 'Run has no recorded graph', status: 422 }
-  const validation = validateChain(chain, workspace.agents, workspace.chains, workspace.tools, workspace.skills)
+  const validation = validateChain(chain, ws.agents, ws.chains, ws.tools, ws.skills)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
-  // Live files run, as a branch does; the pins in meta stay what the run started with (ADR-0011).
-  const versions = pinRunVersions(chain, workspace)
-  return { chain, workspace, versionNumber: versions[versionKey('chain', chain.slug)] ?? 0, versions }
+  return chain
 }
 
 export interface RunSession {

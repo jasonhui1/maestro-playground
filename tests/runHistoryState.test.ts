@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildRunStateMap, runOrderOf, stepIndexOf, latestOutputsByNode } from '../lib/runHistoryState'
+import { buildRunStateMap, runOrderOf, latestOutputsByNode } from '../lib/runHistoryState'
 import type { AgentOutput } from '../lib/types'
 
 test('runHistoryState', () => {
@@ -165,9 +165,8 @@ test('latestOutputsByNode', () => {
   assert.deepStrictEqual(latestOutputsByNode([]), [])
 })
 
-// The sidebar rail and "branch from here" both read the flat agentOutputs list: one
-// needs the node order, the other needs the step a given round was written at (#64).
-test('runOrderOf / stepIndexOf', () => {
+// The sidebar rail reads the node order off the flat agentOutputs list (#64).
+test('runOrderOf', () => {
   const out = (nodeId: string, round?: number): AgentOutput => ({
     nodeId, agentName: nodeId, systemPrompt: '', input: '', output: '',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,
@@ -181,26 +180,4 @@ test('runOrderOf / stepIndexOf', () => {
   assert.deepStrictEqual(runOrderOf([]), [])
   // an output with no nodeId predates graph capture and cannot be placed on the rail
   assert.deepStrictEqual(runOrderOf([{ ...out('a'), nodeId: undefined }]), [])
-
-  // a named round resolves to the step that round was written at
-  assert.strictEqual(stepIndexOf(outputs, 'loop', 1), 2)
-  assert.strictEqual(stepIndexOf(outputs, 'loop', 0), 1)
-  // null round means "the round in view is the latest" — branch from the node's last step
-  assert.strictEqual(stepIndexOf(outputs, 'loop', null), 3)
-  assert.strictEqual(stepIndexOf(outputs, 'a', null), 0)
-  // a node that never ran, or a round it never reached, has no step to branch from
-  assert.strictEqual(stepIndexOf(outputs, 'seed', null), -1)
-  assert.strictEqual(stepIndexOf(outputs, 'loop', 9), -1)
-})
-
-// A rerun can repeat a round number (#90); "branch from here" must fork from the
-// latest write, not the stale first attempt at that round.
-test('stepIndexOf on a repeated round picks the latest write', () => {
-  const out = (nodeId: string, round: number): AgentOutput => ({
-    nodeId, agentName: nodeId, systemPrompt: '', input: '', output: '', round,
-    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, status: 'success', model: 'm', timestamp: 't',
-  })
-  const outputs = [out('loop', 0), out('loop', 1), out('loop', 0), out('loop', 1)]
-  assert.strictEqual(stepIndexOf(outputs, 'loop', 0), 2)
-  assert.strictEqual(stepIndexOf(outputs, 'loop', 1), 3)
 })

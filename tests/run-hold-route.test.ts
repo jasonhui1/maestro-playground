@@ -65,7 +65,10 @@ function newWorkspace(): string {
 
 async function run(body: object): Promise<{ type: string; [k: string]: unknown }[]> {
   const { POST } = await import('../app/api/run/route')
-  const res = await POST({ json: async () => body } as import('next/server').NextRequest)
+  return sse(await POST({ json: async () => body } as import('next/server').NextRequest))
+}
+
+async function sse(res: Response): Promise<{ type: string; [k: string]: unknown }[]> {
   assert.strictEqual(res.status, 200, await res.clone().text())
   const text = await new Response(res.body).text()
   return text.split('\n\n').flatMap(frame => {
@@ -110,14 +113,13 @@ test('a run reaching a hold ends waiting, with a hold record, and nothing after 
 
 test('a run replayed with the hold answered does not pause', async () => {
   newWorkspace()
-  const out = (nodeId: string, output: string): AgentOutput => ({
-    nodeId, agentName: nodeId, systemPrompt: '', input: '', output,
-    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
-  })
-  const events = await run({
-    chainName: 'held', seedPrompt: 'go',
-    branchOutputs: [out('dec', '## Candidate 1\nkeep it'), out('hold', 'KEEP: it')],
-  })
+  const runId = (await run({ chainName: 'held', seedPrompt: 'go' })).at(-1)!.runId as string
+  const { POST: resume } = await import('../app/api/runs/[runId]/resume/route')
+  await sse(await resume({ json: async () => ({ direction: 'KEEP: it' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+  ran.length = 0
+
+  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
+  const events = await sse(await fork({ json: async () => ({ from: 'after' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
 
   assert.strictEqual(events.at(-1)!.type, 'run_complete')
   assert.ok(!events.some(e => e.type === 'run_waiting'))

@@ -104,19 +104,25 @@ edges: []
 ---
 `
 
-async function run(body: object): Promise<LayoutModel[]> {
-  const { POST } = await import('../app/api/run/route')
-  const req = { json: async () => body } as import('next/server').NextRequest
-  const res = await POST(req)
+type Event = { type: string; runId?: string; model?: LayoutModel }
+
+async function events(res: Response): Promise<Event[]> {
   const text = await new Response(res.body).text()
-  return text
-    .split('\n\n')
-    .flatMap(frame => {
-      const line = frame.split('\n').find(l => l.startsWith('data: '))
-      if (!line) return []
-      const event = JSON.parse(line.slice(6)) as { type: string; model?: LayoutModel }
-      return event.type === 'layout' && event.model ? [event.model] : []
-    })
+  return text.split('\n\n').flatMap(frame => {
+    const line = frame.split('\n').find(l => l.startsWith('data: '))
+    return line ? [JSON.parse(line.slice(6)) as Event] : []
+  })
+}
+
+const layouts = (all: Event[]) => all.flatMap(e => (e.type === 'layout' && e.model ? [e.model] : []))
+
+async function start(body: object): Promise<Event[]> {
+  const { POST } = await import('../app/api/run/route')
+  return events(await POST({ json: async () => body } as import('next/server').NextRequest))
+}
+
+async function run(body: object): Promise<LayoutModel[]> {
+  return layouts(await start(body))
 }
 
 test('the panels exist before hop 1 and fill in one hop at a time', async () => {
@@ -154,16 +160,18 @@ test('a sidebar chain streams one panel per round', async () => {
   assert.deepStrictEqual(frames.at(-1)!.panels.map(p => p.text), ['round zero', 'round one'])
 })
 
-// A branched run replays its earlier hops straight into the graph without an onDone,
+// A fork replays its earlier hops straight into the graph without an onDone,
 // so the first frame has to carry them or those panels read pending for the whole run.
-test('a replayed branch output is already in the first frame', async () => {
+test('a replayed fork output is already in the first frame', async () => {
   newWorkspace('relay.md', timelineChain)
-  hops.push(output('second', '## Summary\nbeta'))
+  hops.push(output('first', '## Summary\nalpha'), output('second', '## Summary\nbeta'))
+  const runId = (await start({ chainName: 'relay', seedPrompt: 'go' }))[0].runId!
+  hops.length = 0
+  hops.push(output('second', '## Summary\nbeta again'))
 
-  const frames = await run({
-    chainName: 'relay', seedPrompt: 'go',
-    branchOutputs: [output('first', '## Summary\nalpha')],
-  })
+  const { POST } = await import('../app/api/runs/[runId]/fork/route')
+  const res = await POST({ json: async () => ({ from: 'second' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) })
+  const frames = layouts(await events(res))
   assert.deepStrictEqual(frames[0].panels.map(p => p.state), ['filled', 'pending'])
 })
 

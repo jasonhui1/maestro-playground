@@ -1,4 +1,5 @@
-import { AgentOutput, ChainDef, ChainNode, ChainEdge } from './types'
+import { holdsKeptByFork } from './hold'
+import type { AgentOutput, ChainDef, ChainNode, ChainEdge, HoldRecord, RunMeta } from './types'
 
 // All ancestors of targetId (incl. itself), with any touched loop zone fully included.
 export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: ChainNode[]; edges: ChainEdge[] } {
@@ -53,7 +54,37 @@ export function downstreamIds(graph: { nodes: ChainNode[]; edges: ChainEdge[] },
   return found
 }
 
-// Every record not written by one of `nodeIds`; records with no node stay.
-export function withoutNodes(outputs: AgentOutput[], nodeIds: Set<string>): AgentOutput[] {
-  return outputs.filter(o => !o.nodeId || !nodeIds.has(o.nodeId))
+/** A record's slot: its node and round. A later write to the same slot supersedes it (#90). */
+export function recordKey(o: AgentOutput): string {
+  return `${o.nodeId}|${o.round ?? ''}`
+}
+
+export interface RunLog {
+  /** The latest record per slot, each at its own position; records with no node all stay. */
+  current(): AgentOutput[]
+  /** The anchor's descendants: what a rerun anchored there executes again, bar the anchor. */
+  below(anchor: string): Set<string>
+  /** What a rerun anchored at `anchors` replays, and the answered holds it keeps (#99, #103). */
+  replayFor(anchors: string[]): { replay: AgentOutput[]; holds: HoldRecord[] }
+}
+
+/** A run's outputs read as a log. */
+export function runLog(run: Pick<RunMeta, 'agentOutputs' | 'graph' | 'holds'>): RunLog {
+  const graph = run.graph ?? { nodes: [], edges: [] }
+  const current = () => {
+    const latest = new Map(run.agentOutputs.filter(o => o.nodeId).map(o => [recordKey(o), o]))
+    return run.agentOutputs.filter(o => !o.nodeId || latest.get(recordKey(o)) === o)
+  }
+  const below = (anchor: string) => downstreamIds(graph, anchor)
+  return {
+    current,
+    below,
+    replayFor(anchors) {
+      const dropped = new Set(anchors.flatMap(a => [a, ...below(a)]))
+      return {
+        replay: current().filter(o => !o.nodeId || !dropped.has(o.nodeId)),
+        holds: holdsKeptByFork(run.holds, dropped),
+      }
+    },
+  }
 }

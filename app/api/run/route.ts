@@ -3,14 +3,17 @@ import { loadWorkspace } from '@/lib/fs/workspace'
 import { initRunDir } from '@/lib/logger'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
-import { RunMeta, AgentOutput } from '@/lib/types'
+import { RunMeta } from '@/lib/types'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { streamChainRun, contextOverrides, newRunId } from '@/lib/runSession'
-import path from 'path'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { seedPrompt, branchedFromRunId, branchedFromStep, branchOutputs, paramValue, context } = body
+  const { seedPrompt, paramValue, context } = body
+  // Refused, not ignored: an old client would otherwise rerun the whole chain (#103).
+  if (['branchOutputs', 'branchedFromRunId', 'branchedFromStep'].some(field => body[field] !== undefined)) {
+    return Response.json({ error: 'Branch fields are retired; fork through POST /api/runs/:id/fork' }, { status: 400 })
+  }
 
   const workspace = loadWorkspace()
   const { agents, skills, chains, tools } = workspace
@@ -41,8 +44,6 @@ export async function POST(req: NextRequest) {
     status: 'running',
     agentOutputs: [],
     graph: { nodes: chain.nodes, edges: chain.edges },
-    branchedFromRunId: branchedFromRunId ? path.basename(branchedFromRunId) : undefined,
-    branchedFromStep,
     versionNumber: currentVersion > 0 ? currentVersion : undefined,
     versions,
   }
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     seedPrompt,
     paramValue: typeof paramValue === 'string' ? paramValue : '',
     context: contextOverrides(context),
-    replay: (branchOutputs as AgentOutput[]) ?? [],
+    replay: [],
     versionNumber: currentVersion,
   })
 }

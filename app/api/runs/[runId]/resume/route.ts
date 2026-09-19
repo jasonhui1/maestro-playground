@@ -35,7 +35,7 @@ export async function POST(
 
   const answer = answerHold(meta.holds ?? [], hold, direction, pick)
   if (answer.mode === 'fork') {
-    const fork = forkRun(meta, hold.nodeId, { output: answer.output, hold: answer.record }, context)
+    const fork = forkRun(meta, { anchors: [hold.nodeId], outputs: [answer.output], hold: answer.record, context })
     return 'error' in fork ? refusalResponse(fork) : fork
   }
   if (meta.status !== 'waiting') {

@@ -12,12 +12,12 @@ import RunPinnedVersions from '@/components/trace/RunPinnedVersions'
 
 const RUN_TABS: PanelTab[] = ['trace', 'compare', 'versions']
 
-export default function RunDock({ run, order, states, selection, branch }: {
+export default function RunDock({ run, order, states, selection, fork }: {
   run: RunMeta
   order: string[]
   states: RunStateMap
   selection: { selected: string | null; onSelect: (id: string) => void }
-  branch: { onBranch: (nodeId: string, round: number | null) => void; isBranching: boolean }
+  fork: { onFork: (nodeId: string) => void; isForking: boolean }
 }) {
   const active = clampTab(useWorkspaceUiStore(s => s.activeTab), RUN_TABS)
   // Latest write per node (#90) — a rerun's stale duplicate drops out of the picker;
@@ -30,7 +30,7 @@ export default function RunDock({ run, order, states, selection, branch }: {
     <DockShell tabs={RUN_TABS.map(id => ({ id, label: id }))} active={active}>
       {active === 'trace' && (
         <div className="p-3">
-          <RunTrace order={order} states={states} selection={selection} branch={branch} />
+          <RunTrace order={order} states={states} selection={selection} fork={fork} />
         </div>
       )}
 

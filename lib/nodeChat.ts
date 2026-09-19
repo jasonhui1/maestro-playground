@@ -1,4 +1,5 @@
 import { agentSlugOf } from './nodeKinds'
+import { recordKey } from './partialRun'
 import { latestStepOf, readRunMeta, updateRunMeta, writeAgentLog } from './logger'
 import type { AgentOutput, ChainEdge, ChainNode, ChatMessage, RunMeta } from './types'
 
@@ -56,13 +57,13 @@ export function appendTurn(runId: string, nodeId: string, message: string, reply
   writeAgentLog(runId, step, record)
 }
 
-const recordKey = (o: AgentOutput) => `${o.nodeId}|${o.round ?? ''}|${o.timestamp}`
-
 /** A stretch's outputs, keeping turns a chat wrote to meta.json while it ran. */
 export function keepConversations(results: AgentOutput[], onDisk: AgentOutput[]): AgentOutput[] {
-  const written = new Map(onDisk.filter(o => o.conversation?.length).map(o => [recordKey(o), o.conversation!]))
+  // A slot can hold a superseded write too; the timestamp says which write this is.
+  const sameWrite = (a: AgentOutput, b: AgentOutput) => recordKey(a) === recordKey(b) && a.timestamp === b.timestamp
+  const written = onDisk.filter(o => o.conversation?.length)
   return results.map(o => {
-    const conversation = written.get(recordKey(o))
+    const conversation = written.findLast(w => sameWrite(w, o))?.conversation
     return conversation && conversation.length > (o.conversation?.length ?? 0) ? { ...o, conversation } : o
   })
 }
