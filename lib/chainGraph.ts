@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, ToolDef, SkillDef, ValidationResult } from './types'
 import { slugify } from './graph'
-import { kindOf, allKinds } from './nodeKinds'
+import { kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 
@@ -88,11 +88,12 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       if (forbidden.length) {
         add(`Node "${n.id}": agent "${nodeAgent!.slug}" — ${forbiddenAgentFieldMessage(forbidden)}`, { nodeId: n.id })
       }
-      const skillNames = new Set(skills.map(s => s.name))
-      const markerSkills = [...(n['skills!'] ?? []), ...(n['skills+'] ?? [])]
-      for (const skillRef of markerSkills) {
-        if (!skillNames.has(skillRef)) {
-          add(`Node "${n.id}": references unknown skill "${skillRef}"`, { nodeId: n.id })
+      // Checks the resolved list, not just skills!/skills+ — an agent's own defaults
+      // can name a missing skill too (#132).
+      if (nodeAgent) {
+        const resolved = resolveNodeSkills(n, nodeAgent.skills ?? [])
+        for (const skillRef of unknownSkillNames(resolved, skills)) {
+          add(`Node "${n.id}": agent "${nodeAgent.slug}" names skill "${skillRef}", which does not exist`, { nodeId: n.id })
         }
       }
       for (const toolRef of nodeAgent?.tools ?? []) {

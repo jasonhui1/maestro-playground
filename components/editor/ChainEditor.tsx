@@ -291,6 +291,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
                 <AgentDrawer
                   slug={drawerSlug}
                   agentName={agents.find(a => a.slug === drawerSlug)?.name ?? drawerSlug}
+                  skills={skills}
                   onClose={() => setDrawerSlug(null)}
                   onSaved={refetchAgents}
                 />

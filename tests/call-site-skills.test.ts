@@ -103,6 +103,32 @@ test('a chain with only known skill names in its markers validates clean', () =>
   assert.strictEqual(result.valid, true, result.errors.join('\n'))
 })
 
+test('an unknown skill on the agent file itself fails validation, with no marker involved', () => {
+  const badAgents = [agent('panel-member', ['made-up-default'])]
+  const chain: ChainDef = {
+    slug: 'c', name: 'c', description: '', filePath: '',
+    nodes: [{ id: 't', kind: 'agent', agent: 'panel-member' }],
+    edges: [],
+  }
+  const result = validateChain(chain, badAgents, [], [], skills)
+  assert.strictEqual(result.valid, false)
+  assert.ok(result.errors.some(e => e.includes('made-up-default')), result.errors.join('\n'))
+})
+
+// --- injectSkills: the run-time backstop behind validateChain ---
+
+test('injectSkills throws rather than silently dropping an unresolved skill name', async () => {
+  const { injectSkills } = await import('../lib/prompt')
+  const bad = agent('panel-member', ['made-up-skill'])
+  assert.throws(() => injectSkills(bad, skills, 'body'), /made-up-skill/)
+})
+
+test('injectSkills resolves cleanly when every named skill exists', async () => {
+  const { injectSkills } = await import('../lib/prompt')
+  const ok = agent('panel-member', ['core-protocol'])
+  assert.ok(injectSkills(ok, skills, 'body').includes('CORE PROTOCOL TEXT'))
+})
+
 // --- round trip through the chain file format ---
 
 function newWorkspace() {

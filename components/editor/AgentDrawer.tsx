@@ -4,12 +4,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { FileEditor } from '@/components/workspace/FileEditor'
 import { X, ExternalLink } from 'lucide-react'
-import { AGENT_FIELDS, type AgentDef, type AgentField, type FieldSource } from '@/lib/types'
+import { AGENT_FIELDS, type AgentDef, type AgentField, type FieldSource, type SkillDef } from '@/lib/types'
 import { forbiddenAgentFieldMessage } from '@/lib/fs/validate'
 
-export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
+export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved }: {
   slug: string
   agentName: string
+  skills?: SkillDef[]
   onClose: () => void
   onSaved?: () => void
 }) {
@@ -71,7 +72,7 @@ export default function AgentDrawer({ slug, agentName, onClose, onSaved }: {
           <button onClick={onClose} title="Close" className="text-zinc-400 hover:text-zinc-700"><X size={16} /></button>
         </div>
       </div>
-      {ready && <ResolvedAgent agent={ready.resolved} />}
+      {ready && <ResolvedAgent agent={ready.resolved} skills={skills} />}
       <div className="flex-1 min-h-0 p-3">
         {ready === null
           ? <div className="text-xs text-zinc-400">Loading…</div>
@@ -102,8 +103,24 @@ function fieldValue(agent: AgentDef, field: AgentField): string {
   return String(v)
 }
 
+/** Renders `skills`, marking any name absent from the workspace's skill files (#132). */
+function SkillsValue({ names, skills }: { names: string[]; skills?: SkillDef[] }) {
+  if (names.length === 0) return <>—</>
+  if (!skills) return <>{names.join(', ')}</>
+  const known = new Set(skills.map(s => s.name))
+  return (
+    <>
+      {names.map((name, i) => (
+        <span key={name + i} className={known.has(name) ? undefined : 'text-red-600'}>
+          {i > 0 ? ', ' : ''}{name}{known.has(name) ? '' : ' (missing)'}
+        </span>
+      ))}
+    </>
+  )
+}
+
 /** What the run actually uses: the agent file merged over workspace/defaults.md (ADR-0010). */
-function ResolvedAgent({ agent }: { agent: AgentDef }) {
+function ResolvedAgent({ agent, skills }: { agent: AgentDef; skills?: SkillDef[] }) {
   const sources = agent.resolution?.sources
   if (!sources) return null
 
@@ -131,7 +148,9 @@ function ResolvedAgent({ agent }: { agent: AgentDef }) {
             {rows.map(r => (
               <tr key={r.field} className="align-top">
                 <td className="py-0.5 pr-3 text-zinc-500 whitespace-nowrap">{r.field}</td>
-                <td className="py-0.5 pr-3 text-zinc-900 break-all">{r.value || '—'}</td>
+                <td className="py-0.5 pr-3 text-zinc-900 break-all">
+                  {r.field === 'skills' ? <SkillsValue names={agent.skills} skills={skills} /> : (r.value || '—')}
+                </td>
                 <td className="py-0.5 text-zinc-400 whitespace-nowrap text-right">{SOURCE_LABEL[r.source] ?? r.source}</td>
               </tr>
             ))}

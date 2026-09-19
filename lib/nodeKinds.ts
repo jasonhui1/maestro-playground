@@ -1,4 +1,4 @@
-import { ChainDef, ChainNode, ChainNodeKind, AgentDef } from './types'
+import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef } from './types'
 import { parseSlots } from './slots'
 import { slugify } from './graph'
 import { ENTITY_DIRS } from './entityDirs'
@@ -57,6 +57,13 @@ export function resolveNodeSkills(node: ChainNode, agentSkills: string[]): strin
   if (node['skills!'] !== undefined) return node['skills!']
   if (node['skills+'] !== undefined) return [...agentSkills, ...node['skills+']]
   return agentSkills
+}
+
+// Shared by validateChain (pre-run) and injectSkills (run-time backstop), so the two
+// checks can't drift apart (#132).
+export function unknownSkillNames(names: string[], allSkills: SkillDef[]): string[] {
+  const known = new Set(allSkills.map(s => s.name))
+  return names.filter(name => !known.has(name))
 }
 
 function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[] {
