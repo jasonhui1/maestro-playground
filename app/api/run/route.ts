@@ -4,6 +4,7 @@ import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { startRun } from '@/lib/runSession'
+import { diskWorkspace } from '@/lib/runFolders'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   // for an agent run — so a step log keeps the one number it has always carried.
   const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
-  return startRun({
+  return startRun(diskWorkspace(), {
     chain, workspace, title: runTitle, seedPrompt,
     parameter: chain.parameter && typeof paramValue === 'string' && paramValue
       ? { name: chain.parameter.name, value: paramValue } : undefined,

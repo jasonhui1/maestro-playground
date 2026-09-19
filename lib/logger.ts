@@ -1,9 +1,7 @@
-import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
 import { nanoid } from 'nanoid'
-import { RunMeta, AgentOutput, ToolCallRecord, ChatMessage, HoldRecord } from './types'
-import { getWorkspacePath } from './fs/workspace'
+import { AgentOutput, ToolCallRecord, ChatMessage, HoldRecord } from './types'
 import { groupToolCallsByTurn } from './tools/logFormat'
 import { sectionWarningText } from './sectionWarning'
 import type { SectionWarning } from './sectionWarning'
@@ -76,22 +74,13 @@ export function newRunId(): string {
   return `${new Date().toISOString().slice(0, 10)}-${nanoid(6)}`
 }
 
-export function getRunDir(runId: string): string {
-  const safeRunId = path.basename(runId)
-  return path.join(getWorkspacePath(), 'logs', safeRunId)
+export function stepLabel(output: AgentOutput): string {
+  return output.nodeId ? path.basename(output.nodeId) : path.basename(output.agentName)
 }
 
-export function initRunDir(meta: RunMeta) {
-  const dir = getRunDir(meta.runId)
-  fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2))
-}
-
-export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutput) {
-  const dir = getRunDir(runId)
-  const safeAgentName = path.basename(output.agentName)
-  const baseLabel = output.nodeId ? path.basename(output.nodeId) : safeAgentName
-  const filename = `${String(stepIdx).padStart(2, '0')}-${baseLabel}.md`
+/** A step log's file name and content in a run folder. */
+export function stepLog(runId: string, stepIdx: number, output: AgentOutput): { name: string; content: string } {
+  const name = `${String(stepIdx).padStart(2, '0')}-${stepLabel(output)}.md`
   
   const frontmatter: Record<string, unknown> = {
     node_id: output.nodeId,
@@ -124,8 +113,7 @@ export function writeAgentLog(runId: string, stepIdx: number, output: AgentOutpu
 
   const body = renderStepLogBody(output)
 
-  const fileContent = matter.stringify(body, frontmatter)
-  fs.writeFileSync(path.join(dir, filename), fileContent)
+  return { name, content: matter.stringify(body, frontmatter) }
 }
 
 export function renderStepLogBody(
@@ -172,45 +160,4 @@ export function renderHoldRecord(hold: HoldRecord): string {
     lines.push(`- **Direction:** ${hold.direction}`)
   }
   return lines.join('\n')
-}
-
-/** The step after the highest one logged; a run's outputs can outnumber its step logs. */
-export function nextStep(runId: string): number {
-  const steps = loggedSteps(runId).map(l => l.step)
-  return steps.length ? Math.max(...steps) + 1 : 0
-}
-
-/** The step of a node's latest log in a run, if it has one. */
-export function latestStepOf(runId: string, nodeId: string): number | undefined {
-  const steps = loggedSteps(runId).filter(l => l.label === path.basename(nodeId)).map(l => l.step)
-  return steps.length ? Math.max(...steps) : undefined
-}
-
-function loggedSteps(runId: string): { step: number; label: string }[] {
-  return fs.readdirSync(getRunDir(runId))
-    .map(f => /^(\d+)-(.*)\.md$/.exec(f))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map(m => ({ step: Number(m[1]), label: m[2] }))
-}
-
-export function updateRunMeta(runId: string, updates: Partial<RunMeta>) {
-  const metaPath = path.join(getRunDir(runId), 'meta.json')
-  const existing = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
-  fs.writeFileSync(metaPath, JSON.stringify({ ...existing, ...updates }, null, 2))
-}
-
-export function readRunMeta(runId: string): RunMeta {
-  const metaPath = path.join(getRunDir(runId), 'meta.json')
-  return JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
-}
-
-export function listAllRuns(): RunMeta[] {
-  const logsDir = path.join(getWorkspacePath(), 'logs')
-  if (!fs.existsSync(logsDir)) return []
-  return fs.readdirSync(logsDir)
-    .filter(d => fs.statSync(path.join(logsDir, d)).isDirectory())
-    .map(d => {
-      try { return readRunMeta(d) } catch { return null }
-    })
-    .filter(Boolean) as RunMeta[]
 }

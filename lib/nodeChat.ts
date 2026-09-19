@@ -1,7 +1,7 @@
 import { agentSlugOf } from './nodeKinds'
 import { badRequest, notFound, unprocessable } from './refusal'
 import { recordKey } from './partialRun'
-import { latestStepOf, readRunMeta, updateRunMeta, writeAgentLog } from './logger'
+import type { RunFolders } from './runFolders'
 import type { AgentDef, AgentOutput, ChainEdge, ChainNode, ChatMessage, Refusal, RunMeta } from './types'
 
 export interface ChatTarget {
@@ -19,8 +19,8 @@ export function readChatRequest({ message }: Record<string, unknown>): { message
 }
 
 /** The step of the node's latest log: the one a chat or promote rewrites. */
-export function loggedStep(runId: string, nodeId: string): number | Refusal {
-  return latestStepOf(runId, nodeId) ?? badRequest(`Node ${nodeId} has no log in this run`)
+export function loggedStep(runs: RunFolders, runId: string, nodeId: string): number | Refusal {
+  return runs.latestStepOf(runId, nodeId) ?? badRequest(`Node ${nodeId} has no log in this run`)
 }
 
 /** The record a node chat continues: the node's latest output, which must have succeeded (#97). */
@@ -39,10 +39,10 @@ export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget | Refusal 
 }
 
 /** Who answers a node chat: its agent, as the model that wrote the output, not whatever the file names now. */
-export function chatSpeaker(meta: RunMeta, nodeId: string, agents: AgentDef[]): { target: ChatTarget; agent: AgentDef } | Refusal {
+export function chatSpeaker(runs: RunFolders, meta: RunMeta, nodeId: string, agents: AgentDef[]): { target: ChatTarget; agent: AgentDef } | Refusal {
   const target = chatTarget(meta, nodeId)
   if ('error' in target) return target
-  const step = loggedStep(meta.runId, nodeId)
+  const step = loggedStep(runs, meta.runId, nodeId)
   if (typeof step !== 'number') return step
   const live = agents.find(a => a.slug === target.agentSlug)
   if (!live) return unprocessable(`Agent ${target.agentSlug} no longer exists`)
@@ -65,19 +65,19 @@ export function chatTranscript(record: AgentOutput, message: string): ChatMessag
 }
 
 /** Appends one exchange to the node's record in meta.json and rewrites its log. */
-export function appendTurn(runId: string, nodeId: string, message: string, reply: ChatMessage): void {
+export function appendTurn(runs: RunFolders, runId: string, nodeId: string, message: string, reply: ChatMessage): void {
   // Re-read: another turn may have landed while this one streamed.
-  const meta = readRunMeta(runId)
+  const meta = runs.read(runId)
   const target = chatTarget(meta, nodeId)
-  const step = loggedStep(runId, nodeId)
+  const step = loggedStep(runs, runId, nodeId)
   if ('error' in target) throw new Error(target.error)
   if (typeof step !== 'number') throw new Error(step.error)
   const record: AgentOutput = {
     ...target.record,
     conversation: [...(target.record.conversation ?? []), { role: 'user', content: message }, reply],
   }
-  updateRunMeta(runId, { agentOutputs: meta.agentOutputs.map((o, i) => (i === target.index ? record : o)) })
-  writeAgentLog(runId, step, record)
+  runs.update(runId, { agentOutputs: meta.agentOutputs.map((o, i) => (i === target.index ? record : o)) })
+  runs.writeStep(runId, step, record)
 }
 
 /** A stretch's outputs, keeping turns a chat wrote to meta.json while it ran. */

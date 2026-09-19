@@ -1,10 +1,11 @@
-import { getWorkspacePath, type loadWorkspace } from './fs/workspace'
+import type { loadWorkspace } from './fs/workspace'
 import { unprocessable } from './refusal'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinRunVersions, versionKey } from './runVersions'
 import { pinnedWorkspace } from './pinnedWorkspace'
-import { writeAgentLog, updateRunMeta, readRunMeta, initRunDir, newRunId } from './logger'
+import { newRunId } from './logger'
+import type { Workspace } from './runFolders'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
@@ -59,6 +60,7 @@ function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refus
 }
 
 export interface RunSession {
+  ws: Workspace
   runId: string
   chain: ChainDef
   workspace: { agents: AgentDef[]; skills: SkillDef[]; chains: ChainDef[]; tools: ToolDef[] }
@@ -82,7 +84,7 @@ export interface RunSession {
  * as SSE, ending with the run's meta.json written as complete, waiting or error.
  */
 export function streamChainRun(s: RunSession): Response {
-  const { runId, chain, workspace: { agents, skills, chains, tools } } = s
+  const { ws: { root, runs }, runId, chain, workspace: { agents, skills, chains, tools } } = s
   const replay = [...s.replay.logged, ...s.replay.fresh]
   const onDisk = new Set(s.replay.logged)
 
@@ -108,7 +110,7 @@ export function streamChainRun(s: RunSession): Response {
 
     try {
       const results = await runChainGraph(
-        chain, agents, skills, s.seedPrompt, getWorkspacePath(),
+        chain, agents, skills, s.seedPrompt, root,
         {
           onStart: (nodeId, agent) => {
             const n = step++
@@ -124,7 +126,7 @@ export function streamChainRun(s: RunSession): Response {
             let n = stepOf.get(nodeId)
             if (n === undefined) { n = step++; stepOf.set(nodeId, n); nameOf.set(nodeId, output.agentName) }
             if (s.versionNumber > 0) output.versionNumber = s.versionNumber
-            writeAgentLog(runId, n, output)
+            runs.writeStep(runId, n, output)
             loggedOf.set(nodeId, { step: n, output })
             send({ type: 'agent_done', agentName: output.agentName, nodeId, step: n, output, kind: kindById.get(nodeId) })
             soFar.push({ ...output, nodeId })
@@ -137,7 +139,7 @@ export function streamChainRun(s: RunSession): Response {
             const nodeId = warning.fromNode
             send({ type: 'section_missing', nodeId, warning, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
             const logged = loggedOf.get(nodeId)
-            if (logged) writeAgentLog(runId, logged.step, logged.output)
+            if (logged) runs.writeStep(runId, logged.step, logged.output)
           },
           onHold: hold => { reached.push(hold) },
         },
@@ -151,13 +153,13 @@ export function streamChainRun(s: RunSession): Response {
       )
 
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
-      const agentOutputs = keepConversations(stretch, readRunMeta(runId).agentOutputs)
+      const agentOutputs = keepConversations(stretch, runs.read(runId).agentOutputs)
       if (reached.length > 0) {
-        updateRunMeta(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
+        runs.update(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
         // Wave-mate holds pause together, so each is announced (#93).
         for (const hold of reached) send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold })
       } else {
-        updateRunMeta(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs })
+        runs.update(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs })
         send({ type: 'run_complete', runId })
       }
     } catch (error) {
@@ -166,13 +168,13 @@ export function streamChainRun(s: RunSession): Response {
       // sent rather than copying this message onto panels itself (#77).
       send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar), errorMessage) })
       send({ type: 'error', error: errorMessage })
-      updateRunMeta(runId, { status: 'error' })
+      runs.update(runId, { status: 'error' })
     }
   })
 }
 
 /** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
-export function startRun(run: {
+export function startRun(ws: Workspace, run: {
   chain: ChainDef
   workspace: RunSession['workspace']
   title: string
@@ -190,7 +192,7 @@ export function startRun(run: {
 }): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
-  initRunDir({
+  ws.runs.create({
     runId,
     chainName: run.title,
     seedPrompt,
@@ -205,7 +207,7 @@ export function startRun(run: {
     versions: run.versions,
   })
   return streamChainRun({
-    runId, chain, workspace, seedPrompt, versionNumber, holds,
+    ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
     context: { ...run.pinnedContext, ...contextOverrides(run.context) },
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
+import { diskWorkspace } from '@/lib/runFolders'
 import { readForkRequest } from '@/lib/fork'
 import { toResponse } from '@/lib/refusal'
 
@@ -14,5 +15,5 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const fork = readForkRequest(body ?? {})
   if ('error' in fork) return toResponse(fork)
-  return continueRun(loadWorkspace(), runId, { fork }, body?.context)
+  return continueRun(diskWorkspace(), loadWorkspace(), runId, { fork }, body?.context)
 }

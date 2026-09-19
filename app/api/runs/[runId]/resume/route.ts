@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
+import { diskWorkspace } from '@/lib/runFolders'
 import { readAnswerRequest } from '@/lib/hold'
 import { toResponse } from '@/lib/refusal'
 
@@ -14,5 +15,5 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const answer = readAnswerRequest(body ?? {})
   if ('error' in answer) return toResponse(answer)
-  return continueRun(loadWorkspace(), runId, { answer }, body?.context)
+  return continueRun(diskWorkspace(), loadWorkspace(), runId, { answer }, body?.context)
 }

@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
-import { loadWorkspace, getWorkspacePath } from '@/lib/fs/workspace'
+import { loadWorkspace } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
-import { initRunDir, writeAgentLog, updateRunMeta, readRunMeta, newRunId } from '@/lib/logger'
+import { newRunId } from '@/lib/logger'
+import { diskWorkspace } from '@/lib/runFolders'
 import { sseResponse } from '@/lib/sse'
 
 export async function POST(req: NextRequest) {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
       return new Response(`Agent "${agentName}" not found`, { status: 404 })
     }
 
-    const wp = getWorkspacePath()
+    const { root: wp, runs } = diskWorkspace()
     const lastUserMessage = history[history.length - 1].content
 
     // Handle Run Metadata
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     if (runId) {
       try {
-        meta = readRunMeta(runId)
+        meta = runs.read(runId)
         currentStep = meta.agentOutputs.length
       } catch (e) {
         // If runId not found, fallback to new
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
           status: 'running',
           agentOutputs: [],
         }
-        initRunDir(meta)
+        runs.create(meta)
       }
     } else {
       runId = newRunId()
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
         status: 'running',
         agentOutputs: [],
       }
-      initRunDir(meta)
+      runs.create(meta)
     }
 
     const systemPrompt = await buildSystemPrompt(
@@ -92,10 +93,10 @@ export async function POST(req: NextRequest) {
         )
 
         // Persist the output
-        writeAgentLog(runId, currentStep, result)
+        runs.writeStep(runId, currentStep, result)
 
         const updatedOutputs = [...meta.agentOutputs, result]
-        updateRunMeta(runId, {
+        runs.update(runId, {
           agentOutputs: updatedOutputs,
           status: 'complete',
           completedAt: new Date().toISOString(),
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         send({ type: 'error', error: errorMessage })
-        updateRunMeta(runId, { status: 'error' })
+        runs.update(runId, { status: 'error' })
       }
     })
   } catch (error) {

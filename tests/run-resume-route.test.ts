@@ -122,8 +122,8 @@ async function resume(runId: string, body: object): Promise<Response> {
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { readRunMeta } = await import('../lib/logger')
-  return readRunMeta(runId)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  return runs.read(runId)
 }
 
 const logsOf = (wp: string, runId: string) =>
@@ -160,10 +160,10 @@ test('resume writes the hold log, runs what follows in the same folder, and comp
 test('resume is refused while the run is running, or when it has no hold', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
-  const { updateRunMeta } = await import('../lib/logger')
-  updateRunMeta(runId, { status: 'running' })
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  runs.update(runId, { status: 'running' })
   assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
-  updateRunMeta(runId, { status: 'complete', holds: [] })
+  runs.update(runId, { status: 'complete', holds: [] })
   assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
 })
 

@@ -117,8 +117,8 @@ async function chat(runId: string, nodeId: string, body: object): Promise<Respon
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { readRunMeta } = await import('../lib/logger')
-  return readRunMeta(runId)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  return runs.read(runId)
 }
 
 const decLog = (wp: string, runId: string) =>
@@ -222,20 +222,20 @@ test('chat to a join, report, hold, or a node with no output is refused', async 
 test('chat on a running run is refused, so a live stretch cannot overwrite it', async () => {
   newWorkspace()
   const runId = await startRun()
-  const { updateRunMeta } = await import('../lib/logger')
-  updateRunMeta(runId, { status: 'running' })
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  runs.update(runId, { status: 'running' })
   assert.strictEqual((await chat(runId, 'dec', { message: 'hi' })).status, 409)
 })
 
 test('a tool-using proposer is replayed without its tool turns (#92), and its log keeps the Tool Loop', async () => {
   const wp = newWorkspace()
   const runId = await startRun()
-  const { updateRunMeta, writeAgentLog } = await import('../lib/logger')
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
   const meta = await readMeta(runId)
   const toolCalls = [{ turn: 1, name: 'retrieve', args: { q: 'x' }, result: 'hit', latencyMs: 1, isError: false }]
   const agentOutputs = meta.agentOutputs.map(o => o.nodeId === 'dec' ? { ...o, toolCalls, toolTurns: 1 } : o)
-  updateRunMeta(runId, { agentOutputs })
-  writeAgentLog(runId, 0, agentOutputs[0])
+  runs.update(runId, { agentOutputs })
+  runs.writeStep(runId, 0, agentOutputs[0])
 
   await sse(await chat(runId, 'dec', { message: 'one' }))
 
@@ -261,7 +261,8 @@ test('a turn written while a resume runs survives the resume ending', async () =
   newWorkspace()
   const runId = await startRun()
   const { appendTurn } = await import('../lib/nodeChat')
-  duringAfter = () => appendTurn(runId, 'dec', 'mid-resume', { role: 'assistant', content: 'still here' })
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  duringAfter = () => appendTurn(runs, runId, 'dec', 'mid-resume', { role: 'assistant', content: 'still here' })
 
   const { POST } = await import('../app/api/runs/[runId]/resume/route')
   await sse(await POST({ json: async () => ({ direction: 'go' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
@@ -274,10 +275,10 @@ test('a turn written while a resume runs survives the resume ending', async () =
 test('a node whose latest record failed is refused, so the log and record never disagree', async () => {
   newWorkspace()
   const runId = await startRun()
-  const { updateRunMeta } = await import('../lib/logger')
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
   const meta = await readMeta(runId)
   const dec = meta.agentOutputs.find(o => o.nodeId === 'dec')!
-  updateRunMeta(runId, { agentOutputs: [...meta.agentOutputs, { ...dec, status: 'error', output: '' }] })
+  runs.update(runId, { agentOutputs: [...meta.agentOutputs, { ...dec, status: 'error', output: '' }] })
   assert.strictEqual((await chat(runId, 'dec', { message: 'hi' })).status, 400)
 })
 

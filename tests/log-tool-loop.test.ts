@@ -1,24 +1,11 @@
-import { test, afterAll } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import matter from 'gray-matter'
+import { stepLog } from '../lib/logger'
 import type { AgentOutput, ToolCallRecord } from '../lib/types'
 
-// writeAgentLog resolves its directory through getWorkspacePath(), which reads
-// the env var at call time — so point it at a temp workspace before importing.
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-log-'))
-process.env.WORKSPACE_PATH = tmp
-
 async function main() {
-  const { writeAgentLog, initRunDir } = await import('../lib/logger')
-
   const runId = 'test-run'
-  initRunDir({
-    runId, chainName: 'c', seedPrompt: 's',
-    startedAt: new Date().toISOString(), status: 'running', agentOutputs: [],
-  })
 
   const base: AgentOutput = {
     nodeId: 'event-writer', agentName: 'event-writer', systemPrompt: 'write well',
@@ -27,12 +14,16 @@ async function main() {
     model: 'test/model', timestamp: new Date().toISOString(), status: 'success',
   }
 
-  const read = (step: number, label: string) =>
-    fs.readFileSync(path.join(tmp, 'logs', runId, `${String(step).padStart(2, '0')}-${label}.md`), 'utf-8')
+  const written = new Map<string, string>()
+  const writeLog = (step: number, output: AgentOutput) => {
+    const log = stepLog(runId, step, output)
+    written.set(log.name, log.content)
+  }
+  const read = (step: number, label: string) => written.get(`${String(step).padStart(2, '0')}-${label}.md`)!
 
   // 1. Tool-less logs are unchanged: no headings, output starts the body.
   {
-    writeAgentLog(runId, 0, base)
+    writeLog(0, base)
     const raw = read(0, 'event-writer')
     const { data, content } = matter(raw)
 
@@ -49,7 +40,7 @@ async function main() {
       result: '### context/tavern-lore.md › The Gilded Flagon\nOwned by Mirna Copperhand since the fire of \'42.',
       latencyMs: 312, isError: false,
     }]
-    writeAgentLog(runId, 1, { ...base, toolCalls, toolTurns: 1 })
+    writeLog(1, { ...base, toolCalls, toolTurns: 1 })
     const raw = read(1, 'event-writer')
     const { data, content } = matter(raw)
 
@@ -95,7 +86,7 @@ async function main() {
       { turn: 1, name: 'retrieve', args: { query: 'Mirna' }, result: 'hit C', latencyMs: 0, isError: false },
       { turn: 1, name: 'retrieve', args: 'not json at all', result: 'Error: malformed JSON in tool arguments', latencyMs: 0, isError: true },
     ]
-    writeAgentLog(runId, 2, { ...base, toolCalls, toolTurns: 1 })
+    writeLog(2, { ...base, toolCalls, toolTurns: 1 })
     const { content } = matter(read(2, 'event-writer'))
 
     assert.strictEqual((content.match(/^### Turn \d/gm) || []).length, 1, 'four parallel calls read as one turn')
@@ -120,7 +111,7 @@ async function main() {
       { turn: 1, name: 'retrieve', args: { query: 'owner' }, result: 'hit B', latencyMs: 11, isError: false },
       { turn: 2, name: 'retrieve', args: { query: 'ledger' }, result: 'hit C', latencyMs: 88, isError: false },
     ]
-    writeAgentLog(runId, 3, { ...base, toolCalls, toolTurns: 2 })
+    writeLog(3, { ...base, toolCalls, toolTurns: 2 })
     const { content } = matter(read(3, 'event-writer'))
 
     assert.ok(content.includes('### Turn 1 — 2 calls, 21 ms total'))
@@ -134,7 +125,7 @@ async function main() {
     const toolCalls: ToolCallRecord[] = [{
       turn: 1, name: 'retrieve', args: { query: 'x' }, result: trickyResult, latencyMs: 5, isError: false,
     }]
-    writeAgentLog(runId, 4, { ...base, toolCalls, toolTurns: 1 })
+    writeLog(4, { ...base, toolCalls, toolTurns: 1 })
     const { content } = matter(read(4, 'event-writer'))
 
     assert.ok(content.includes(trickyResult), 'result bytes are unchanged, verbatim')
@@ -146,7 +137,5 @@ async function main() {
     assert.ok(fenceMatch![1].length > 3, 'fence widens beyond the backtick run inside the result')
   }
 }
-
-afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
 test('log-tool-loop', main)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadRunFor } from '@/lib/loadRun'
+import { diskWorkspace } from '@/lib/runFolders'
 import { toResponse } from '@/lib/refusal'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { findChainForRun } from '@/lib/resolveRunChain'
@@ -12,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ runId: string }> }
 ) {
   const { runId } = await params
-  const meta = loadRunFor(runId)
+  const meta = loadRunFor(diskWorkspace().runs, runId)
   if ('error' in meta) return toResponse(meta)
 
   const { chains } = loadWorkspace()

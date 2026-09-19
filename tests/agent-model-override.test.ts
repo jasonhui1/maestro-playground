@@ -6,7 +6,7 @@ import os from 'node:os'
 import matter from 'gray-matter'
 import { parseAgent } from '../lib/fs/parseAgent'
 import { runAgent } from '../lib/runner'
-import { writeAgentLog, initRunDir } from '../lib/logger'
+import { stepLog } from '../lib/logger'
 import { buildRunFrame } from '../lib/runFrame'
 import { emptyNodeState, RunStateMap } from '../lib/runState'
 import type { AgentDef, AgentOutput, ChainDef, ToolDef } from '../lib/types'
@@ -207,63 +207,42 @@ test('runAgent produces AgentOutput with model and modelSource matching the reso
 })
 
 test('step log frontmatter includes model and model_source', () => {
-  const tmp = createTempDir('agent-log-test-')
-  try {
-    process.env.WORKSPACE_PATH = tmp
+  const runId = 'test-log-run'
+  const frontmatter = (step: number, output: AgentOutput) => matter(stepLog(runId, step, output).content).data
 
-    const runId = 'test-log-run'
-    initRunDir({
-      runId, chainName: 'chain', seedPrompt: 'seed',
-      startedAt: new Date().toISOString(), status: 'running', agentOutputs: [],
-    })
-
-    const baseOutput: AgentOutput = {
-      agentName: 'researcher',
-      nodeId: 'researcher-1',
-      systemPrompt: 'sys',
-      input: 'hi',
-      output: 'hello world',
-      tokensIn: 10,
-      tokensOut: 20,
-      costUsd: 0.001,
-      latencyMs: 120,
-      model: 'anthropic/claude-3.5-sonnet',
-      modelSource: 'file',
-      timestamp: new Date().toISOString(),
-      status: 'success',
-    }
-
-    writeAgentLog(runId, 0, baseOutput)
-
-    const logFile = path.join(tmp, 'logs', runId, '00-researcher-1.md')
-    const { data } = matter(fs.readFileSync(logFile, 'utf-8'))
-    assert.strictEqual(data.model, 'anthropic/claude-3.5-sonnet')
-    assert.strictEqual(data.model_source, 'file')
-
-    // Log with env override
-    writeAgentLog(runId, 1, {
-      ...baseOutput,
-      nodeId: 'researcher-2',
-      model: 'google/gemini-2.5-flash',
-      modelSource: 'env override',
-    })
-    const logFile2 = path.join(tmp, 'logs', runId, '01-researcher-2.md')
-    const data2 = matter(fs.readFileSync(logFile2, 'utf-8')).data
-    assert.strictEqual(data2.model, 'google/gemini-2.5-flash')
-    assert.strictEqual(data2.model_source, 'env override')
-
-    // Log without modelSource removes model_source key
-    writeAgentLog(runId, 2, {
-      ...baseOutput,
-      nodeId: 'researcher-3',
-      modelSource: undefined,
-    })
-    const logFile3 = path.join(tmp, 'logs', runId, '02-researcher-3.md')
-    const data3 = matter(fs.readFileSync(logFile3, 'utf-8')).data
-    assert.strictEqual('model_source' in data3, false)
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true })
+  const baseOutput: AgentOutput = {
+    agentName: 'researcher',
+    nodeId: 'researcher-1',
+    systemPrompt: 'sys',
+    input: 'hi',
+    output: 'hello world',
+    tokensIn: 10,
+    tokensOut: 20,
+    costUsd: 0.001,
+    latencyMs: 120,
+    model: 'anthropic/claude-3.5-sonnet',
+    modelSource: 'file',
+    timestamp: new Date().toISOString(),
+    status: 'success',
   }
+
+  const data = frontmatter(0, baseOutput)
+  assert.strictEqual(data.model, 'anthropic/claude-3.5-sonnet')
+  assert.strictEqual(data.model_source, 'file')
+
+  // Log with env override
+  const data2 = frontmatter(1, {
+    ...baseOutput,
+    nodeId: 'researcher-2',
+    model: 'google/gemini-2.5-flash',
+    modelSource: 'env override',
+  })
+  assert.strictEqual(data2.model, 'google/gemini-2.5-flash')
+  assert.strictEqual(data2.model_source, 'env override')
+
+  // Log without modelSource removes model_source key
+  const data3 = frontmatter(2, { ...baseOutput, nodeId: 'researcher-3', modelSource: undefined })
+  assert.strictEqual('model_source' in data3, false)
 })
 
 test('run frame includes models with modelSource, deduplicating identical pairs', () => {

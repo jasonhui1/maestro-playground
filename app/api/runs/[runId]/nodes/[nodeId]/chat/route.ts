@@ -3,6 +3,7 @@ import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
 import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
 import { loadRunFor } from '@/lib/loadRun'
+import { diskWorkspace } from '@/lib/runFolders'
 import { toResponse } from '@/lib/refusal'
 import { sseResponse } from '@/lib/sse'
 import type { ChatMessage } from '@/lib/types'
@@ -18,9 +19,10 @@ export async function POST(
   if ('error' in chat) return toResponse(chat)
   const { message } = chat
 
-  const meta = loadRunFor(runId, { mustNotBeRunning: true })
+  const { runs } = diskWorkspace()
+  const meta = loadRunFor(runs, runId, { mustNotBeRunning: true })
   if ('error' in meta) return toResponse(meta)
-  const speaker = chatSpeaker(meta, nodeId, loadWorkspace().agents)
+  const speaker = chatSpeaker(runs, meta, nodeId, loadWorkspace().agents)
   if ('error' in speaker) return toResponse(speaker)
   const { target, agent } = speaker
 
@@ -35,7 +37,7 @@ export async function POST(
         return
       }
       const reply: ChatMessage = { role: 'assistant', content: result.output, ...(result.thought ? { thought: result.thought } : {}) }
-      appendTurn(meta.runId, nodeId, message, reply)
+      appendTurn(runs, meta.runId, nodeId, message, reply)
       send({ type: 'chat_done', message: reply })
     } catch (error) {
       send({ type: 'error', error: error instanceof Error ? error.message : String(error) })

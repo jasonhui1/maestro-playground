@@ -120,8 +120,8 @@ async function promote(runId: string, nodeId: string, body: object = {}): Promis
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { readRunMeta } = await import('../lib/logger')
-  return readRunMeta(runId)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  return runs.read(runId)
 }
 
 async function listRuns(query: string): Promise<RunMeta[]> {
@@ -260,8 +260,8 @@ test('a fork is refused while the source run is running', async () => {
   newWorkspace()
   const sourceId = await completeRun()
   await chat(sourceId, 'prop', 'push')
-  const { updateRunMeta } = await import('../lib/logger')
-  updateRunMeta(sourceId, { status: 'running' })
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  runs.update(sourceId, { status: 'running' })
   assert.strictEqual((await resume(sourceId, { direction: 'x' })).status, 409)
   assert.strictEqual((await promote(sourceId, 'prop')).status, 409)
 })
@@ -348,8 +348,8 @@ test('fork refuses a request it cannot read against the run (#103)', async () =>
   assert.strictEqual((await fork(sourceId, { from: 'prop', revisions: { prop: 'x' } })).status, 400)
   assert.strictEqual((await fork(sourceId, { from: 'prop', versions: 'latest' })).status, 400)
   assert.strictEqual((await fork('no-such-run', { from: 'prop' })).status, 404)
-  const { updateRunMeta } = await import('../lib/logger')
-  updateRunMeta(sourceId, { status: 'running' })
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  runs.update(sourceId, { status: 'running' })
   assert.strictEqual((await fork(sourceId, { from: 'prop' })).status, 409)
 })
 

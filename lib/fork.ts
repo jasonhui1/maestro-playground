@@ -1,6 +1,7 @@
 import { runLog } from './partialRun'
 import { badRequest, notFound, unprocessable } from './refusal'
 import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace } from './runSession'
+import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
 export interface Fork {
@@ -59,13 +60,13 @@ export function planFork(source: RunMeta, { from, revisions, versions }: ForkReq
 
 /** A new run of the source's graph, replaying what the anchors leave standing (#99, #103). */
 export function forkRun(
-  workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
+  ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
 ): Response | Refusal {
   const continuation = loadContinuation(workspace, source, fork.versions)
   if ('error' in continuation) return continuation
   const kept = runLog(source).replayFor(fork.anchors)
   const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation
-  return startRun({
+  return startRun(ws, {
     chain,
     workspace: defs,
     title: source.chainName,

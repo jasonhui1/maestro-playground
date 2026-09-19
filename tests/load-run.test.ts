@@ -1,39 +1,32 @@
-import { test, vi } from 'vitest'
+import { test } from 'vitest'
 import assert from 'node:assert'
 import { loadRunFor } from '../lib/loadRun'
 import { toResponse } from '../lib/refusal'
 import { readPick } from '../lib/hold'
+import { memoryRunFolders } from '../lib/runFolders'
 import type { HoldRecord, RunMeta } from '../lib/types'
 
-const metas = vi.hoisted(() => new Map<string, RunMeta>())
-
-vi.mock('@/lib/logger', () => ({
-  readRunMeta: (runId: string) => {
-    const meta = metas.get(runId)
-    if (!meta) throw new Error(`ENOENT: ${runId}`)
-    return meta
-  },
-}))
+const runs = memoryRunFolders()
 
 const run = (runId: string, status: RunMeta['status']): RunMeta => {
   const meta: RunMeta = { runId, chainName: 'c', seedPrompt: '', startedAt: '', status, agentOutputs: [] }
-  metas.set(runId, meta)
+  runs.create(meta)
   return meta
 }
 
 test('an unknown run is a 404 refusal', () => {
-  assert.deepStrictEqual(loadRunFor('no-such-run'), { error: 'Run not found', status: 404 })
+  assert.deepStrictEqual(loadRunFor(runs, 'no-such-run'), { error: 'Run not found', status: 404 })
 })
 
 test('a running run loads, unless it must not be running: then a 409 refusal', () => {
   const meta = run('r1', 'running')
-  assert.strictEqual(loadRunFor('r1'), meta)
-  assert.deepStrictEqual(loadRunFor('r1', { mustNotBeRunning: true }), { error: 'Run is running', status: 409 })
+  assert.deepStrictEqual(loadRunFor(runs, 'r1'), meta)
+  assert.deepStrictEqual(loadRunFor(runs, 'r1', { mustNotBeRunning: true }), { error: 'Run is running', status: 409 })
 })
 
 test('a run that is not running loads either way', () => {
   const meta = run('r2', 'waiting')
-  assert.strictEqual(loadRunFor('r2', { mustNotBeRunning: true }), meta)
+  assert.deepStrictEqual(loadRunFor(runs, 'r2', { mustNotBeRunning: true }), meta)
 })
 
 test('a refusal encodes as a JSON response with its status', async () => {

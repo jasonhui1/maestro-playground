@@ -138,8 +138,8 @@ edges:
 
   const waiting = events.filter(e => e.type === 'run_waiting')
   assert.deepStrictEqual(waiting.map(e => e.nodeId).sort(), ['hold', 'hold2'])
-  const { readRunMeta } = await import('../lib/logger')
-  const meta = readRunMeta(waiting[0].runId as string)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  const meta = runs.read(waiting[0].runId as string)
   assert.strictEqual(meta.status, 'waiting')
   assert.deepStrictEqual(meta.holds?.map(h => h.nodeId).sort(), ['hold', 'hold2'])
 })

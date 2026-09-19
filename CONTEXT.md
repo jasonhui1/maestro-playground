@@ -26,6 +26,10 @@ An input socket that does not block execution when left unwired. Per-input fact 
 
 The `{ chain, agents, chains }` bundle of already-loaded workspace files passed to registry socket functions, so e.g. an agent node can find its agent file's `{slots}`. A plain parameter (filesystem-first: nothing cached across requests). _Avoid_: context (collides with the `context` node kind).
 
+## Run folders
+
+The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs }` value, built once per request. _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
+
 ## Section warning
 
 A runtime notice that an edge wired to a named output section found no such heading in the producing node's output, so the downstream input resolved to empty (issue #37). Attaches to the **producing** node — its run panel entry and its log — and never fails the run. Distinct from a validation issue: a validation issue is knowable before a run, from files; a section warning is only knowable from a model's actual answer.

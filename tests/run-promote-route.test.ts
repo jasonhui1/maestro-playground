@@ -128,8 +128,8 @@ async function promote(runId: string, nodeId: string, body: object = {}): Promis
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { readRunMeta } = await import('../lib/logger')
-  return readRunMeta(runId)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
+  return runs.read(runId)
 }
 
 const logsOf = (wp: string, runId: string) =>
@@ -227,9 +227,9 @@ test('promote is refused while the run is running', async () => {
   newWorkspace()
   const runId = await startRun()
   await chat(runId, 'prop', 'push')
-  const { updateRunMeta } = await import('../lib/logger')
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace()
 
-  updateRunMeta(runId, { status: 'running' })
+  runs.update(runId, { status: 'running' })
   assert.strictEqual((await promote(runId, 'prop')).status, 409)
   assert.strictEqual((await promote('no-such-run', 'prop')).status, 404)
 })
