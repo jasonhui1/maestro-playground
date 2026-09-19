@@ -1,11 +1,10 @@
-import type { loadWorkspace } from './fs/workspace'
 import { unprocessable } from './refusal'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinRunVersions, versionKey } from './runVersions'
 import { pinnedWorkspace } from './pinnedWorkspace'
 import { newRunId } from './logger'
-import type { Workspace } from './runFolders'
+import type { LiveWorkspace, Workspace } from './runFolders'
 import { runChainGraph } from './executor'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
@@ -21,8 +20,7 @@ export function contextOverrides(value: unknown): Record<string, string> {
 /** Which files a continuation runs: the live ones, or the source run's pins (ADR-0011). */
 export type ContinuationVersions = 'current' | 'pinned'
 
-/** The workspace as loaded from disk: what a run starts or continues over. */
-export type LiveWorkspace = ReturnType<typeof loadWorkspace>
+export type { LiveWorkspace }
 
 /** A run's recorded graph over live or pinned files, ready to continue or fork, with those files' pins; or why it cannot. */
 export function loadContinuation(root: string, live: LiveWorkspace, meta: RunMeta, from: ContinuationVersions = 'current'):

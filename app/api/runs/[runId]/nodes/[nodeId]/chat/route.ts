@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
 import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
 import { loadRunFor } from '@/lib/loadRun'
@@ -19,10 +18,11 @@ export async function POST(
   if ('error' in chat) return toResponse(chat)
   const { message } = chat
 
-  const { root, runs } = requestWorkspace()
+  const ws = requestWorkspace()
+  const { runs } = ws
   const meta = loadRunFor(runs, runId, { mustNotBeRunning: true })
   if ('error' in meta) return toResponse(meta)
-  const speaker = chatSpeaker(runs, meta, nodeId, loadWorkspace(root).agents)
+  const speaker = chatSpeaker(runs, meta, nodeId, ws.definitions().agents)
   if ('error' in speaker) return toResponse(speaker)
   const { target, agent } = speaker
 

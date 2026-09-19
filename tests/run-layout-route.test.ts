@@ -4,13 +4,9 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { AgentOutput, RunMeta } from '../lib/types'
+import { requestEntry } from './helpers/requestWorkspace'
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -21,7 +17,7 @@ function write(root: string, rel: string, body: string) {
 
 function newWorkspace() {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-layout-'))
-  entry.root = wp
+  requestEntry.root = wp
   return wp
 }
 

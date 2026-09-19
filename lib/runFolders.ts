@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { stepLabel, stepLog } from './logger'
+import { loadWorkspace } from './fs/workspace'
 import type { AgentOutput, RunMeta } from './types'
 
 /** The runs under `logs/`: each a folder of meta.json plus one log per step (#108). */
@@ -20,18 +21,23 @@ export interface RunFolders {
   list(): RunMeta[]
 }
 
-/** Where a run's files live, and the store over them; decided once per request or test (#108, #116). */
+/** The workspace as loaded from disk: what a run starts or continues over. */
+export type LiveWorkspace = ReturnType<typeof loadWorkspace>
+
+/** Where a run's files live, the store over them, and the definitions a run uses; decided once per request or test (#108, #116). */
 export interface Workspace {
   root: string
   runs: RunFolders
+  /** Read fresh on each call: nothing is cached across requests. */
+  definitions(): LiveWorkspace
 }
 
 export function diskWorkspace(root: string): Workspace {
-  return { root, runs: diskRunFolders(root) }
+  return { root, runs: diskRunFolders(root), definitions: () => loadWorkspace(root) }
 }
 
-export function memoryWorkspace(root = ''): Workspace & { runs: MemoryRunFolders } {
-  return { root, runs: memoryRunFolders() }
+export function memoryWorkspace(definitions: LiveWorkspace, root = ''): Workspace & { runs: MemoryRunFolders } {
+  return { root, runs: memoryRunFolders(), definitions: () => definitions }
 }
 
 /** What an adapter supplies; the rest of a run's folder is built on it once, so the adapters cannot drift. */

@@ -6,13 +6,9 @@ import os from 'os'
 import { NextRequest } from 'next/server'
 import { validateEntityFrontmatter } from '../lib/fs/validate'
 import { PUT as entityPUT } from '../app/api/workspace/[type]/[slug]/route'
+import { requestEntry } from './helpers/requestWorkspace'
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -23,7 +19,7 @@ function write(root: string, rel: string, body: string) {
 
 function newWorkspace() {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-validate-entity-'))
-  entry.root = wp
+  requestEntry.root = wp
   return wp
 }
 

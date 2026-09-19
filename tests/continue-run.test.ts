@@ -68,7 +68,7 @@ function record(nodeId: string, output: string, extra: Partial<AgentOutput> = {}
   }
 }
 
-let ws = memoryWorkspace()
+let ws = memoryWorkspace(defs)
 
 // A run paused at its hold: prop and dec logged as steps 0 and 1.
 function waitingRun(status: RunMeta['status'] = 'waiting'): string {
@@ -89,7 +89,7 @@ function waitingRun(status: RunMeta['status'] = 'waiting'): string {
   return meta.runId
 }
 
-beforeEach(() => { ws = memoryWorkspace() })
+beforeEach(() => { ws = memoryWorkspace(defs) })
 
 const drain = async (res: Response) => { await res.text() }
 const logsOf = (runId: string) => ws.runs.logs(runId).map(({ step, output }) => ({ runId, step, nodeId: output.nodeId, output: output.output }))
@@ -97,7 +97,7 @@ const newLogs = () => logsOf('run-1').slice(2)
 
 test('an answer in place logs the answer and what follows it, numbered after the last log', async () => {
   const runId = waitingRun()
-  const res = continueRun(ws, defs, runId, { answer: { direction: 'go on' } })
+  const res = continueRun(ws, runId, { answer: { direction: 'go on' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -112,7 +112,7 @@ test('an answer in place logs the answer and what follows it, numbered after the
 
 test('a promote in place relogs its source and numbers the rerun after the last log', async () => {
   const runId = waitingRun()
-  const res = continueRun(ws, defs, runId, { promote: { nodeId: 'prop' } })
+  const res = continueRun(ws, runId, { promote: { nodeId: 'prop' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -129,7 +129,7 @@ test('a promote in place relogs its source and numbers the rerun after the last 
 
 test('a record kept by a promote is the one on disk: not logged again, not recorded twice', async () => {
   const runId = waitingRun()
-  const res = continueRun(ws, defs, runId, { promote: { nodeId: 'dec' } })
+  const res = continueRun(ws, runId, { promote: { nodeId: 'dec' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -142,7 +142,7 @@ test('a record kept by a promote is the one on disk: not logged again, not recor
 
 test('a fork logs every replayed record afresh in a new run, from step 0', async () => {
   const runId = waitingRun('complete')
-  const res = continueRun(ws, defs, runId, { fork: { from: 'dec' } })
+  const res = continueRun(ws, runId, { fork: { from: 'dec' } })
   assert.equal(res.status, 200)
   await drain(res)
 
@@ -156,13 +156,13 @@ test('a fork logs every replayed record afresh in a new run, from step 0', async
 
 test('a running run is refused before any plan is read', async () => {
   const runId = waitingRun('running')
-  const res = continueRun(ws, defs, runId, { answer: { direction: 'go on' } })
+  const res = continueRun(ws, runId, { answer: { direction: 'go on' } })
   assert.equal(res.status, 409)
   assert.deepStrictEqual(newLogs(), [])
 })
 
 test('an unknown run is refused', async () => {
-  assert.equal(continueRun(ws, defs, 'no-such-run', { answer: { direction: 'go on' } }).status, 404)
+  assert.equal(continueRun(ws, 'no-such-run', { answer: { direction: 'go on' } }).status, 404)
 })
 
 test('a run claimed by another continuation after it was read is refused at the claim', async () => {
@@ -180,7 +180,7 @@ test('a run claimed by another continuation after it was read is refused at the 
       },
     },
   }
-  const res = continueRun(racing, defs, runId, { answer: { direction: 'go on' } })
+  const res = continueRun(racing, runId, { answer: { direction: 'go on' } })
   assert.ok(rival)
   assert.equal(res.status, 409)
   assert.deepStrictEqual(newLogs(), [])

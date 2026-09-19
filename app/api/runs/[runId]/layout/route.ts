@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadRunFor } from '@/lib/loadRun'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
-import { loadWorkspace } from '@/lib/fs/workspace'
 import { findChainForRun } from '@/lib/resolveRunChain'
 import { buildLayoutModel, LayoutModel } from '@/lib/layoutModel'
 
@@ -17,7 +16,7 @@ export async function GET(
   const meta = loadRunFor(ws.runs, runId)
   if ('error' in meta) return toResponse(meta)
 
-  const { chains } = loadWorkspace(ws.root)
+  const { chains } = ws.definitions()
   // A chain renamed or deleted since the run happened resolves the same as one that
   // never declared a view (#72) — not a 404, the run itself was found.
   const chain = findChainForRun(chains, meta.chainName)

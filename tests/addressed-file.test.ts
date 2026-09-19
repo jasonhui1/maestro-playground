@@ -8,6 +8,7 @@ import {
   resolveAddressedFile,
   findAgentFile,
   declaringAgentSlug,
+  type EntityType,
 } from '../lib/fs/workspace'
 import { snapshotVersion } from '../lib/fs/versions'
 import { GET as versionsGET } from '../app/api/workspace/[type]/[slug]/versions/route'
@@ -17,13 +18,9 @@ import {
   PUT as entityPUT,
   PATCH as entityPATCH,
 } from '../app/api/workspace/[type]/[slug]/route'
+import { requestEntry } from './helpers/requestWorkspace'
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -38,7 +35,7 @@ function write(root: string, rel: string, body: string) {
 
 function newWorkspace() {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-addressed-file-'))
-  entry.root = wp
+  requestEntry.root = wp
   return wp
 }
 
@@ -89,7 +86,7 @@ test('resolveAddressedFile maps variants to declaring file and preserves entity 
   assert.deepStrictEqual(resolveAddressedFile(wp, 'agent', 'plain', shadowVariants), { filePath: plainPath, storageSlug: 'plain' })
 
   // Invalid entity type throws
-  assert.throws(() => resolveAddressedFile(wp, 'invalid' as any, 'foo'), /Invalid entity type/)
+  assert.throws(() => resolveAddressedFile(wp, 'invalid' as EntityType, 'foo'), /Invalid entity type/)
 })
 
 // #118, #123: findAgentFile and declaringAgentSlug over resolveAddressedFile.

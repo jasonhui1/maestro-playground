@@ -11,6 +11,7 @@ import { buildLayoutModel } from '../lib/layoutModel'
 import { extractSections } from '../lib/graph'
 import { answerHold } from '../lib/hold'
 import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta } from '../lib/types'
+import { requestEntry } from './helpers/requestWorkspace'
 
 // #78: the hold reads these panels and offers CANON? ticks from each proposer.
 const PROPOSERS = ['character-director', 'gameplay-director', 'world-director', 'art-director', 'devils-advocate']
@@ -43,12 +44,7 @@ const stub = async (a: AgentDef, sys: string): Promise<AgentOutput> => {
 }
 vi.mock('@/lib/runner', () => ({ runAgent: (a: AgentDef, sys: string) => stub(a, sys) }))
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 const REAL_WORKSPACE = path.resolve(__dirname, '../workspace')
 
@@ -207,7 +203,7 @@ function copyWorkspace(): string {
     const from = path.join(src, dir)
     if (fs.existsSync(from)) fs.cpSync(from, path.join(wp, dir), { recursive: true })
   }
-  entry.root = wp
+  requestEntry.root = wp
   return wp
 }
 

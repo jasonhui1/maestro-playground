@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { loadWorkspace } from '@/lib/fs/workspace'
 import { pinRunVersions, versionKey } from '@/lib/runVersions'
 import { validateChain } from '@/lib/chainGraph'
 import { resolveRunChain } from '@/lib/resolveRunChain'
@@ -15,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ws = requestWorkspace()
-  const workspace = loadWorkspace(ws.root)
+  const workspace = ws.definitions()
   const { agents, skills, chains, tools } = workspace
 
   const resolved = resolveRunChain(body, { agents, chains })

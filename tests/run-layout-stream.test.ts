@@ -5,13 +5,9 @@ import path from 'path'
 import os from 'os'
 import type { AgentOutput } from '../lib/types'
 import type { LayoutModel } from '../lib/layoutModel'
+import { requestEntry } from './helpers/requestWorkspace'
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The only test in the repo that stands a module in for a real one: the contract under
 // test is the frame sequence /api/run emits, and reaching it otherwise means calling a
@@ -50,7 +46,7 @@ say something
 
 function newWorkspace(chainFile: string, body: string) {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-stream-'))
-  entry.root = wp
+  requestEntry.root = wp
   write(wp, path.join('chains', chainFile), body)
   write(wp, path.join('agents', 'relay.md'), agentFile)
   return wp

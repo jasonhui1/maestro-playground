@@ -22,7 +22,6 @@ export type ContinuePlan =
  */
 export function continueRun(
   ws: Workspace,
-  workspace: LiveWorkspace,
   runId: string,
   plan: ContinuePlan,
   requestContext?: unknown,
@@ -30,6 +29,7 @@ export function continueRun(
   const meta = loadRunFor(ws.runs, runId, { mustNotBeRunning: true })
   if ('error' in meta) return toResponse(meta)
   const context = contextOverrides(requestContext)
+  const workspace = ws.definitions()
   const res = 'answer' in plan ? answer(ws, workspace, meta, plan.answer, context)
     : 'promote' in plan ? promote(ws, workspace, meta, plan.promote, context)
     : fork(ws, workspace, meta, plan.fork, context)

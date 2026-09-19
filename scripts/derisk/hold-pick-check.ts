@@ -6,17 +6,19 @@ import path from 'node:path'
 import matter from 'gray-matter'
 import { client, MODEL, save } from './provider'
 import { sliceCandidates } from '../../lib/hold'
+import { requestWorkspace } from '../../lib/requestWorkspace'
 
 const runId = process.argv[2]
-const logDir = path.resolve('workspace/logs', runId)
+const { root } = requestWorkspace()
+const logDir = path.join(root, 'logs', runId)
 const meta = JSON.parse(fs.readFileSync(path.join(logDir, 'meta.json'), 'utf-8'))
 const logBody = (suffix: string) => {
   const f = fs.readdirSync(logDir).find(n => n.endsWith(suffix))!
   return matter(fs.readFileSync(path.join(logDir, f), 'utf-8')).content.trim()
 }
-const prompt = (slug: string) => matter(fs.readFileSync(path.resolve('workspace/agents/creative', `${slug}.md`), 'utf-8')).content
+const prompt = (slug: string) => matter(fs.readFileSync(path.join(root, 'agents/creative', `${slug}.md`), 'utf-8')).content
 const fill = (tpl: string, slots: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (m, k) => slots[k] ?? m)
-const canon = fs.readFileSync(path.resolve('workspace/context/canon-anime-game.md'), 'utf-8')
+const canon = fs.readFileSync(path.join(root, 'context/canon-anime-game.md'), 'utf-8')
 
 async function call(system: string): Promise<string> {
   const res = await client.chat.completions.create({ model: MODEL, messages: [{ role: 'system', content: system }, { role: 'user', content: 'Follow your instructions.' }] })

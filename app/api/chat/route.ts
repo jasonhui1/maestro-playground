@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { loadWorkspace } from '@/lib/fs/workspace'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
@@ -18,8 +17,9 @@ export async function POST(req: NextRequest) {
       return new Response('messages array is required', { status: 400 })
     }
 
-    const { root, runs } = requestWorkspace()
-    const { agents, skills } = loadWorkspace(root)
+    const ws = requestWorkspace()
+    const { root, runs } = ws
+    const { agents, skills } = ws.definitions()
     const agentDef = agents.find(a => a.name === agentName || a.slug === agentName)
     
     if (!agentDef) {

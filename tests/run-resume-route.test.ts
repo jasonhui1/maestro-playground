@@ -5,13 +5,9 @@ import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
 import type { AgentOutput, RunMeta } from '../lib/types'
+import { requestEntry } from './helpers/requestWorkspace'
 
-// Routes take their root from the one request entry; a test hands in its own (#116).
-const entry = vi.hoisted(() => ({ root: '' }))
-vi.mock('@/lib/requestWorkspace', async () => {
-  const { diskWorkspace } = await import('../lib/runFolders')
-  return { requestWorkspace: () => diskWorkspace(entry.root) }
-})
+vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
@@ -86,7 +82,7 @@ edges:
 
 function newWorkspace(chain: string): string {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-resume-'))
-  entry.root = wp
+  requestEntry.root = wp
   const write = (rel: string, body: string) => {
     const p = path.join(wp, rel)
     fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -125,7 +121,7 @@ async function resume(runId: string, body: object): Promise<Response> {
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
   return runs.read(runId)
 }
 
@@ -163,7 +159,7 @@ test('resume writes the hold log, runs what follows in the same folder, and comp
 test('resume is refused while the run is running, or when it has no hold', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(entry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
   runs.update(runId, { status: 'running' })
   assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
   runs.update(runId, { status: 'complete', holds: [] })

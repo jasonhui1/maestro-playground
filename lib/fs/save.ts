@@ -12,7 +12,7 @@ import { walkMarkdown } from './discover'
 export interface SaveEntityRequest {
   type: EntityType
   slug: string
-  data: Record<string, any>
+  data: Record<string, unknown>
   content: string
   folder?: string
 }
@@ -38,33 +38,33 @@ export function saveWorkspaceEntity(root: string, { type, slug, data, content, f
 
 export function createWorkspaceEntity(root: string, { type, name, slug, folder }: CreationParams) {
   const cleanSlug = sanitizeSlug(slug)
-  let template: any
+  let template: Record<string, unknown>
 
   switch (type) {
     case 'agent':
-      template = getAgentTemplate(name, cleanSlug)
+      template = { ...getAgentTemplate(name, cleanSlug) }
       break
     case 'skill':
-      template = getSkillTemplate(name, cleanSlug)
+      template = { ...getSkillTemplate(name, cleanSlug) }
       break
     case 'chain':
-      template = getChainTemplate(name, cleanSlug)
+      template = { ...getChainTemplate(name, cleanSlug) }
       break
     case 'template':
-      template = getTemplateTemplate(name, cleanSlug)
+      template = { ...getTemplateTemplate(name, cleanSlug) }
       break
     case 'context':
       template = { content: '' }
       break
     case 'tool':
-      template = getToolTemplate(name, cleanSlug)
+      template = { ...getToolTemplate(name, cleanSlug) }
       break
     default:
       throw new WorkspaceError('INVALID_NAME', `Unknown entity type: ${type}`)
   }
 
   const { systemPrompt, content, ...data } = template
-  const body = systemPrompt || content || ''
+  const body = String(systemPrompt || content || '')
 
   return saveWorkspaceEntity(root, {
     type,
