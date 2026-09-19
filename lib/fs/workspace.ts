@@ -137,6 +137,7 @@ export function loadWorkspace() {
     templates: loadAllTemplates(wp),
     tools: loadAllTools(wp),
     context,
+    defaults: loadAgentDefaults(wp),
     defaultsRaw: readAgentDefaultsRaw(wp),
   }
 }

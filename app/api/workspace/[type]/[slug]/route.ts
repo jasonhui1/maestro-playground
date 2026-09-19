@@ -6,7 +6,9 @@ import { parseTemplate } from '@/lib/fs/parseTemplate'
 import { parseTool } from '@/lib/fs/parseTool'
 import { saveWorkspaceEntity, moveWorkspaceEntity } from '@/lib/fs/save'
 import { deleteWorkspaceEntity } from '@/lib/fs/delete'
-import { validateYaml, validateAgentFrontmatter } from '@/lib/fs/validate'
+import { validateYaml, validateEntityFrontmatter, forbiddenAgentFields, forbiddenAgentFieldMessage } from '@/lib/fs/validate'
+import { loadAgentDefaults } from '@/lib/fs/defaults'
+import { getWorkspacePath } from '@/lib/fs/workspacePath'
 import { workspaceErrorResponse } from '../../errors'
 import fs from 'fs'
 import yaml from 'js-yaml'
@@ -73,21 +75,31 @@ export async function PUT(
     }
 
     if (type === 'agent') {
-      const agentCheck = validateAgentFrontmatter(data)
-      if (!agentCheck.valid) return NextResponse.json(agentCheck, { status: 400 })
+      const forbidden = forbiddenAgentFields(data)
+      if (forbidden.length > 0) {
+        return NextResponse.json({ error: forbiddenAgentFieldMessage(forbidden) }, { status: 400 })
+      }
     }
+
+    // Server warns on missing required fields without rejecting save (#122).
+    const defaults = type === 'agent' ? loadAgentDefaults(getWorkspacePath()) : undefined
+    const validationResult = validateEntityFrontmatter(type, data, defaults)
 
     // Variants save into their declaring file (#118, #123).
     const { storageSlug } = resolveAddressedFile(type as EntityType, slug)
 
-    const result = saveWorkspaceEntity({
+    const saved = saveWorkspaceEntity({
       type: type as EntityType,
       slug: storageSlug,
       data,
       content,
     })
 
-    return NextResponse.json({ success: true, ...result })
+    return NextResponse.json({
+      success: true,
+      ...saved,
+      ...(validationResult.errors.length > 0 ? { warnings: validationResult.errors } : {}),
+    })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
   }

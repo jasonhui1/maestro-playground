@@ -5,6 +5,7 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import matter from 'gray-matter';
 import { Markdown } from '@/components/ui/Markdown';
 import { RenderToggle } from '@/components/ui/RenderToggle';
+import { validateEntityFrontmatter } from '@/lib/fs/validate';
 
 interface FileEditorProps {
   content: string;
@@ -13,6 +14,7 @@ interface FileEditorProps {
   error?: string | null;
   language?: string;
   type?: string | null;
+  defaults?: Record<string, unknown>;
 }
 
 // Frontmatter is config, not prose, so preview shows it verbatim instead of feeding it to
@@ -26,7 +28,7 @@ function splitFrontmatter(source: string): { frontmatter: string | null; body: s
   }
 }
 
-export function FileEditor({ content, onChange, status, error, language = 'markdown', type }: FileEditorProps) {
+export function FileEditor({ content, onChange, status, error, language = 'markdown', type, defaults }: FileEditorProps) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [preview, setPreview] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
@@ -48,30 +50,16 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
   const validate = useCallback((value: string) => {
     if (!monacoRef.current || !editorRef.current) return;
 
-    const errors: string[] = [];
+    let errors: string[] = [];
     const model = editorRef.current.getModel();
     if (!model) return;
 
     try {
       if (language === 'markdown') {
         const { data } = matter(value);
-        
-        // Type-specific validation
-        if (type === 'agent') {
-          if (!data.name) errors.push("Missing required field: 'name'");
-          if (!data.model) errors.push("Missing required field: 'model'");
-        } else if (type === 'skill') {
-          if (!data.name) errors.push("Missing required field: 'name'");
-        } else if (type === 'chain') {
-          if (!data.name) errors.push("Missing required field: 'name'");
-          if (!Array.isArray(data.nodes)) errors.push("Missing or invalid field: 'nodes' (must be an array)");
-          if (!Array.isArray(data.edges)) errors.push("Missing or invalid field: 'edges' (must be an array)");
-        } else if (type === 'template') {
-          if (!data.name) errors.push("Missing required field: 'name'");
-          if (!data.chain) errors.push("Missing required field: 'chain'");
-        } else if (type === 'tool') {
-          if (!data.name) errors.push("Missing required field: 'name'");
-          if (!data.executor) errors.push("Missing required field: 'executor'");
+        const result = validateEntityFrontmatter(type ?? '', data, defaults);
+        if (!result.valid) {
+          errors = result.errors;
         }
       } else if (language === 'yaml') {
         matter(`---\n${value}\n---`);
@@ -95,7 +83,7 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
     } catch (err: unknown) {
       const yamlError = err as { reason?: string; message?: string; mark?: { line: number; column: number } };
       const message = yamlError.reason || yamlError.message || "Invalid YAML frontmatter";
-      errors.push(message);
+      errors = [message];
       setValidationErrors(errors);
 
       let line = 1;
@@ -118,7 +106,7 @@ export function FileEditor({ content, onChange, status, error, language = 'markd
         },
       ]);
     }
-  }, [language, type]);
+  }, [language, type, defaults]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -46,3 +46,66 @@ export function validateContext(filename: string, content: string): ValidationRe
   }
   return { valid: true }
 }
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.trim().length > 0
+}
+
+// Frontmatter validation rules per entity type (#122).
+export function validateEntityFrontmatter(
+  type: string,
+  data: Record<string, unknown>,
+  defaults?: Record<string, unknown>
+): { valid: boolean; errors: string[]; error?: string } {
+  const errors: string[] = []
+  const d = data || {}
+
+  if (type === 'agent') {
+    if (!isNonEmptyString(d.name)) {
+      errors.push("Missing required field: 'name'")
+    }
+    if (!isNonEmptyString(d.model) && !isNonEmptyString(defaults?.model)) {
+      errors.push("Missing required field: 'model'")
+    }
+    const forbidden = forbiddenAgentFields(d)
+    if (forbidden.length > 0) {
+      errors.push(forbiddenAgentFieldMessage(forbidden))
+    }
+  } else if (type === 'skill') {
+    if (!isNonEmptyString(d.name)) {
+      errors.push("Missing required field: 'name'")
+    }
+  } else if (type === 'chain') {
+    if (!isNonEmptyString(d.name)) {
+      errors.push("Missing required field: 'name'")
+    }
+    if (!Array.isArray(d.nodes)) {
+      errors.push("Missing or invalid field: 'nodes' (must be an array)")
+    }
+    if (!Array.isArray(d.edges)) {
+      errors.push("Missing or invalid field: 'edges' (must be an array)")
+    }
+  } else if (type === 'template') {
+    if (!isNonEmptyString(d.name)) {
+      errors.push("Missing required field: 'name'")
+    }
+    if (!isNonEmptyString(d.chain)) {
+      errors.push("Missing required field: 'chain'")
+    }
+  } else if (type === 'tool') {
+    if (!isNonEmptyString(d.name)) {
+      errors.push("Missing required field: 'name'")
+    }
+    if (!isNonEmptyString(d.executor)) {
+      errors.push("Missing required field: 'executor'")
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    ...(errors.length > 0 ? { error: errors[0] } : {}),
+  }
+}
+
+

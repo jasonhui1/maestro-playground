@@ -76,7 +76,15 @@ export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved 
       <div className="flex-1 min-h-0 p-3">
         {ready === null
           ? <div className="text-xs text-zinc-400">Loading…</div>
-          : <AgentDrawerEditor key={slug} slug={slug} initial={ready.initial} onSaved={handleSaved} />}
+          : (
+            <AgentDrawerEditor
+              key={slug}
+              slug={slug}
+              initial={ready.initial}
+              defaults={ready.resolved.resolution?.sources?.model === 'defaults' ? { model: ready.resolved.model } : {}}
+              onSaved={handleSaved}
+            />
+          )}
       </div>
     </div>
   )
@@ -161,7 +169,12 @@ function ResolvedAgent({ agent, skills }: { agent: AgentDef; skills?: SkillDef[]
   )
 }
 
-function AgentDrawerEditor({ slug, initial, onSaved }: { slug: string; initial: string; onSaved?: () => void }) {
+function AgentDrawerEditor({ slug, initial, defaults, onSaved }: {
+  slug: string
+  initial: string
+  defaults?: Record<string, unknown>
+  onSaved?: () => void
+}) {
   const { content, setContent, status, error } = useAutoSave('agent', slug, initial)
   const prev = useRef(status)
   useEffect(() => {
@@ -169,6 +182,6 @@ function AgentDrawerEditor({ slug, initial, onSaved }: { slug: string; initial: 
     prev.current = status
   }, [status, onSaved])
   return (
-    <FileEditor content={content} onChange={setContent} status={status} error={error} type="agent" language="markdown" />
+    <FileEditor content={content} onChange={setContent} status={status} error={error} type="agent" language="markdown" defaults={defaults ?? {}} />
   )
 }

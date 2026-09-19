@@ -38,16 +38,24 @@ function WorkspaceContent() {
   const [editorChains, setEditorChains] = useState<ChainDef[]>([]);
   const [editorTools, setEditorTools] = useState<ToolDef[]>([]);
   const [editorSkills, setEditorSkills] = useState<SkillDef[]>([]);
+  const [defaults, setDefaults] = useState<Record<string, unknown> | undefined>(undefined);
 
   const refetchEditorData = useCallback(() => {
     fetch('/api/workspace')
       .then(r => r.json())
-      .then(w => { setEditorAgents(w.agents ?? []); setEditorContext(w.context ?? []); setEditorChains(w.chains ?? []); setEditorTools(w.tools ?? []); setEditorSkills(w.skills ?? []) })
+      .then(w => {
+        setEditorAgents(w.agents ?? []);
+        setEditorContext(w.context ?? []);
+        setEditorChains(w.chains ?? []);
+        setEditorTools(w.tools ?? []);
+        setEditorSkills(w.skills ?? []);
+        if (w.defaults) setDefaults(w.defaults);
+      })
       .catch(() => { setEditorAgents([]); setEditorContext([]); setEditorChains([]); setEditorTools([]); setEditorSkills([]) })
   }, [])
 
   useEffect(() => {
-    if (type !== 'chain') return
+    if (type !== 'chain' && type !== 'agent') return
     refetchEditorData()
   }, [type, slug, refetchEditorData])
 
@@ -234,6 +242,7 @@ function WorkspaceContent() {
                     error={saveError}
                     type={type}
                     language={editorLanguage(type)}
+                    defaults={defaults}
                   />
                 </div>
               )
