@@ -40,11 +40,11 @@ export interface AnswerRequest {
 }
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
-export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | { error: string } {
-  if (typeof direction !== 'string' || !direction.trim()) return { error: 'direction is required' }
-  if (holdId != null && typeof holdId !== 'string') return { error: 'holdId must be a node id' }
-  if (chosen != null && typeof chosen !== 'string') return { error: 'chosen must be a candidate heading' }
-  if (custom != null && typeof custom !== 'string') return { error: 'custom must be non-empty text' }
+export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | Refusal {
+  if (typeof direction !== 'string' || !direction.trim()) return { error: 'direction is required', status: 400 }
+  if (holdId != null && typeof holdId !== 'string') return { error: 'holdId must be a node id', status: 400 }
+  if (chosen != null && typeof chosen !== 'string') return { error: 'chosen must be a candidate heading', status: 400 }
+  if (custom != null && typeof custom !== 'string') return { error: 'custom must be non-empty text', status: 400 }
   return { direction, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
 }
 

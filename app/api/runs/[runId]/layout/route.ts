@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readRunMeta } from '@/lib/logger'
+import { loadRunFor } from '@/lib/loadRun'
+import { toResponse } from '@/lib/refusal'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { findChainForRun } from '@/lib/resolveRunChain'
 import { buildLayoutModel, LayoutModel } from '@/lib/layoutModel'
@@ -11,12 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ runId: string }> }
 ) {
   const { runId } = await params
-  let meta
-  try {
-    meta = readRunMeta(runId)
-  } catch (error) {
-    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
-  }
+  const meta = loadRunFor(runId)
+  if ('error' in meta) return toResponse(meta)
 
   const { chains } = loadWorkspace()
   // A chain renamed or deleted since the run happened resolves the same as one that

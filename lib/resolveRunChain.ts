@@ -1,4 +1,4 @@
-import { AgentDef, ChainDef, ChainNode, ChainEdge, RunMeta } from './types'
+import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta } from './types'
 
 export interface RunChainBody {
   chainName?: string
@@ -9,7 +9,7 @@ export interface RunChainBody {
 
 export type ResolvedRun =
   | { chain: ChainDef; title: string; kind: 'inline' | 'chain' | 'agent' }
-  | { error: string; status: number }
+  | Refusal
 
 /** A run's chain by name, falling back to slug — the lookup a run's chainName is resolved by. */
 export function findChainForRun(chains: ChainDef[], chainName: string): ChainDef | undefined {

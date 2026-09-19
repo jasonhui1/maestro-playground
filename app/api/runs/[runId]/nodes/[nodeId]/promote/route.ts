@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { readRunMeta } from '@/lib/logger'
+import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
-import type { RunMeta } from '@/lib/types'
+import { readPromoteRequest } from '@/lib/promote'
+import { loadRunFor } from '@/lib/loadRun'
+import { toResponse } from '@/lib/refusal'
 
 // Use this: in place on a waiting run, rerunning to the hold (#98);
 // a finished run, or one past an answered hold, forks instead (#99).
@@ -12,16 +13,10 @@ export async function POST(
 ) {
   const { runId, nodeId } = await params
   const body = await req.json().catch(() => ({}))
-  const { turn, context } = body ?? {}
-  if (turn != null && !Number.isInteger(turn)) {
-    return NextResponse.json({ error: 'turn must be a whole number' }, { status: 400 })
-  }
+  const promote = readPromoteRequest(nodeId, body ?? {})
+  if ('error' in promote) return toResponse(promote)
 
-  let meta: RunMeta
-  try {
-    meta = readRunMeta(runId)
-  } catch {
-    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
-  }
-  return continueRun(loadWorkspace(), meta, { promote: { nodeId, turn: turn ?? undefined } }, context)
+  const meta = loadRunFor(runId, { mustNotBeRunning: true })
+  if ('error' in meta) return toResponse(meta)
+  return continueRun(loadWorkspace(), meta, { promote }, body?.context)
 }

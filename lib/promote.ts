@@ -1,14 +1,19 @@
 import { hasAnsweredHold } from './hold'
-import { chatTarget, type ChatRefusal } from './nodeChat'
+import { chatTarget } from './nodeChat'
 import { runLog } from './partialRun'
-import type { AgentOutput, RunMeta } from './types'
-
-export type PromoteRefusal = ChatRefusal | 'bad-turn' | 'in-loop'
+import type { AgentOutput, Refusal, RunMeta } from './types'
 
 /** A promote request, read: the node, and the `### Turn N` of its reply (the last by default). */
 export interface PromoteRequest {
   nodeId: string
   turn?: number
+}
+
+/** A promote body's shape, before it meets a run. */
+export function readPromoteRequest(nodeId: string, { turn }: Record<string, unknown>): PromoteRequest | Refusal {
+  if (turn == null) return { nodeId }
+  if (typeof turn !== 'number' || !Number.isInteger(turn)) return { error: 'turn must be a whole number', status: 400 }
+  return { nodeId, turn }
 }
 
 export interface Promotion {
@@ -26,19 +31,19 @@ export interface Promotion {
  * Use this (#98): a proposer's reply becomes its output and its descendants rerun.
  * `turn` is the exchange number the log shows under `### Turn N`; the last by default.
  */
-export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Promotion | { refused: PromoteRefusal; reason: string } {
+export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Promotion | Refusal {
   const target = chatTarget(meta, nodeId)
-  if ('refused' in target) return target
+  if ('error' in target) return target
   if (target.node.zone) {
-    return { refused: 'in-loop', reason: `Node ${nodeId} is inside a loop; its rounds cannot be promoted` }
+    return { error: `Node ${nodeId} is inside a loop; its rounds cannot be promoted`, status: 400 }
   }
 
   const conversation = target.record.conversation ?? []
   const replies = conversation.flatMap((m, i) => (m.role === 'assistant' ? [i] : []))
-  if (!replies.length) return { refused: 'bad-turn', reason: `Node ${nodeId} has no reply to promote` }
+  if (!replies.length) return { error: `Node ${nodeId} has no reply to promote`, status: 400 }
   const n = turn ?? replies.length
   if (n < 1 || n > replies.length) {
-    return { refused: 'bad-turn', reason: `turn must be from 1 to ${replies.length}` }
+    return { error: `turn must be from 1 to ${replies.length}`, status: 400 }
   }
   const at = replies[n - 1]
   const reply = conversation[at]

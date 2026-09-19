@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { runAgent } from '@/lib/runner'
-import { readRunMeta, latestStepOf } from '@/lib/logger'
-import { appendTurn, chatTarget, chatTranscript, CHAT_REFUSAL_STATUS } from '@/lib/nodeChat'
+import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
+import { loadRunFor } from '@/lib/loadRun'
+import { toResponse } from '@/lib/refusal'
 import { sseResponse } from '@/lib/sse'
-import type { ChatMessage, RunMeta } from '@/lib/types'
+import type { ChatMessage } from '@/lib/types'
 
 // A node's conversation continues its own transcript and lives in its log (#97).
 export async function POST(
@@ -13,29 +14,15 @@ export async function POST(
 ) {
   const { runId, nodeId } = await params
   const body = await req.json().catch(() => ({}))
-  const message = typeof body?.message === 'string' ? body.message.trim() : ''
-  if (!message) return NextResponse.json({ error: 'message is required' }, { status: 400 })
+  const chat = readChatRequest(body ?? {})
+  if ('error' in chat) return toResponse(chat)
+  const { message } = chat
 
-  let meta: RunMeta
-  try {
-    meta = readRunMeta(runId)
-  } catch {
-    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
-  }
-  // A running stretch rewrites agentOutputs when it ends, which would drop the turn.
-  if (meta.status === 'running') {
-    return NextResponse.json({ error: 'Run is running; chat once it waits or ends' }, { status: 409 })
-  }
-
-  const target = chatTarget(meta, nodeId)
-  if ('refused' in target) return NextResponse.json({ error: target.reason }, { status: CHAT_REFUSAL_STATUS[target.refused] })
-  if (latestStepOf(meta.runId, nodeId) === undefined) {
-    return NextResponse.json({ error: `Node ${nodeId} has no log in this run` }, { status: 400 })
-  }
-  const live = loadWorkspace().agents.find(a => a.slug === target.agentSlug)
-  if (!live) return NextResponse.json({ error: `Agent ${target.agentSlug} no longer exists` }, { status: 422 })
-  // The reply comes from the model that wrote the output, not whatever the file names now.
-  const agent = target.record.model ? { ...live, model: target.record.model } : live
+  const meta = loadRunFor(runId, { mustNotBeRunning: true })
+  if ('error' in meta) return toResponse(meta)
+  const speaker = chatSpeaker(meta, nodeId, loadWorkspace().agents)
+  if ('error' in speaker) return toResponse(speaker)
+  const { target, agent } = speaker
 
   return sseResponse(async send => {
     try {

@@ -171,11 +171,3 @@ test('a fork logs every replayed record afresh in a new run, from step 0', async
   ])
   assert.equal(store.metas.get('fork-1')!.branchedFromRunId, 'run-1')
 })
-
-test('a running run is refused before any plan is read', async () => {
-  const meta = waitingRun()
-  meta.status = 'running'
-  const res = continueRun(workspace, meta, { answer: { direction: 'go on' } })
-  assert.equal(res.status, 409)
-  assert.deepStrictEqual(newLogs(), [])
-})

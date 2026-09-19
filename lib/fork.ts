@@ -20,14 +20,14 @@ export interface ForkRequest {
 }
 
 /** A fork body's shape, before it meets a run. */
-export function readForkRequest({ from, revisions, versions }: Record<string, unknown>): ForkRequest | { error: string } {
-  if (from !== undefined && typeof from !== 'string') return { error: 'from must be a node id' }
-  if (revisions !== undefined && !isTextMap(revisions)) return { error: 'revisions must map node ids to text' }
+export function readForkRequest({ from, revisions, versions }: Record<string, unknown>): ForkRequest | Refusal {
+  if (from !== undefined && typeof from !== 'string') return { error: 'from must be a node id', status: 400 }
+  if (revisions !== undefined && !isTextMap(revisions)) return { error: 'revisions must map node ids to text', status: 400 }
   if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
-    return { error: "versions must be 'current' or 'pinned'" }
+    return { error: "versions must be 'current' or 'pinned'", status: 400 }
   }
-  if (from === undefined && !Object.keys(revisions ?? {}).length) return { error: 'from or revisions is required' }
-  if (from !== undefined && revisions && from in revisions) return { error: `Node ${from} cannot both rerun and be revised` }
+  if (from === undefined && !Object.keys(revisions ?? {}).length) return { error: 'from or revisions is required', status: 400 }
+  if (from !== undefined && revisions && from in revisions) return { error: `Node ${from} cannot both rerun and be revised`, status: 400 }
   return { from, revisions, versions }
 }
 

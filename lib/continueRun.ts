@@ -1,9 +1,10 @@
 import { answerHold, readPick, selectHold, type AnswerRequest } from './hold'
-import { CHAT_REFUSAL_STATUS } from './nodeChat'
-import { planPromotion, type PromoteRefusal, type PromoteRequest } from './promote'
+import { planPromotion, type PromoteRequest } from './promote'
 import { forkRun, planFork, type ForkRequest } from './fork'
 import { runLog } from './partialRun'
-import { latestStepOf, nextStep, updateRunMeta, writeAgentLog } from './logger'
+import { nextStep, updateRunMeta, writeAgentLog } from './logger'
+import { loggedStep } from './nodeChat'
+import { toResponse } from './refusal'
 import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -13,12 +14,9 @@ export type ContinuePlan =
   | { promote: PromoteRequest }
   | { fork: ForkRequest }
 
-const PROMOTE_REFUSAL_STATUS: Record<PromoteRefusal, number> = {
-  ...CHAT_REFUSAL_STATUS, 'bad-turn': 400, 'in-loop': 400,
-}
-
 /**
  * Continues `meta`'s run by `plan`, in place or as a fork (#99, #107); refusals come back as JSON.
+ * `meta` is not running: the caller loads it with `mustNotBeRunning` (#104).
  * In place, earlier records replay as the objects in `meta.agentOutputs` and keep their logs (ADR-0011).
  */
 export function continueRun(
@@ -28,11 +26,10 @@ export function continueRun(
   requestContext?: unknown,
 ): Response {
   const context = contextOverrides(requestContext)
-  const res = meta.status === 'running' ? { error: 'Run is running', status: 409 }
-    : 'answer' in plan ? answer(workspace, meta, plan.answer, context)
+  const res = 'answer' in plan ? answer(workspace, meta, plan.answer, context)
     : 'promote' in plan ? promote(workspace, meta, plan.promote, context)
     : fork(workspace, meta, plan.fork, context)
-  return 'error' in res ? Response.json({ error: res.error, errors: res.errors }, { status: res.status }) : res
+  return 'error' in res ? toResponse(res) : res
 }
 
 function answer(
@@ -65,9 +62,9 @@ function promote(
   context: Record<string, string>,
 ): Response | Refusal {
   const plan = planPromotion(meta, nodeId, turn)
-  if ('refused' in plan) return { error: plan.reason, status: PROMOTE_REFUSAL_STATUS[plan.refused] }
-  const sourceStep = latestStepOf(meta.runId, nodeId)
-  if (sourceStep === undefined) return { error: `Node ${nodeId} has no log in this run`, status: 400 }
+  if ('error' in plan) return plan
+  const sourceStep = loggedStep(meta.runId, nodeId)
+  if (typeof sourceStep !== 'number') return sourceStep
 
   if (meta.status !== 'waiting' || plan.forks) {
     const res = forkRun(workspace, meta, { anchors: [nodeId], outputs: [plan.revision] }, context)

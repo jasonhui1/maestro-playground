@@ -1,29 +1,51 @@
 import { agentSlugOf } from './nodeKinds'
 import { recordKey } from './partialRun'
 import { latestStepOf, readRunMeta, updateRunMeta, writeAgentLog } from './logger'
-import type { AgentOutput, ChainEdge, ChainNode, ChatMessage, RunMeta } from './types'
+import type { AgentDef, AgentOutput, ChainEdge, ChainNode, ChatMessage, Refusal, RunMeta } from './types'
 
-export type ChatRefusal = 'unknown-node' | 'not-a-proposer' | 'no-output'
+export interface ChatTarget {
+  index: number
+  record: AgentOutput
+  agentSlug: string
+  node: ChainNode
+  graph: { nodes: ChainNode[]; edges: ChainEdge[] }
+}
 
-export const CHAT_REFUSAL_STATUS: Record<ChatRefusal, number> = { 'unknown-node': 404, 'not-a-proposer': 400, 'no-output': 400 }
+/** A chat body's shape, the message trimmed. */
+export function readChatRequest({ message }: Record<string, unknown>): { message: string } | Refusal {
+  const text = typeof message === 'string' ? message.trim() : ''
+  return text ? { message: text } : { error: 'message is required', status: 400 }
+}
 
-export type ChatTarget =
-  | { index: number; record: AgentOutput; agentSlug: string; node: ChainNode; graph: { nodes: ChainNode[]; edges: ChainEdge[] } }
-  | { refused: ChatRefusal; reason: string }
+/** The step of the node's latest log: the one a chat or promote rewrites. */
+export function loggedStep(runId: string, nodeId: string): number | Refusal {
+  return latestStepOf(runId, nodeId) ?? { error: `Node ${nodeId} has no log in this run`, status: 400 }
+}
 
 /** The record a node chat continues: the node's latest output, which must have succeeded (#97). */
-export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget {
+export function chatTarget(meta: RunMeta, nodeId: string): ChatTarget | Refusal {
   const graph = meta.graph
   const node = graph?.nodes.find(n => n.id === nodeId)
-  if (!graph || !node) return { refused: 'unknown-node', reason: `Node ${nodeId} is not in this run` }
+  if (!graph || !node) return { error: `Node ${nodeId} is not in this run`, status: 404 }
   const agentSlug = agentSlugOf(node)
-  if (!agentSlug) return { refused: 'not-a-proposer', reason: `A ${node.kind} node has no transcript to continue` }
+  if (!agentSlug) return { error: `A ${node.kind} node has no transcript to continue`, status: 400 }
   // The latest record, not the latest success: it is the one the node's latest log shows.
   const index = meta.agentOutputs.findLastIndex(o => o.nodeId === nodeId)
   if (index === -1 || meta.agentOutputs[index].status !== 'success') {
-    return { refused: 'no-output', reason: `Node ${nodeId} has no output in this run` }
+    return { error: `Node ${nodeId} has no output in this run`, status: 400 }
   }
   return { index, record: meta.agentOutputs[index], agentSlug, node, graph }
+}
+
+/** Who answers a node chat: its agent, as the model that wrote the output, not whatever the file names now. */
+export function chatSpeaker(meta: RunMeta, nodeId: string, agents: AgentDef[]): { target: ChatTarget; agent: AgentDef } | Refusal {
+  const target = chatTarget(meta, nodeId)
+  if ('error' in target) return target
+  const step = loggedStep(meta.runId, nodeId)
+  if (typeof step !== 'number') return step
+  const live = agents.find(a => a.slug === target.agentSlug)
+  if (!live) return { error: `Agent ${target.agentSlug} no longer exists`, status: 422 }
+  return { target, agent: target.record.model ? { ...live, model: target.record.model } : live }
 }
 
 // Tool turns are dropped and thought never replayed (#92).
@@ -46,9 +68,9 @@ export function appendTurn(runId: string, nodeId: string, message: string, reply
   // Re-read: another turn may have landed while this one streamed.
   const meta = readRunMeta(runId)
   const target = chatTarget(meta, nodeId)
-  const step = latestStepOf(runId, nodeId)
-  if ('refused' in target) throw new Error(target.reason)
-  if (step === undefined) throw new Error(`Node ${nodeId} has no log in this run`)
+  const step = loggedStep(runId, nodeId)
+  if ('error' in target) throw new Error(target.error)
+  if (typeof step !== 'number') throw new Error(step.error)
   const record: AgentOutput = {
     ...target.record,
     conversation: [...(target.record.conversation ?? []), { role: 'user', content: message }, reply],
