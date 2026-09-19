@@ -94,8 +94,7 @@ export async function PUT(
 
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
-    const error = err as Error
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }
 

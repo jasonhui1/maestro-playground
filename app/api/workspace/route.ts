@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadWorkspace, resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, isValidEntityType, EntityType } from '@/lib/fs/workspace'
+import { WorkspaceError } from '@/lib/fs/errors'
 import { createWorkspaceEntity, createWorkspaceFolder, saveWorkspaceEntity } from '@/lib/fs/save'
 import { buildChainFromTemplate } from '@/lib/fs/forkChain'
 import { chainToData } from '@/lib/serializeChain'
 import { CAPABILITIES } from '@/lib/capabilities'
+import { workspaceErrorResponse } from './errors'
 import fs from 'fs'
 
 export async function GET() {
@@ -11,8 +13,7 @@ export async function GET() {
     const workspace = loadWorkspace()
     return NextResponse.json({ ...workspace, capabilities: CAPABILITIES })
   } catch (err: unknown) {
-    const error = err as Error
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }
 
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       const targetFolder = folder ? `${folder}/${cleanName}` : cleanName
       const targetPath = resolveFolderPath(type, targetFolder)
       if (fs.existsSync(targetPath)) {
-        return NextResponse.json({ error: `a folder named \`${name}\` already exists here` }, { status: 409 })
+        throw new WorkspaceError('ALREADY_EXISTS', `a folder named \`${name}\` already exists here`)
       }
       const result = createWorkspaceFolder(type, targetFolder)
       return NextResponse.json({ success: true, ...result })
@@ -53,12 +54,12 @@ export async function POST(request: NextRequest) {
       const { templates, chains } = loadWorkspace()
       const tmpl = templates.find(t => t.slug === fromTemplate)
       if (!tmpl) {
-        return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+        throw new WorkspaceError('NOT_FOUND', 'Template not found')
       }
       const forked = buildChainFromTemplate(tmpl, name, chains)
       const forkPath = resolveEntityPath('chain', forked.slug, folder)
       if (fs.existsSync(forkPath)) {
-        return NextResponse.json({ error: alreadyExistsMessage('chain', forked.slug) }, { status: 409 })
+        throw new WorkspaceError('ALREADY_EXISTS', alreadyExistsMessage('chain', forked.slug))
       }
       const data = chainToData({ ...forked, filePath: '' })
       const result = saveWorkspaceEntity({ type: 'chain', slug: forked.slug, data, content: '', folder })
@@ -69,13 +70,12 @@ export async function POST(request: NextRequest) {
     const filePath = resolveEntityPath(type, cleanSlug, folder)
 
     if (fs.existsSync(filePath)) {
-      return NextResponse.json({ error: alreadyExistsMessage(type, cleanSlug) }, { status: 409 })
+      throw new WorkspaceError('ALREADY_EXISTS', alreadyExistsMessage(type, cleanSlug))
     }
 
     const result = createWorkspaceEntity({ type, name, slug: cleanSlug, folder })
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
-    const error = err as Error
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return workspaceErrorResponse(err)
   }
 }

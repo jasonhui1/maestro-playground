@@ -8,8 +8,9 @@ import { discoverFiles, findBySlug, walkMarkdown } from './discover'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
+import { WorkspaceError } from './errors'
 
-
+export * from './errors'
 export const ENTITY_TYPES = ENTITY_DIRS;
 
 export type EntityType = keyof typeof ENTITY_TYPES;
@@ -44,7 +45,7 @@ export function sanitizeFolder(folder?: string) {
 export function resolveEntityPath(type: string, slug: string, folder?: string) {
   const wp = getWorkspacePath()
   if (!isValidEntityType(type)) {
-    throw new Error(`Invalid entity type: ${type}`)
+    throw new WorkspaceError('INVALID_NAME', `Invalid entity type: ${type}`)
   }
 
   const subDir = ENTITY_TYPES[type]
@@ -65,7 +66,7 @@ export function resolveEntityPath(type: string, slug: string, folder?: string) {
   // should be unreachable, but a resolved path outside the type dir is unsafe enough
   // to guard against directly rather than trust that invariant alone.
   if (!targetPath.startsWith(absoluteSubDir)) {
-    throw new Error('Security violation: Directory traversal detected')
+    throw new WorkspaceError('SECURITY_VIOLATION', 'Security violation: Directory traversal detected')
   }
 
   return targetPath
@@ -75,14 +76,14 @@ export function resolveEntityPath(type: string, slug: string, folder?: string) {
 export function resolveFolderPath(type: string, folder: string) {
   const wp = getWorkspacePath()
   if (!isValidEntityType(type)) {
-    throw new Error(`Invalid entity type: ${type}`)
+    throw new WorkspaceError('INVALID_NAME', `Invalid entity type: ${type}`)
   }
 
   const absoluteSubDir = path.join(wp, ENTITY_TYPES[type])
   const targetPath = path.join(absoluteSubDir, sanitizeFolder(folder))
 
   if (!targetPath.startsWith(absoluteSubDir)) {
-    throw new Error('Security violation: Directory traversal detected')
+    throw new WorkspaceError('SECURITY_VIOLATION', 'Security violation: Directory traversal detected')
   }
 
   return targetPath

@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { WorkspaceError } from './errors'
 
 export interface DiscoveredFile {
   slug: string      // file name without .md; the folder never appears in it (ADR-0012)
@@ -19,7 +20,8 @@ export function assertUniqueSlug(
 ): void {
   const clash = bySlug.get(slug)
   if (clash) {
-    throw new Error(
+    throw new WorkspaceError(
+      'ALREADY_EXISTS',
       `Duplicate ${what} "${slug}":\n  ${clash}\n  ${filePath}\n` +
       `Rename one of them — a folder groups files, but the name addresses them.`
     )

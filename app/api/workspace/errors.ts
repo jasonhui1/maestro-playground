@@ -1,29 +1,32 @@
 import { NextResponse } from 'next/server'
+import { isWorkspaceError, WorkspaceErrorKind } from '@/lib/fs/errors'
 
-/**
- * The one mapping from a workspace error to a status. The fs layer throws plain Errors,
- * so the message is what carries the class — keep every route reading it here, or the
- * same failure answers differently depending on which route met it.
- */
+// Maps workspace fs failure classes to HTTP statuses (#117).
+export function workspaceErrorStatus(kind: WorkspaceErrorKind): number {
+  switch (kind) {
+    case 'NOT_FOUND':
+      return 404
+    case 'ALREADY_EXISTS':
+    case 'IN_USE':
+      return 409
+    case 'INVALID_NAME':
+    case 'INVALID_CONTENT':
+    case 'FOLDER_NOT_EMPTY':
+      return 400
+    case 'SECURITY_VIOLATION':
+      return 403
+    default: {
+      const _exhaustive: never = kind
+      return 500
+    }
+  }
+}
+
 export function workspaceErrorResponse(err: unknown) {
+  if (isWorkspaceError(err)) {
+    const error = err.kind === 'SECURITY_VIOLATION' ? 'Forbidden' : err.message
+    return NextResponse.json({ error }, { status: workspaceErrorStatus(err.kind) })
+  }
   const error = err as Error
-  if (error.message?.includes('Security violation')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  if (error.message?.includes('already exists')) {
-    return NextResponse.json({ error: error.message }, { status: 409 })
-  }
-  if (error.message?.startsWith('Invalid name')) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-  if (error.message?.startsWith('In use')) {
-    return NextResponse.json({ error: error.message }, { status: 409 })
-  }
-  if (error.message?.startsWith('Folder not empty')) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-  if (error.message?.includes('not found')) {
-    return NextResponse.json({ error: error.message }, { status: 404 })
-  }
-  return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ error: error?.message ?? String(err) }, { status: 500 })
 }

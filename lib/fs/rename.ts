@@ -2,6 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { EntityType, ENTITY_TYPES, getWorkspacePath, sanitizeSlug } from './workspace'
+import { WorkspaceError } from './errors'
 import { walkMarkdown, findBySlug } from './discover'
 import { getVersionsDir } from './versions'
 import {
@@ -90,7 +91,7 @@ function resolveRenameTarget(
   if (own) return { filePath: own }
   const variant = variants.get(from)
   if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
-  throw new Error(`Entity not found: ${type}/${from}`)
+  throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${from}`)
 }
 
 /**
@@ -100,10 +101,13 @@ function resolveRenameTarget(
  */
 function assertNameFree(type: EntityType, to: string, variants: Map<string, VariantSource>) {
   const file = findBySlug(typeDir(type), to)
-  if (file) throw new Error(`a ${type} file named \`${to}\` already exists: ${path.basename(file)}`)
+  if (file) throw new WorkspaceError('ALREADY_EXISTS', `a ${type} file named \`${to}\` already exists: ${path.basename(file)}`)
   const variant = variants.get(to)
   if (variant) {
-    throw new Error(`an agent variant named \`${to}\` already exists, declared by ${path.basename(variant.filePath)}`)
+    throw new WorkspaceError(
+      'ALREADY_EXISTS',
+      `an agent variant named \`${to}\` already exists, declared by ${path.basename(variant.filePath)}`,
+    )
   }
 }
 
@@ -114,7 +118,7 @@ function assertNameFree(type: EntityType, to: string, variants: Map<string, Vari
 export function planRename(type: EntityType, from: string, to: string): RenamePlan {
   const cleanTo = sanitizeSlug(to)
   if (!cleanTo || cleanTo === '.' || cleanTo === '..') {
-    throw new Error(`Invalid name: \`${to}\``)
+    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${to}\``)
   }
 
   const variants = variantIndex(type)
@@ -209,7 +213,7 @@ function renameVariantId(
   const { data, content } = parseFile(filePath)
   const variants = Array.isArray(data.variants) ? data.variants : []
   const entry = variants.find(v => v && typeof v === 'object' && (v as { id?: unknown }).id === from)
-  if (!entry) throw new Error(`Entity not found: agent/${from}`)
+  if (!entry) throw new WorkspaceError('NOT_FOUND', `Entity not found: agent/${from}`)
   ;(entry as { id: string }).id = to
   write(filePath, matter.stringify(content, data))
 }

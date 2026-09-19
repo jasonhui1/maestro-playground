@@ -3,6 +3,7 @@ import fs from 'fs'
 import yaml from 'js-yaml'
 import path from 'path'
 import { resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, EntityType } from './workspace'
+import { WorkspaceError } from './errors'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
@@ -24,7 +25,7 @@ export function saveWorkspaceEntity({ type, slug, data, content, folder }: SaveE
   const frontmatterString = yaml.dump(data)
   const validation = validateYaml(frontmatterString)
   if (!validation.valid) {
-    throw new Error(`Invalid YAML frontmatter: ${validation.error}`)
+    throw new WorkspaceError('INVALID_CONTENT', `Invalid YAML frontmatter: ${validation.error}`)
   }
 
   // resolveEntityPath handles sanitization and security checks
@@ -59,7 +60,7 @@ export function createWorkspaceEntity({ type, name, slug, folder }: CreationPara
       template = getToolTemplate(name, cleanSlug)
       break
     default:
-      throw new Error(`Unknown entity type: ${type}`)
+      throw new WorkspaceError('INVALID_NAME', `Unknown entity type: ${type}`)
   }
 
   const { systemPrompt, content, ...data } = template
@@ -87,7 +88,7 @@ export function createWorkspaceFolder(type: string, folder: string) {
 export function moveWorkspaceEntity(type: EntityType, slug: string, folder: string) {
   const currentPath = resolveEntityPath(type, slug)
   if (!fs.existsSync(currentPath)) {
-    throw new Error(`Entity not found: ${type}/${slug}`)
+    throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
   }
 
   // resolveFolderPath already confines destDir to the type directory, and a
@@ -109,12 +110,12 @@ export function moveWorkspaceEntity(type: EntityType, slug: string, folder: stri
 export function renameWorkspaceFolder(type: EntityType, folder: string, name: string) {
   const cleanName = sanitizeFolder(name)
   if (!cleanName) {
-    throw new Error(`Invalid name: \`${name}\``)
+    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${name}\``)
   }
 
   const oldPath = resolveFolderPath(type, folder)
   if (!fs.existsSync(oldPath)) {
-    throw new Error(`Folder not found: ${folder}`)
+    throw new WorkspaceError('NOT_FOUND', `Folder not found: ${folder}`)
   }
 
   const slashIndex = folder.lastIndexOf('/')
@@ -126,7 +127,7 @@ export function renameWorkspaceFolder(type: EntityType, folder: string, name: st
     return { folderPath: oldPath, folder }
   }
   if (fs.existsSync(newPath)) {
-    throw new Error(`a folder named \`${cleanName}\` already exists here`)
+    throw new WorkspaceError('ALREADY_EXISTS', `a folder named \`${cleanName}\` already exists here`)
   }
 
   fs.renameSync(oldPath, newPath)
@@ -138,7 +139,7 @@ export function renameWorkspaceFolder(type: EntityType, folder: string, name: st
 export function deleteWorkspaceFolder(type: EntityType, folder: string) {
   const folderPath = resolveFolderPath(type, folder)
   if (!fs.existsSync(folderPath)) {
-    throw new Error(`Folder not found: ${folder}`)
+    throw new WorkspaceError('NOT_FOUND', `Folder not found: ${folder}`)
   }
 
   const entries = fs.readdirSync(folderPath).filter(e => !e.startsWith('.'))
@@ -147,9 +148,7 @@ export function deleteWorkspaceFolder(type: EntityType, folder: string) {
     const detail = fileCount > 0
       ? `${fileCount} ${fileCount === 1 ? 'file' : 'files'} inside — move or delete them first`
       : `a subfolder is inside — move or delete it first`
-    // "Folder not empty" joins workspaceErrorResponse's shared vocabulary (app/api/workspace/errors.ts)
-    // rather than a route hand-matching this message on its own.
-    throw new Error(`Folder not empty: ${detail}`)
+    throw new WorkspaceError('FOLDER_NOT_EMPTY', `Folder not empty: ${detail}`)
   }
 
   fs.rmdirSync(folderPath)

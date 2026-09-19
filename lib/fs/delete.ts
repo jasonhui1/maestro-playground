@@ -2,6 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { EntityType, resolveEntityPath } from './workspace'
+import { WorkspaceError } from './errors'
 import { findBySlug } from './discover'
 import { parseFile, typeDir, inboundRefs, variantIndex, declaredVariants, RefHit } from './entityRefs'
 
@@ -29,7 +30,7 @@ function resolveTarget(type: EntityType, slug: string, variants: Map<string, { f
   if (own) return { filePath: own }
   const variant = variants.get(slug)
   if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
-  throw new Error(`Entity not found: ${type}/${slug}`)
+  throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
 }
 
 /** ``` `rot` is named by decision (chain) ``` — enough for the user to open what is in the way. */
@@ -70,15 +71,14 @@ export function deleteWorkspaceEntity(type: EntityType, slug: string) {
   // resolveEntityPath is kept for the not-found path so a missing file of any type still
   // reports the same message, whether or not the type directory exists.
   if (type !== 'agent' && !fs.existsSync(resolveEntityPath(type, slug))) {
-    throw new Error(`Entity not found: ${type}/${slug}`)
+    throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
   }
 
   const plan = planDelete(type, slug)
 
   if (plan.blockers.length) {
-    // "In use" joins workspaceErrorResponse's shared vocabulary (app/api/workspace/errors.ts)
-    // rather than a route hand-matching this message on its own.
-    throw new Error(
+    throw new WorkspaceError(
+      'IN_USE',
       `In use: ${describe(plan.blockers)} — repoint or delete ${plan.blockers.length === 1 ? 'it' : 'them'} first`,
     )
   }
@@ -93,7 +93,8 @@ export function deleteWorkspaceEntity(type: EntityType, slug: string) {
   if (plan.promotes) {
     const clash = variantIndex(type).get(plan.promotes)
     if (clash && clash.filePath !== plan.filePath) {
-      throw new Error(
+      throw new WorkspaceError(
+        'ALREADY_EXISTS',
         `an agent variant named \`${plan.promotes}\` already exists, declared by ${path.basename(clash.filePath)}`,
       )
     }
@@ -102,7 +103,7 @@ export function deleteWorkspaceEntity(type: EntityType, slug: string) {
   const { data, content } = parseFile(plan.filePath)
   const entries = Array.isArray(data.variants) ? data.variants : []
   const kept = entries.filter(v => !(v && typeof v === 'object' && (v as { id?: unknown }).id === slug))
-  if (kept.length === entries.length) throw new Error(`Entity not found: ${type}/${slug}`)
+  if (kept.length === entries.length) throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
 
   if (kept.length) data.variants = kept
   else delete data.variants
