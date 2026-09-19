@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMemo } from 'react';
-import { parseTabs, serializeTabs } from '@/lib/fs/tabs';
+import { parseTabs, serializeTabs, closeTab, tabKey } from '@/lib/fs/tabs';
 import { WorkspaceTab } from '@/lib/types';
 import { X } from 'lucide-react';
 
@@ -28,13 +28,8 @@ export function TabController() {
   const handleCloseTab = (e: React.MouseEvent, tabToClose: WorkspaceTab) => {
     e.stopPropagation();
     
-    const closedIndex = tabs.findIndex(
-      t => t.type === tabToClose.type && t.slug === tabToClose.slug
-    );
-    
-    const newTabs = tabs.filter(
-      t => !(t.type === tabToClose.type && t.slug === tabToClose.slug)
-    );
+    const activeKey = activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null;
+    const { tabs: newTabs, active: nextActive } = closeTab(tabs, activeKey, tabToClose);
     
     const params = new URLSearchParams(searchParams.toString());
     
@@ -44,13 +39,10 @@ export function TabController() {
       params.delete('tabs');
     } else {
       params.set('tabs', serializeTabs(newTabs));
-      
-      // If we closed the active tab, switch to the adjacent tab
-      if (tabToClose.active) {
-        const nextTabIndex = Math.max(0, closedIndex - 1);
-        const nextTab = newTabs[nextTabIndex];
-        params.set('type', nextTab.type);
-        params.set('slug', nextTab.slug);
+      if (nextActive) {
+        const [nextType, nextSlug] = nextActive.split(':');
+        params.set('type', nextType);
+        params.set('slug', nextSlug);
       }
     }
     

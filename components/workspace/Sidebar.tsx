@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef } from '@/lib/types';
+import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef, WorkspaceTabType } from '@/lib/types';
+import { parseTabs, serializeTabs, openTab, closeTab, renameTab, tabKey } from '@/lib/fs/tabs';
 import Fuse from 'fuse.js';
 import { 
   Bot, 
@@ -241,23 +242,9 @@ export default function Sidebar() {
     params.set('slug', slug);
     if (seed) params.set('seed', seed); else params.delete('seed');
 
-    // Update tabs parameter
-    const currentTabs = searchParams.get('tabs');
-    const tabString = `${type}:${slug}`;
-
-    if (!currentTabs) {
-      params.set('tabs', tabString);
-    } else {
-      const tabsArray = currentTabs.split(',');
-      if (!tabsArray.includes(tabString)) {
-        // Limit to 15 tabs to prevent URL overflow
-        if (tabsArray.length >= 15) {
-          tabsArray.shift();
-        }
-        tabsArray.push(tabString);
-        params.set('tabs', tabsArray.join(','));
-      }
-    }
+    const currentTabs = parseTabs(searchParams.get('tabs'), activeType, activeSlug);
+    const { tabs: nextTabs } = openTab(currentTabs, { type: type as WorkspaceTabType, slug });
+    params.set('tabs', serializeTabs(nextTabs));
 
     router.push(`/workspace?${params.toString()}`);
   };
@@ -284,28 +271,19 @@ export default function Sidebar() {
 
       addToast(`Deleted ${type}: ${name}`, 'success');
 
-      // Update URL parameters to remove the deleted tab
       const params = new URLSearchParams(searchParams.toString());
-      const currentTabs = params.get('tabs');
-      const tabToDelete = `${type}:${slug}`;
-      
-      if (currentTabs) {
-        const tabsArray = currentTabs.split(',').filter(t => t !== tabToDelete);
-        if (tabsArray.length === 0) {
-          params.delete('tabs');
-        } else {
-          params.set('tabs', tabsArray.join(','));
-        }
-      }
+      const currentTabs = parseTabs(params.get('tabs'), activeType, activeSlug);
+      const activeKey = activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null;
+      const { tabs: nextTabs, active: nextActive } = closeTab(currentTabs, activeKey, tabKey({ type, slug }));
 
-      // If the deleted item was active, switch to another tab if available
-      if (activeType === type && activeSlug === slug) {
-        const updatedTabs = params.get('tabs');
-        if (updatedTabs) {
-          const tabsArray = updatedTabs.split(',');
-          // Switch to the most recently added tab
-          const lastTab = tabsArray[tabsArray.length - 1];
-          const [nextType, nextSlug] = lastTab.split(':');
+      if (nextTabs.length === 0) {
+        params.delete('tabs');
+        params.delete('type');
+        params.delete('slug');
+      } else {
+        params.set('tabs', serializeTabs(nextTabs));
+        if (nextActive) {
+          const [nextType, nextSlug] = nextActive.split(':');
           params.set('type', nextType);
           params.set('slug', nextSlug);
         } else {
@@ -453,11 +431,22 @@ export default function Sidebar() {
 
       // The slug is the address, so every open tab pointing at the old one is repointed.
       const params = new URLSearchParams(searchParams.toString());
-      const before = `${entityType}:${oldSlug}`;
-      const after = `${entityType}:${renamePlan.to}`;
-      const tabs = params.get('tabs');
-      if (tabs) params.set('tabs', tabs.split(',').map(t => (t === before ? after : t)).join(','));
-      if (activeType === entityType && activeSlug === oldSlug) params.set('slug', renamePlan.to);
+      const currentTabs = parseTabs(params.get('tabs'), activeType, activeSlug);
+      const activeKey = activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null;
+      const { tabs: nextTabs, active: nextActive } = renameTab(
+        currentTabs,
+        activeKey,
+        tabKey({ type: entityType, slug: oldSlug }),
+        { type: entityType as WorkspaceTabType, slug: renamePlan.to }
+      );
+      if (nextTabs.length > 0) {
+        params.set('tabs', serializeTabs(nextTabs));
+      }
+      if (nextActive) {
+        const [nextType, nextSlug] = nextActive.split(':');
+        params.set('type', nextType);
+        params.set('slug', nextSlug);
+      }
       router.push(`/workspace?${params.toString()}`);
 
       addToast(`Renamed ${oldSlug} to ${renamePlan.to}`, 'success');

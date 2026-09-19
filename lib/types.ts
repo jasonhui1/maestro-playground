@@ -281,7 +281,7 @@ export interface ValidationResult {
   issues: ValidationIssue[]
 }
 
-export type WorkspaceTabType = 'agent' | 'chain' | 'skill' | 'template' | 'context'
+export type WorkspaceTabType = 'agent' | 'chain' | 'skill' | 'template' | 'context' | 'tool'
 
 export interface WorkspaceTab {
   type: WorkspaceTabType

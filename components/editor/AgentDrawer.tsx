@@ -6,6 +6,7 @@ import { FileEditor } from '@/components/workspace/FileEditor'
 import { X, ExternalLink } from 'lucide-react'
 import { AGENT_FIELDS, type AgentDef, type AgentField, type FieldSource, type SkillDef } from '@/lib/types'
 import { forbiddenAgentFieldMessage } from '@/lib/fs/validate'
+import { parseTabs, openTab, serializeTabs } from '@/lib/fs/tabs'
 
 export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved }: {
   slug: string
@@ -51,10 +52,9 @@ export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved 
     params.set('type', 'agent')
     params.set('slug', slug)
     params.delete('seed')
-    const tab = `agent:${slug}`
-    const tabs = params.get('tabs')
-    if (!tabs) params.set('tabs', tab)
-    else if (!tabs.split(',').includes(tab)) params.set('tabs', `${tabs},${tab}`)
+    const currentTabs = parseTabs(searchParams.get('tabs'), searchParams.get('type'), searchParams.get('slug'))
+    const { tabs: nextTabs } = openTab(currentTabs, { type: 'agent', slug })
+    params.set('tabs', serializeTabs(nextTabs))
     router.push(`/workspace?${params.toString()}`)
   }
 
