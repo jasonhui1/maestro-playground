@@ -36,9 +36,15 @@ export async function runErrorMessage(res: Response): Promise<string> {
   return (body.errors as string[] | undefined)?.join('; ') ?? body.error ?? `Run failed (${res.status})`
 }
 
-export async function streamRun(
+export type ChatStreamEvent =
+  | { type: 'run_id'; runId: string }
+  | { type: 'token'; token: string; tokenType?: string }
+  | { type: 'done'; result: AgentOutput; runId: string }
+  | { type: 'error'; error: string }
+
+export async function streamRun<E = RunEvent>(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onEvent: (e: RunEvent) => void,
+  onEvent: (e: E) => void,
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -52,7 +58,7 @@ export async function streamRun(
       const line = frame.split('\n').find(l => l.startsWith('data: '))
       if (!line) continue
       try {
-        onEvent(JSON.parse(line.slice(6)) as RunEvent)
+        onEvent(JSON.parse(line.slice(6)) as E)
       } catch {
         // ignore malformed frame
       }

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { ChatHistory } from '@/components/workspace/ChatHistory'
 import { ChatInput } from '@/components/workspace/ChatInput'
 import { ChatMessage, AgentDef, RunMeta } from '@/lib/types'
+import { streamRun, type ChatStreamEvent } from '@/lib/runStream'
 import { Bot, Settings2, AlertCircle, Loader2, ChevronLeft, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 
@@ -145,56 +146,35 @@ function ChatContent() {
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No reader available')
 
-      const decoder = new TextDecoder()
       let accumulatedResponse = ''
       let accumulatedThought = ''
-      let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue
-          
-          try {
-            const data = JSON.parse(trimmedLine.slice(6))
-            
-            if (data.type === 'run_id' && !activeRunIdRef.current) {
-              setActiveRunId(data.runId)
-              // Update URL without refreshing
-              window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
-            } else if (data.type === 'token') {
-              if (data.tokenType === 'thought') {
-                accumulatedThought += data.token
-                setStreamingThought(accumulatedThought)
-              } else {
-                accumulatedResponse += data.token
-                setStreamingContent(accumulatedResponse)
-              }
-            } else if (data.type === 'done') {
-              const assistantMessage: ChatMessage = { 
-                role: 'assistant', 
-                content: data.result.output,
-                thought: data.result.thought
-              }
-              setMessages(prev => [...prev, assistantMessage])
-              setIsStreaming(false)
-              setStreamingContent('')
-              setStreamingThought('')
-            } else if (data.type === 'error') {
-              throw new Error(data.error)
-            }
-          } catch (e) {
-            console.error('Error parsing SSE data:', e, trimmedLine)
+      await streamRun<ChatStreamEvent>(reader, (data) => {
+        if (data.type === 'run_id' && !activeRunIdRef.current) {
+          setActiveRunId(data.runId)
+          window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
+        } else if (data.type === 'token') {
+          if (data.tokenType === 'thought') {
+            accumulatedThought += data.token
+            setStreamingThought(accumulatedThought)
+          } else {
+            accumulatedResponse += data.token
+            setStreamingContent(accumulatedResponse)
           }
+        } else if (data.type === 'done') {
+          const assistantMessage: ChatMessage = {
+            role: 'assistant',
+            content: data.result.output,
+            thought: data.result.thought,
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          setIsStreaming(false)
+          setStreamingContent('')
+          setStreamingThought('')
+        } else if (data.type === 'error') {
+          throw new Error(data.error)
         }
-      }
+      })
     } catch (err) {
       console.error('Chat error:', err)
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')

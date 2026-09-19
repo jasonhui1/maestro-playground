@@ -1,7 +1,7 @@
 // hooks/store/useRunStore.ts
 import { create } from 'zustand'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder } from '../../lib/runModel'
-import { streamRun } from '../../lib/runStream'
+import { streamRun, runErrorMessage } from '../../lib/runStream'
 
 export interface RunTarget {
   type: string
@@ -69,8 +69,7 @@ export const useRunStore = create<RunStore>((set, get) => {
             body: JSON.stringify(buildBody(seed)),
           })
           if (!res.ok) {
-            const b = await res.json().catch(() => ({}))
-            patch(key, { error: (b.errors as string[] | undefined)?.join('; ') ?? b.error ?? `Run failed (${res.status})` })
+            patch(key, { error: await runErrorMessage(res) })
             return
           }
           const reader = res.body?.getReader()

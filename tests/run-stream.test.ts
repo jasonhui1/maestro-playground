@@ -50,4 +50,14 @@ test('run-stream', async () => {
   assert.strictEqual(resultFrame.latencyMs, 412)
   assert.strictEqual(resultFrame.isError, false)
   assert.strictEqual(resultFrame.result, '## Houses\nAldric', 'the result body crosses the wire (#36)')
+
+  // multi-line tokens reach consumers intact without getting mangled across chunks (#125)
+  const multilineEvents: RunEvent[] = []
+  await streamRun(streamFromChunks([
+    'data: {"type":"token","nodeId":"a","token":"line 1\\nline 2\\nline 3"}\n\n',
+    'data: {"type":"token","nodeId":"a","token":"chunked \\n',
+    'across boundaries"}\n\n',
+  ]), e => multilineEvents.push(e))
+  assert.strictEqual((multilineEvents[0] as Extract<RunEvent, { type: 'token' }>).token, 'line 1\nline 2\nline 3')
+  assert.strictEqual((multilineEvents[1] as Extract<RunEvent, { type: 'token' }>).token, 'chunked \nacross boundaries')
 })
