@@ -3,6 +3,7 @@ import { slugify } from './graph'
 import { kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
+import { scanTokens, endpointOf } from './tokens'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -69,13 +70,11 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
   const acceptsInputs = (n: ChainNode): boolean => kindOf(n.kind)?.acceptsInputs === true
 
   const allowedKinds = new Set<string>(allKinds)
-  const refRe = /\{([^.}]+)\.[^}]+\}/g
   const checkRefs = (label: string, expr: string | undefined, nodeId: string) => {
     if (!expr) return
-    let m: RegExpExecArray | null
-    refRe.lastIndex = 0
-    while ((m = refRe.exec(expr)) !== null) {
-      if (!nodeById.has(m[1])) add(`${label}: condition references unknown node "${m[1]}"`, { nodeId })
+    for (const t of scanTokens(expr)) {
+      const { node } = endpointOf(t)
+      if (!nodeById.has(node)) add(`${label}: condition references unknown node "${node}"`, { nodeId })
     }
   }
 

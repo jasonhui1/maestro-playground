@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
+import { makeContextReader } from '@/lib/fs/contextReader'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
 import { requestWorkspace } from '@/lib/requestWorkspace'
@@ -63,13 +64,7 @@ export async function POST(req: NextRequest) {
       runs.create(meta)
     }
 
-    const systemPrompt = await buildSystemPrompt(
-      agentDef, 
-      skills, 
-      [], // For chat, we don't want history to resolve into {input}, we want history as messages
-      root, 
-      lastUserMessage
-    )
+    const systemPrompt = buildSystemPrompt(agentDef, skills, lastUserMessage, makeContextReader(root))
 
     // Prepend system prompt to the history for the LLM
     const fullHistory: ChatMessage[] = [

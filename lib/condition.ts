@@ -1,5 +1,6 @@
 import { AgentOutput } from './types'
-import { extractSection, slugify } from './graph'
+import { extractSection } from './graph'
+import { parseToken, endpointOf, socketKey, isWholeOutput } from './tokens'
 
 type Tok =
   | { t: 'ref'; node: string; socket: string }
@@ -17,13 +18,9 @@ function tokenize(s: string): Tok[] {
     if (c === '{') {
       const end = s.indexOf('}', i)
       if (end === -1) throw new Error('unterminated ref')
-      const inner = s.slice(i + 1, end).trim()
-      const dot = inner.indexOf('.')
-      toks.push({
-        t: 'ref',
-        node: dot === -1 ? inner : inner.slice(0, dot),
-        socket: dot === -1 ? 'output' : inner.slice(dot + 1)
-      })
+      const token = parseToken(s.slice(i + 1, end))
+      if (!token) throw new Error('empty ref')
+      toks.push({ t: 'ref', ...endpointOf(token) })
       i = end + 1; continue
     }
     if (c === '"' || c === "'") {
@@ -55,12 +52,12 @@ export function evalCondition(expr: string, nodeOutputs: Map<string, AgentOutput
   const norm = (s: string) => s.trim().toLowerCase()
   const resolve = (tk: Tok): string => {
     if (tk.t !== 'ref') return ''
-    const compoundKey = `${tk.node}::${slugify(tk.socket)}`
+    const compoundKey = `${tk.node}::${socketKey(tk.socket)}`
     const compoundOut = nodeOutputs.get(compoundKey)
     if (compoundOut) return compoundOut.output || ''
     const o = nodeOutputs.get(tk.node)
     if (!o) return ''
-    return slugify(tk.socket) === 'output' ? (o.output || '') : extractSection(o.output || '', tk.socket)
+    return isWholeOutput(tk.socket) ? (o.output || '') : extractSection(o.output || '', tk.socket)
   }
 
   function parseOr(): boolean {

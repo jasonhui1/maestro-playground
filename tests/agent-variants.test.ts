@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { parseAgentFile } from '../lib/fs/parseAgent'
-import { parseSlots } from '../lib/slots'
+import { promptSlots } from '../lib/tokens'
 
 const file = (frontmatter: string, body: string) => `---\n${frontmatter}\n---\n\n${body}\n`
 
@@ -47,7 +47,7 @@ test('a map prompt fills the slot each key names', () => {
 
 test('a filled slot stops being an input socket', () => {
   const [rot] = parseAgentFile('/w/agents/premortem.md', withVariants)
-  assert.deepStrictEqual(parseSlots(rot.systemPrompt), ['cause', 'document'])
+  assert.deepStrictEqual(promptSlots(rot.systemPrompt), ['cause', 'document'])
 })
 
 test('skills+ extends the file list, skills! replaces it', () => {
@@ -59,7 +59,7 @@ test('skills+ extends the file list, skills! replaces it', () => {
 
 test('variants share the file body, so an unfilled slot stays a socket on all of them', () => {
   const out = parseAgentFile('/w/agents/premortem.md', withVariants)
-  assert.ok(out.every(a => parseSlots(a.systemPrompt).includes('document')))
+  assert.ok(out.every(a => promptSlots(a.systemPrompt).includes('document')))
 })
 
 // A variant is addressable, so a dropped one would surface far from its cause —
@@ -93,8 +93,15 @@ test('a non-scalar slot value throws instead of stringifying to [object Object]'
 })
 
 test('a slot name holding regex metacharacters fills only itself', () => {
-  const [a] = parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: v\n    prompt:\n      "a.b": FILLED', 'Body {a.b} and {axb}'))
-  assert.ok(a.systemPrompt.includes('Body FILLED and {axb}'))
+  const [a] = parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: v\n    prompt:\n      "a+b": FILLED', 'Body {a+b} and {aab}'))
+  assert.ok(a.systemPrompt.includes('Body FILLED and {aab}'))
+})
+
+test('a dotted token is a ref, not a slot, so a variant cannot fill it', () => {
+  assert.throws(
+    () => parseAgentFile('/w/agents/x.md', file('name: X\nvariants:\n  - id: v\n    prompt:\n      "a.b": FILLED', 'Body {a.b}')),
+    /prompt fills "\{a\.b\}", which the body does not contain/,
+  )
 })
 
 test('a variant that changes skills reports skills as coming from the variant', () => {

@@ -1,13 +1,7 @@
 import matter from 'gray-matter'
 import { ChainDef, ChainNode, ChainEdge, ChainPort, ChainParameter } from './types'
 import { allFields, FieldCodec } from './nodeKinds'
-
-export function parseEndpoint(s: string): { node: string; socket: string } {
-  const str = String(s)
-  const dot = str.indexOf('.')
-  if (dot === -1) return { node: str.trim(), socket: 'output' }
-  return { node: str.slice(0, dot).trim(), socket: str.slice(dot + 1).trim() }
-}
+import { parseEndpoint } from './tokens'
 
 function coerceField(raw: unknown, codec: FieldCodec): unknown {
   switch (codec) {

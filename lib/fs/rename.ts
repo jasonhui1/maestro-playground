@@ -10,15 +10,15 @@ import {
   variantIndex, VariantSource,
 } from './entityRefs'
 import { parseVersionKey, versionKey, TouchedFile } from '../runVersions'
-import { parseRefs } from '../refs'
+import { scanTokens, Token } from '../tokens'
 
 /**
  * Types whose slug can also appear in prompt prose, as `{slug}` (a context file) or
- * `{slug.field}` (an agent) — see lib/resolver.ts. Nothing else can appear in prose.
+ * `{slug.field}` (an agent). Nothing else can appear in prose.
  */
-const PROSE_REF_KIND: Partial<Record<EntityType, 'file' | 'agent'>> = {
-  context: 'file',
-  agent: 'agent',
+const PROSE_REF: Partial<Record<EntityType, (t: Token, slug: string) => boolean>> = {
+  context: (t, slug) => t.kind === 'slot' && t.name === slug && slug !== 'input',
+  agent: (t, slug) => t.kind === 'ref' && t.node === slug,
 }
 
 /** One referencing file the rename will rewrite, and the typed fields it will touch. */
@@ -44,14 +44,14 @@ function logsDir(root: string) {
 }
 
 function collectManual(root: string, type: EntityType, from: string): { filePath: string; type: EntityType }[] {
-  const kind = PROSE_REF_KIND[type]
-  if (!kind) return []
+  const names = PROSE_REF[type]
+  if (!names) return []
 
   const found: { filePath: string; type: EntityType }[] = []
   for (const holder of Object.keys(ENTITY_TYPES) as EntityType[]) {
     for (const filePath of walkMarkdown(typeDir(root, holder))) {
       const { content } = parseFile(filePath)
-      if (parseRefs(content).some(ref => ref.kind === kind && ref.target === from)) {
+      if (scanTokens(content).some(t => names(t, from))) {
         found.push({ filePath, type: holder })
       }
     }

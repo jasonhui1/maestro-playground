@@ -1,5 +1,5 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef } from './types'
-import { parseSlots } from './slots'
+import { promptSlots } from './tokens'
 import { slugify } from './graph'
 import { ENTITY_DIRS } from './entityDirs'
 
@@ -69,7 +69,7 @@ export function unknownSkillNames(names: string[], allSkills: SkillDef[]): strin
 function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
-  return a ? parseSlots(a.systemPrompt).map(name => ({ name })) : []
+  return a ? promptSlots(a.systemPrompt).map(name => ({ name })) : []
 }
 
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {

@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
-import { parseSlots } from './slots'
-import { extractSection, extractSections, slugify } from './graph'
+import { extractSection, extractSections } from './graph'
+import { promptSlots, fillSlot, socketKey, isWholeOutput } from './tokens'
 import type { SectionWarning } from './sectionWarning'
 
 // Pure — reporting the miss is the caller's job (#37).
@@ -29,11 +29,11 @@ export function readSocket(
   if (src.kind === 'context') return { value: readContext(src.file || '') }
   if (src.kind === 'param') return { value: paramValue }
   if (src.kind === 'subchain') {
-    const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
+    const o = nodeOutputs.get(`${src.id}::${socketKey(socket)}`)
     return { value: o ? o.output : '' }
   }
   if (src.kind === 'loop-start' || src.kind === 'loop-end') {
-    const o = nodeOutputs.get(`${src.id}::${slugify(socket)}`)
+    const o = nodeOutputs.get(`${src.id}::${socketKey(socket)}`)
     return { value: o ? o.output : '' }
   }
   if (src.kind === 'gate' || src.kind === 'branch') {
@@ -42,10 +42,10 @@ export function readSocket(
   }
   const o = nodeOutputs.get(src.id)
   if (!o) return { value: '' }
-  if (slugify(socket) === 'output') return { value: o.output }
+  if (isWholeOutput(socket)) return { value: o.output }
   const value = extractSection(o.output, socket)
   if (value !== '') return { value }
-  return extractSections(o.output).includes(slugify(socket))
+  return extractSections(o.output).includes(socketKey(socket))
     ? { value, emptySection: socket }
     : { value, missingSection: socket }
 }
@@ -66,7 +66,7 @@ export function resolveNodePrompt(
 ): ResolvedPrompt {
   let out = agent.systemPrompt
   const warnings: SectionWarning[] = []
-  for (const slot of parseSlots(agent.systemPrompt)) {
+  for (const slot of promptSlots(agent.systemPrompt)) {
     const edge = chain.edges.find(e => e.toNode === node.id && e.toSocket === slot)
     let value: string
     if (!edge) {
@@ -85,8 +85,7 @@ export function resolveNodePrompt(
         }
       }
     }
-    const re = new RegExp(`\\{\\s*${slot}\\s*\\}`, 'g')
-    out = out.replace(re, value)
+    out = fillSlot(out, slot, value).text
   }
   return { prompt: out, warnings }
 }

@@ -327,7 +327,6 @@ test('a nested context file is readable at run time, by bare slug', async () => 
   const wp = newWorkspace()
   write(wp, 'context/lore/tavern.md', '---\nname: Tavern\n---\nThe Gilded Flagon.\n')
 
-  // the {slug} placeholder path a prompt uses
-  const { resolveRefs } = await import('../lib/resolver')
-  assert.strictEqual(resolveRefs('{tavern}', [], wp, ''), 'The Gilded Flagon.')
+  const { makeContextReader } = await import('../lib/fs/contextReader')
+  assert.strictEqual(makeContextReader(wp)('tavern'), 'The Gilded Flagon.')
 })

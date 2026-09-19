@@ -1,8 +1,5 @@
-import fs from 'fs'
-import path from 'path'
-import matter from 'gray-matter'
 import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef, HoldRecord } from './types'
-import { findBySlug } from './fs/discover'
+import { makeContextReader } from './fs/contextReader'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
@@ -30,16 +27,6 @@ export interface RunCallbacks {
 // A request-supplied value wins over the workspace file (#79 follow-up): a client
 // that already holds the live copy (e.g. a vault note) shouldn't need this repo to
 // carry its own synced copy just to run a chain.
-function makeContextReader(workspacePath: string, overrides: Record<string, string> = {}) {
-  return (file: string): string => {
-    if (file in overrides) return overrides[file].trim()
-    const p = findBySlug(path.join(workspacePath, 'context'), file)
-    if (!p) return `[context ${file} not found]`
-    const { content } = matter(fs.readFileSync(p, 'utf-8'))
-    return content.trim()
-  }
-}
-
 function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
   return { nodeId, agentName: label, systemPrompt: '', input: '', output,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }

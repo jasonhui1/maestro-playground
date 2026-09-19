@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { AgentDef, AgentOutput, ChatMessage } from './types'
-import { resolveRefs } from './resolver'
+import { replaceTokens } from './tokens'
 import { calcCost, priceWarningFor } from './pricing'
 import { resolveProvider } from './provider'
 import { injectSkills } from './prompt'
@@ -351,19 +351,17 @@ export async function runAgent(
   }
 }
 
-export async function buildSystemPrompt(
+/** A chat turn's system prompt: `{input}` is the user's message, any other slot a context file; no node has run, so refs cannot resolve. */
+export function buildSystemPrompt(
   agent: AgentDef,
   allSkills: import('./types').SkillDef[],
-  previousOutputs: AgentOutput[],
-  workspacePath: string,
   userInput: string,
-): Promise<string> {
-  const resolvedBody = resolveRefs(
-    agent.systemPrompt,
-    previousOutputs,
-    workspacePath,
-    userInput,
-  )
+  readContext: (file: string) => string,
+): string {
+  const resolvedBody = replaceTokens(agent.systemPrompt, t =>
+    t.kind === 'ref' ? `[${t.node}.${t.socket}: not yet run]`
+    : t.name === 'input' ? userInput
+    : readContext(t.name))
 
   return injectSkills(agent, allSkills, resolvedBody)
 }

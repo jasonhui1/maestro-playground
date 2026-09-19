@@ -6,6 +6,7 @@ import { discoverFiles, assertUniqueSlug } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 import { resolveProvider } from '../provider'
+import { fillSlot } from '../tokens'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -168,20 +169,15 @@ function fillSlots(body: string, prompt: VariantDecl['prompt'], where: string): 
     }
     // A slot the body does not declare is a typo the reader would never see: the
     // fill would vanish and the variant would silently be the shared body.
-    const token = new RegExp(`\\{\\s*${escapeRegExp(slot)}\\s*\\}`, 'g')
-    if (!token.test(out)) {
-      throw new Error(`${where}: prompt fills "{${slot}}", which the body does not contain.`)
-    }
-    token.lastIndex = 0
     // Filling a slot removes its token, so it stops being an input socket: an
     // agent node's sockets are exactly its prompt's slots (ADR-0013).
-    out = out.replace(token, String(value))
+    const filled = fillSlot(out, slot, String(value))
+    if (!filled.found) {
+      throw new Error(`${where}: prompt fills "{${slot}}", which the body does not contain.`)
+    }
+    out = filled.text
   }
   return out
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /** One file yields its variants, or itself when it declares none (ADR-0013). */
