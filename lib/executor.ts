@@ -7,7 +7,7 @@ import { resolveNodePrompt, readSocket } from './resolveNode'
 import { SectionWarning, sameSectionWarning } from './sectionWarning'
 import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
-import { slugify } from './graph'
+import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
 import { kindOf, agentSlugOf, resolveNodeSkills } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
@@ -24,9 +24,6 @@ export interface RunCallbacks {
   onHold?: (hold: HoldRecord) => void
 }
 
-// A request-supplied value wins over the workspace file (#79 follow-up): a client
-// that already holds the live copy (e.g. a vault note) shouldn't need this repo to
-// carry its own synced copy just to run a chain.
 function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
   return { nodeId, agentName: label, systemPrompt: '', input: '', output,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }
@@ -108,7 +105,7 @@ export async function runChainGraph(
     const src = nodeById.get(e.fromNode)
     const slug = src ? agentSlugOf(src) : undefined
     const base = (slug ? agentBySlug.get(slug)?.name : undefined) ?? slug ?? e.fromNode
-    return slugify(e.fromSocket) === 'output' ? base : `${base} (${e.fromSocket})`
+    return isWholeOutput(e.fromSocket) ? base : `${base} (${e.fromSocket})`
   }
 
   const slotValue = (nodeId: string, slot: string): string => {
@@ -163,7 +160,7 @@ export async function runChainGraph(
   const setStateSockets = (nodeId: string, state: Map<string, string>, anchorId: string = nodeId) => {
     for (const [name, val] of state) {
       const rec = controlOutput(`${nodeId}::${name}`, nodeId, val, 'success')
-      nodeOutputs.set(`${nodeId}::${slugify(name)}`, rec)
+      nodeOutputs.set(outputKey(nodeId, name), rec)
       emit(anchorId, rec)
     }
   }
@@ -272,7 +269,7 @@ export async function runChainGraph(
       const active = (node.cases || []).find(c => evalCondition(c.condition, nodeOutputs))?.label ?? node.default
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
-      if (active) markOut(nodeId, e => slugify(e.fromSocket) === slugify(active))
+      if (active) markOut(nodeId, e => socketKey(e.fromSocket) === socketKey(active))
     } else if (node.kind === 'report') {
       const rec = controlOutput(nodeId, 'report', inValue(nodeId), 'success')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
@@ -322,7 +319,7 @@ export async function runChainGraph(
           }
           outMap.set(p.name, read.value)
         }
-        setStateSockets(nodeId, outMap)   // stores `${nodeId}::${slug(name)}` records
+        setStateSockets(nodeId, outMap)   // stores outputKey(nodeId, name) records
         const statusRec = controlOutput(nodeId, ref.name, '', 'success')
         nodeOutputs.set(nodeId, statusRec)
         deferredWarnings.forEach(reportWarning)

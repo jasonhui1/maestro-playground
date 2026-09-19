@@ -1,6 +1,6 @@
 import { AgentOutput } from './types'
 import { extractSection } from './graph'
-import { parseToken, endpointOf, socketKey, isWholeOutput } from './tokens'
+import { tokenAt, endpointOf, outputKey, isWholeOutput } from './tokens'
 
 type Tok =
   | { t: 'ref'; node: string; socket: string }
@@ -16,12 +16,9 @@ function tokenize(s: string): Tok[] {
     const c = s[i]
     if (/\s/.test(c)) { i++; continue }
     if (c === '{') {
-      const end = s.indexOf('}', i)
-      if (end === -1) throw new Error('unterminated ref')
-      const token = parseToken(s.slice(i + 1, end))
-      if (!token) throw new Error('empty ref')
+      const { token, end } = tokenAt(s, i)
       toks.push({ t: 'ref', ...endpointOf(token) })
-      i = end + 1; continue
+      i = end; continue
     }
     if (c === '"' || c === "'") {
       const end = s.indexOf(c, i + 1)
@@ -52,7 +49,7 @@ export function evalCondition(expr: string, nodeOutputs: Map<string, AgentOutput
   const norm = (s: string) => s.trim().toLowerCase()
   const resolve = (tk: Tok): string => {
     if (tk.t !== 'ref') return ''
-    const compoundKey = `${tk.node}::${socketKey(tk.socket)}`
+    const compoundKey = outputKey(tk.node, tk.socket)
     const compoundOut = nodeOutputs.get(compoundKey)
     if (compoundOut) return compoundOut.output || ''
     const o = nodeOutputs.get(tk.node)

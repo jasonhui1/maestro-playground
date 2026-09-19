@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import {
   parseToken, scanTokens, promptSlots, replaceTokens, fillSlot,
-  parseEndpoint, endpointOf, socketKey, isWholeOutput,
+  parseEndpoint, endpointOf, socketKey, isWholeOutput, outputKey, tokenAt, proseRef,
 } from '../lib/tokens'
 
 test('a bare token is a slot; a dotted token is a ref', () => {
@@ -66,4 +66,17 @@ test('sockets match slugified; output is the whole output', () => {
   assert.strictEqual(socketKey('Final Verdict'), 'final-verdict')
   assert.strictEqual(isWholeOutput('Output'), true)
   assert.strictEqual(isWholeOutput('summary'), false)
+  assert.strictEqual(outputKey('ls', 'Draft Notes'), 'ls::draft-notes')
+})
+
+test('tokenAt reads one token from an expression and says where it ends', () => {
+  assert.deepStrictEqual(tokenAt('x {v.a.b} y', 2), { token: { kind: 'ref', node: 'v', socket: 'a.b' }, end: 9 })
+  assert.throws(() => tokenAt('{v', 0), /unterminated/)
+  assert.throws(() => tokenAt('{x.}', 0), /malformed/)
+})
+
+test('prose reads {input} as the message, other slots as files, refs as agent fields', () => {
+  assert.deepStrictEqual(proseRef({ kind: 'slot', name: 'input' }), { kind: 'input' })
+  assert.deepStrictEqual(proseRef({ kind: 'slot', name: 'lore' }), { kind: 'file', slug: 'lore' })
+  assert.deepStrictEqual(proseRef({ kind: 'ref', node: 'a', socket: 'b.c' }), { kind: 'agent', slug: 'a', field: 'b.c' })
 })

@@ -18,6 +18,10 @@ One kind's entry in the registry.
 
 A **socket** is a wiring endpoint on a node: output sockets (`output`, `summary`, any markdown header slice) and input sockets. A **slot** is a `{token}` in an agent's prompt; an agent node's input sockets are exactly its prompt's slots. "Socket" is the graph-side word, "slot" the prompt-side word for the same input on agent nodes.
 
+## Token
+
+A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt, node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.
+
 ## Optional input
 
 An input socket that does not block execution when left unwired. Per-input fact (`{ name, optional? }` from the registry's `inputs()`), not a per-kind flag. In v1 only subchain inputs are optional: a subchain with `topic` wired and `tone` unwired still runs (the inner seed falls back to the seed prompt). What an unwired optional slot resolves to on *other* kinds is deliberately undecided.

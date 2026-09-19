@@ -1,22 +1,22 @@
 import { slugify } from './graph'
 
-/**
- * The `{token}` grammar shared by prompts, conditions and edge endpoints (#110).
- *
- * - `{name}` is a slot. In an agent prompt it is an input socket; in a condition it
- *   reads node `name`'s whole output; in the chat route `{input}` is the user's
- *   message and any other slot is a context file.
- * - `{node.socket}` is a ref. The FIRST dot splits: the node id is everything before
- *   it, the rest is one opaque socket, so `{a.b.c}` is node `a`, socket `b.c`
- *   (headings may contain dots).
- * - Node ids and input slot names match exactly; output sockets match slugified,
- *   so `summary` and `## Summary` are one socket.
- */
+// The `{token}` grammar — see "Token" in CONTEXT.md (#110).
 export type Token =
   | { kind: 'slot'; name: string }
   | { kind: 'ref'; node: string; socket: string }
 
 export interface Endpoint { node: string; socket: string }
+
+/** A token as prose outside a chain reads it: the chat prompt and the rename planner. */
+export type ProseRef =
+  | { kind: 'input' }
+  | { kind: 'file'; slug: string }
+  | { kind: 'agent'; slug: string; field: string }
+
+export function proseRef(t: Token): ProseRef {
+  if (t.kind === 'ref') return { kind: 'agent', slug: t.node, field: t.socket }
+  return t.name === 'input' ? { kind: 'input' } : { kind: 'file', slug: t.name }
+}
 
 const BRACE = /\{([^}]+)\}/g
 
@@ -32,6 +32,18 @@ export function parseToken(inner: string): Token | undefined {
   if (!head) return undefined
   if (rest === undefined) return { kind: 'slot', name: head }
   return rest ? { kind: 'ref', node: head, socket: rest } : undefined
+}
+
+/**
+ * The token whose `{` is at `text[start]`, and the index just past its `}`.
+ * Throws on an unterminated or malformed token — an expression lexer's failure.
+ */
+export function tokenAt(text: string, start: number): { token: Token; end: number } {
+  const close = text.indexOf('}', start)
+  if (close === -1) throw new Error('unterminated ref')
+  const token = parseToken(text.slice(start + 1, close))
+  if (!token) throw new Error('malformed ref')
+  return { token, end: close + 1 }
 }
 
 /** Every token in `text`, in order, duplicates kept. */
@@ -70,7 +82,7 @@ export function fillSlot(text: string, name: string, value: string): { text: str
 }
 
 /** A `node.socket` edge endpoint; a bare node reads its whole output. */
-export function parseEndpoint(s: string): Endpoint {
+export function parseEndpoint(s: unknown): Endpoint {
   const { head, rest } = splitFirstDot(String(s))
   return { node: head, socket: rest ?? 'output' }
 }
@@ -82,6 +94,11 @@ export function endpointOf(t: Token): Endpoint {
 
 export function socketKey(socket: string): string {
   return slugify(socket)
+}
+
+/** The run-state key of one named output socket on a node with several. */
+export function outputKey(node: string, socket: string): string {
+  return `${node}::${socketKey(socket)}`
 }
 
 export function isWholeOutput(socket: string): boolean {

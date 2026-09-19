@@ -243,6 +243,15 @@ test('renaming a chain rewrites a subchain node and a template that names it', a
   assert.ok(read(templatePath).includes('seed'), 'the body is untouched')
 })
 
+test('a prose {critic.v1.2 notes} ref names the agent before the first dot', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/critic.md', '---\nname: Critic\n---\nJudge.\n')
+  const readerPath = write(wp, 'agents/reader.md', '---\nname: Reader\n---\nUse {critic.v1.2 notes}.\n')
+
+  const { planRename } = await rename()
+  assert.deepStrictEqual(planRename(wp, 'agent', 'critic', 'judge').manual.map(m => m.filePath), [readerPath])
+})
+
 test('a prose {slug} placeholder is reported, never rewritten', async () => {
   const wp = newWorkspace()
   write(wp, 'context/tavern.md', '# Tavern\n')

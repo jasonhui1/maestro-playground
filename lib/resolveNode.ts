@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
 import { extractSection, extractSections } from './graph'
-import { promptSlots, fillSlot, socketKey, isWholeOutput } from './tokens'
+import { promptSlots, fillSlot, socketKey, outputKey, isWholeOutput } from './tokens'
 import type { SectionWarning } from './sectionWarning'
 
 // Pure — reporting the miss is the caller's job (#37).
@@ -29,11 +29,11 @@ export function readSocket(
   if (src.kind === 'context') return { value: readContext(src.file || '') }
   if (src.kind === 'param') return { value: paramValue }
   if (src.kind === 'subchain') {
-    const o = nodeOutputs.get(`${src.id}::${socketKey(socket)}`)
+    const o = nodeOutputs.get(outputKey(src.id, socket))
     return { value: o ? o.output : '' }
   }
   if (src.kind === 'loop-start' || src.kind === 'loop-end') {
-    const o = nodeOutputs.get(`${src.id}::${socketKey(socket)}`)
+    const o = nodeOutputs.get(outputKey(src.id, socket))
     return { value: o ? o.output : '' }
   }
   if (src.kind === 'gate' || src.kind === 'branch') {

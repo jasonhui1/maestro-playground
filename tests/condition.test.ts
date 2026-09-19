@@ -10,6 +10,7 @@ test('condition', () => {
   const ctx = new Map<string, AgentOutput>([
     ['v', out('v', 'Result: VALID')],
     ['t', out('t', '## Verdict\nAPPROVED')],
+    ['r', out('r', '## v1.2\nSHIPPED')],
     ['e', out('e', '')],
     ['ls::draft', out('ls::draft', 'CURRENT DRAFT')],
   ])
@@ -25,5 +26,7 @@ test('condition', () => {
   assert.strictEqual(evalCondition('{v.output} contains "OK" || {t.verdict} == "approved"', ctx), true)
   assert.strictEqual(evalCondition('{v.output} contains "OK" && {t.verdict} == "approved"', ctx), false)
   assert.strictEqual(evalCondition('!({v.output} contains "OK")', ctx), true)
-  assert.strictEqual(evalCondition('garbage (', ctx), false)                    // parse failure -> false
+  assert.strictEqual(evalCondition('{r.v1.2} == "shipped"', ctx), true)         // first dot splits
+  assert.strictEqual(evalCondition('{v} contains "valid"', ctx), true)          // bare = whole output
+  assert.strictEqual(evalCondition('garbage (', ctx), false)                   // parse failure -> false
 })

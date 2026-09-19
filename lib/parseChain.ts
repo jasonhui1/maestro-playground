@@ -34,8 +34,8 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
     : []
   const edges: ChainEdge[] = Array.isArray(data.edges)
     ? data.edges.map((e: Record<string, unknown>) => {
-        const from = parseEndpoint(e.from as string)
-        const to = parseEndpoint(e.to as string)
+        const from = parseEndpoint(e.from)
+        const to = parseEndpoint(e.to)
         return { fromNode: from.node, fromSocket: from.socket, toNode: to.node, toSocket: to.socket }
       })
     : []
