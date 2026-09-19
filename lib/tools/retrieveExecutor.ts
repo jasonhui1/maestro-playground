@@ -1,34 +1,15 @@
 import fs from 'fs'
 import path from 'path'
 import { walkMarkdown } from '../fs/discover'
+import { listSections, type MarkdownSection } from '../graph'
 
-interface Section {
-  heading: string
-  body: string
-}
-
-interface ScoredSection extends Section {
+interface ScoredSection extends MarkdownSection {
   folder: string
   file: string
   score: number
 }
 
-// Splits markdown into heading-delimited sections, preserving heading text (not slugified —
-// this is provenance shown to the model, not a lookup key like lib/graph.ts's extractSections).
-function splitSections(markdown: string): Section[] {
-  const re = /^#{1,6}\s+(.+?)\s*$/gm
-  const heads: { heading: string; bodyStart: number; headStart: number }[] = []
-  let m: RegExpExecArray | null
-  while ((m = re.exec(markdown)) !== null) {
-    heads.push({ heading: m[1], bodyStart: re.lastIndex, headStart: m.index })
-  }
-  return heads.map((h, i) => ({
-    heading: h.heading,
-    body: markdown.slice(h.bodyStart, i + 1 < heads.length ? heads[i + 1].headStart : markdown.length).trim(),
-  }))
-}
-
-function scoreSection(section: Section, terms: string[]): number {
+function scoreSection(section: MarkdownSection, terms: string[]): number {
   const text = `${section.heading}\n${section.body}`.toLowerCase()
   return terms.reduce((sum, term) => sum + (text.split(term).length - 1), 0)
 }
@@ -69,7 +50,7 @@ export function retrieveExecutor(params: Record<string, unknown>, config: Record
       // "context/lore/tavern.md" rather than losing its sub-folder.
       const file = path.relative(dir, filePath).split(path.sep).join('/')
       const markdown = fs.readFileSync(filePath, 'utf-8')
-      for (const section of splitSections(markdown)) {
+      for (const section of listSections(markdown)) {
         const score = terms.length ? scoreSection(section, terms) : 0
         if (score > 0) scored.push({ folder, file, heading: section.heading, body: section.body, score })
       }
