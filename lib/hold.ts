@@ -16,8 +16,7 @@ export function sliceCandidates(input: string): HoldCandidate[] {
 export function openHold(
   nodeId: string,
   input: string,
-  prompt?: string,
-  fromNode?: string,
+  { prompt, fromNode }: { prompt?: string; fromNode?: string } = {},
 ): { record: HoldRecord; warning?: SectionWarning } {
   const record: HoldRecord = {
     nodeId,

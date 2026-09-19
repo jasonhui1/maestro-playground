@@ -347,8 +347,10 @@ export async function runChainGraph(
       // Out-edges stay dead; nothing is recorded until the human answers.
       held = true
       const inEdge = liveEdgeForSlot(nodeId, 'in')
-      const { record, warning } = openHold(nodeId, inValue(nodeId), node.prompt,
-        inEdge === undefined ? undefined : chain.edges[inEdge].fromNode)
+      const { record, warning } = openHold(nodeId, inValue(nodeId), {
+        prompt: node.prompt,
+        fromNode: inEdge === undefined ? undefined : chain.edges[inEdge].fromNode,
+      })
       if (warning) reportWarning(warning)
       callbacks.onHold?.(record)
     } else if (node.kind === 'loop-start' || node.kind === 'loop-end') {

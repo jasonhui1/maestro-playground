@@ -84,14 +84,14 @@ test('answerHold: an answered hold forks and drops its earlier answer', () => {
 })
 
 test('openHold: no candidates on a wired input warns against the producer', () => {
-  const { record, warning } = openHold('gate', 'no sections here', undefined, 'decider')
+  const { record, warning } = openHold('gate', 'no sections here', { fromNode: 'decider' })
   assert.deepStrictEqual(record.candidates, [])
   assert.deepStrictEqual(warning, { fromNode: 'decider', section: 'Candidate 1', toNode: 'gate', toSocket: 'candidates' })
 })
 
 test('openHold: candidates, or no producer, mean no warning', () => {
-  assert.strictEqual(openHold('gate', DECIDER, 'pick one', 'decider').warning, undefined)
-  assert.strictEqual(openHold('gate', '', undefined, undefined).warning, undefined)
+  assert.strictEqual(openHold('gate', DECIDER, { prompt: 'pick one', fromNode: 'decider' }).warning, undefined)
+  assert.strictEqual(openHold('gate', '').warning, undefined)
 })
 
 test('hasAnsweredHold: only an answered hold among the nodes counts', () => {
