@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readRunMeta } from '@/lib/logger'
 import { loadWorkspace } from '@/lib/fs/workspace'
 import { continueRun } from '@/lib/continueRun'
+import { readAnswerRequest } from '@/lib/hold'
 import type { RunMeta } from '@/lib/types'
 
 // Resume is replay, in the same run folder, of every output plus the hold's answer (#94);
@@ -12,10 +13,8 @@ export async function POST(
 ) {
   const { runId } = await params
   const body = await req.json().catch(() => ({}))
-  const { direction, chosen, custom, context, holdId } = body ?? {}
-  if (typeof direction !== 'string' || !direction.trim()) {
-    return NextResponse.json({ error: 'direction is required' }, { status: 400 })
-  }
+  const answer = readAnswerRequest(body ?? {})
+  if ('error' in answer) return NextResponse.json(answer, { status: 400 })
 
   let meta: RunMeta
   try {
@@ -23,5 +22,5 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Run not found' }, { status: 404 })
   }
-  return continueRun(loadWorkspace(), meta, { answer: { holdId, direction, chosen, custom } }, context)
+  return continueRun(loadWorkspace(), meta, { answer }, body?.context)
 }

@@ -31,12 +31,28 @@ export function openHold(
   return warning ? { record, warning } : { record }
 }
 
+/** A resume body, read: which hold (open by default), the direction, and a candidate heading or the human's own idea. */
+export interface AnswerRequest {
+  holdId?: string
+  direction: string
+  chosen?: string
+  custom?: string
+}
+
+/** A resume body's shape, before it meets a run; a null field is an absent one. */
+export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | { error: string } {
+  if (typeof direction !== 'string' || !direction.trim()) return { error: 'direction is required' }
+  if (holdId != null && typeof holdId !== 'string') return { error: 'holdId must be a node id' }
+  if (chosen != null && typeof chosen !== 'string') return { error: 'chosen must be a candidate heading' }
+  if (custom != null && typeof custom !== 'string') return { error: 'custom must be non-empty text' }
+  return { direction, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
+}
+
 /** The hold a resume answers: the named one, else the open one, else a finished run's only hold. */
-export function selectHold(meta: RunMeta, holdId?: unknown): HoldRecord | Refusal {
+export function selectHold(meta: RunMeta, holdId?: string): HoldRecord | Refusal {
   const holds = meta.holds ?? []
-  if (holdId != null) {
-    const named = typeof holdId === 'string' ? holds.findLast(h => h.nodeId === holdId) : undefined
-    return named ?? { error: 'holdId names no hold of this run', status: 404 }
+  if (holdId !== undefined) {
+    return holds.findLast(h => h.nodeId === holdId) ?? { error: 'holdId names no hold of this run', status: 404 }
   }
   const open = meta.status === 'waiting' ? holds.findLast(h => !h.resolvedAt) : undefined
   if (open) return open
@@ -51,16 +67,12 @@ export type HoldPick = { candidate: HoldCandidate } | { custom: string }
 const normalize = (heading: string) => heading.trim().replace(/\s+/g, ' ').toLowerCase()
 
 /** A request's pick, forgiving case and spacing in a heading; neither field given is no pick (#96). */
-export function readPick(hold: HoldRecord, chosen: unknown, custom: unknown): HoldPick | undefined | Refusal {
+export function readPick(hold: HoldRecord, chosen?: string, custom?: string): HoldPick | undefined | Refusal {
   const refuse = (error: string): Refusal => ({ error, status: 400 })
-  if (chosen != null && custom != null) return refuse('send chosen or custom, not both')
-  if (custom != null) {
-    return typeof custom === 'string' && custom.trim() ? { custom: custom.trim() } : refuse('custom must be non-empty text')
-  }
-  if (chosen == null) return undefined
-  const candidate = typeof chosen === 'string'
-    ? hold.candidates.find(c => normalize(c.heading) === normalize(chosen))
-    : undefined
+  if (chosen !== undefined && custom !== undefined) return refuse('send chosen or custom, not both')
+  if (custom !== undefined) return custom.trim() ? { custom: custom.trim() } : refuse('custom must be non-empty text')
+  if (chosen === undefined) return undefined
+  const candidate = hold.candidates.find(c => normalize(c.heading) === normalize(chosen))
   return candidate ? { candidate } : refuse(`chosen names no candidate of hold ${hold.nodeId}`)
 }
 

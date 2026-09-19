@@ -1,18 +1,16 @@
-import { answerHold, readPick, selectHold } from './hold'
+import { answerHold, readPick, selectHold, type AnswerRequest } from './hold'
 import { CHAT_REFUSAL_STATUS } from './nodeChat'
-import { planPromotion, type PromoteRefusal } from './promote'
-import { planFork, type Fork, type ForkRequest } from './fork'
+import { planPromotion, type PromoteRefusal, type PromoteRequest } from './promote'
+import { forkRun, planFork, type ForkRequest } from './fork'
 import { runLog } from './partialRun'
 import { latestStepOf, nextStep, updateRunMeta, writeAgentLog } from './logger'
-import { contextOverrides, loadContinuation, startRun, streamChainRun, type LiveWorkspace } from './runSession'
+import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
 /** What a continuation does to a run: answer a hold (resume), promote a reply, or fork. */
 export type ContinuePlan =
-  /** Resume: answer the named hold, else the open one; `chosen` names a candidate, `custom` is the human's own. */
-  | { answer: { holdId?: unknown; direction: string; chosen?: unknown; custom?: unknown } }
-  /** Use this: a proposer's reply, by `### Turn N` (the last by default), becomes its output. */
-  | { promote: { nodeId: string; turn?: number } }
+  | { answer: AnswerRequest }
+  | { promote: PromoteRequest }
   | { fork: ForkRequest }
 
 const PROMOTE_REFUSAL_STATUS: Record<PromoteRefusal, number> = {
@@ -27,8 +25,9 @@ export function continueRun(
   workspace: LiveWorkspace,
   meta: RunMeta,
   plan: ContinuePlan,
-  context?: unknown,
+  requestContext?: unknown,
 ): Response {
+  const context = contextOverrides(requestContext)
   const res = meta.status === 'running' ? { error: 'Run is running', status: 409 }
     : 'answer' in plan ? answer(workspace, meta, plan.answer, context)
     : 'promote' in plan ? promote(workspace, meta, plan.promote, context)
@@ -38,8 +37,8 @@ export function continueRun(
 
 function answer(
   workspace: LiveWorkspace, meta: RunMeta,
-  { holdId, direction, chosen, custom }: Extract<ContinuePlan, { answer: unknown }>['answer'],
-  context: unknown,
+  { holdId, direction, chosen, custom }: AnswerRequest,
+  context: Record<string, string>,
 ): Response | Refusal {
   const hold = selectHold(meta, holdId)
   if ('error' in hold) return hold
@@ -62,8 +61,8 @@ function answer(
 
 function promote(
   workspace: LiveWorkspace, meta: RunMeta,
-  { nodeId, turn }: Extract<ContinuePlan, { promote: unknown }>['promote'],
-  context: unknown,
+  { nodeId, turn }: PromoteRequest,
+  context: Record<string, string>,
 ): Response | Refusal {
   const plan = planPromotion(meta, nodeId, turn)
   if ('refused' in plan) return { error: plan.reason, status: PROMOTE_REFUSAL_STATUS[plan.refused] }
@@ -89,7 +88,7 @@ function promote(
   }, context)
 }
 
-function fork(workspace: LiveWorkspace, meta: RunMeta, request: ForkRequest, context: unknown): Response | Refusal {
+function fork(workspace: LiveWorkspace, meta: RunMeta, request: ForkRequest, context: Record<string, string>): Response | Refusal {
   const plan = planFork(meta, request)
   return 'error' in plan ? plan : forkRun(workspace, meta, plan, context)
 }
@@ -109,7 +108,7 @@ function inPlace(
     /** An earlier step whose log is rewritten as the stretch starts. */
     rewriteLog?: { step: number; output: AgentOutput }
   },
-  context: unknown,
+  context: Record<string, string>,
 ): Response | Refusal {
   const continuation = loadContinuation(workspace, meta)
   if ('error' in continuation) return continuation
@@ -125,32 +124,10 @@ function inPlace(
     runId: meta.runId,
     seedPrompt: meta.seedPrompt,
     paramValue: meta.parameter?.value ?? '',
-    context: contextOverrides(context),
+    context,
     replay: { logged: stretch.logged, fresh: [stretch.fresh] },
     firstStep: nextStep(meta.runId),
     holds: stretch.holds,
     history: stretch.history,
-  })
-}
-
-/** A new run of the source's graph, replaying what the anchors leave standing (#99, #103). */
-function forkRun(workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: unknown): Response | Refusal {
-  const continuation = loadContinuation(workspace, source, fork.versions)
-  if ('error' in continuation) return continuation
-  const kept = runLog(source).replayFor(fork.anchors)
-  const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation
-  return startRun({
-    chain,
-    workspace: defs,
-    title: source.chainName,
-    seedPrompt: source.seedPrompt,
-    parameter: source.parameter,
-    context,
-    pinnedContext,
-    versions,
-    versionNumber,
-    replay: [...kept.replay, ...(fork.outputs ?? [])],
-    holds: [...kept.holds, ...(fork.hold ? [fork.hold] : [])],
-    forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },
   })
 }

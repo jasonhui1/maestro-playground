@@ -1,4 +1,5 @@
-import type { ContinuationVersions } from './runSession'
+import { runLog } from './partialRun'
+import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
 export interface Fork {
@@ -11,38 +12,33 @@ export interface Fork {
   versions?: ContinuationVersions
 }
 
-/** `POST /api/runs/:id/fork`'s body, as sent; `planFork` reads it (capability `runFork`). */
+/** `POST /api/runs/:id/fork`'s body, read (capability `runFork`): rerun from `from`, and/or set `revisions` (node id → text). */
 export interface ForkRequest {
-  from?: unknown
-  revisions?: unknown
-  versions?: unknown
-  context?: unknown
+  from?: string
+  revisions?: Record<string, string>
+  versions?: ContinuationVersions
+}
+
+/** A fork body's shape, before it meets a run. */
+export function readForkRequest({ from, revisions, versions }: Record<string, unknown>): ForkRequest | { error: string } {
+  if (from !== undefined && typeof from !== 'string') return { error: 'from must be a node id' }
+  if (revisions !== undefined && !isTextMap(revisions)) return { error: 'revisions must map node ids to text' }
+  if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
+    return { error: "versions must be 'current' or 'pinned'" }
+  }
+  if (from === undefined && !Object.keys(revisions ?? {}).length) return { error: 'from or revisions is required' }
+  if (from !== undefined && revisions && from in revisions) return { error: `Node ${from} cannot both rerun and be revised` }
+  return { from, revisions, versions }
 }
 
 /**
- * A fork request read against its source: rerun from `from`, and/or set `revisions`
- * (node id → text) as those nodes' outputs. Either way their descendants rerun,
+ * A fork request read against its source. Every anchor's descendants rerun,
  * bar a revised one: the human's text stands even below another anchor.
  */
-export function planFork(
-  source: RunMeta,
-  { from, revisions, versions }: ForkRequest,
-): Fork | Refusal {
+export function planFork(source: RunMeta, { from, revisions, versions }: ForkRequest): Fork | Refusal {
   const graph = source.graph
   if (!graph) return { error: 'Run has no recorded graph', status: 422 }
-  if (from !== undefined && typeof from !== 'string') return { error: 'from must be a node id', status: 400 }
-  if (revisions !== undefined && !isTextMap(revisions)) {
-    return { error: 'revisions must map node ids to text', status: 400 }
-  }
-  if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
-    return { error: "versions must be 'current' or 'pinned'", status: 400 }
-  }
   const revised = Object.entries(revisions ?? {})
-  if (from === undefined && !revised.length) return { error: 'from or revisions is required', status: 400 }
-  if (from !== undefined && revisions && from in revisions) {
-    return { error: `Node ${from} cannot both rerun and be revised`, status: 400 }
-  }
-
   const anchors = [...(from === undefined ? [] : [from]), ...revised.map(([nodeId]) => nodeId)]
   for (const nodeId of anchors) {
     if (!graph.nodes.some(n => n.id === nodeId)) return { error: `Node ${nodeId} is not in this run`, status: 404 }
@@ -58,6 +54,30 @@ export function planFork(
     outputs.push(revisedOutput(record, text))
   }
   return { anchors, outputs, versions }
+}
+
+/** A new run of the source's graph, replaying what the anchors leave standing (#99, #103). */
+export function forkRun(
+  workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
+): Response | Refusal {
+  const continuation = loadContinuation(workspace, source, fork.versions)
+  if ('error' in continuation) return continuation
+  const kept = runLog(source).replayFor(fork.anchors)
+  const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation
+  return startRun({
+    chain,
+    workspace: defs,
+    title: source.chainName,
+    seedPrompt: source.seedPrompt,
+    parameter: source.parameter,
+    context,
+    pinnedContext,
+    versions,
+    versionNumber,
+    replay: [...kept.replay, ...(fork.outputs ?? [])],
+    holds: [...kept.holds, ...(fork.hold ? [fork.hold] : [])],
+    forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },
+  })
 }
 
 function isTextMap(value: unknown): value is Record<string, string> {

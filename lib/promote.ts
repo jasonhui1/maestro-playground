@@ -5,6 +5,12 @@ import type { AgentOutput, RunMeta } from './types'
 
 export type PromoteRefusal = ChatRefusal | 'bad-turn' | 'in-loop'
 
+/** A promote request, read: the node, and the `### Turn N` of its reply (the last by default). */
+export interface PromoteRequest {
+  nodeId: string
+  turn?: number
+}
+
 export interface Promotion {
   /** The run's records, in order, with the promoted reply flagged on its source. */
   flaggedOutputs: AgentOutput[]
