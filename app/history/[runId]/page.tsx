@@ -9,15 +9,11 @@ import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { socketHandles } from '@/lib/nodeSockets'
-import { buildRunStateMap, runOrderOf } from '@/lib/runHistoryState'
 import { forkFromNode } from '@/lib/forkFromNode'
 import DockSplit from '@/components/workspace/DockSplit'
 import RunDock from '@/components/trace/RunDock'
-import { buildLayoutModel, isRenderableLayout } from '@/lib/layoutModel'
 import { findChainForRun } from '@/lib/resolveRunChain'
-import { buildRunFrame } from '@/lib/runFrame'
-import { usePanelDeck } from '@/hooks/usePanelDeck'
-import { usePanelFit } from '@/hooks/usePanelFit'
+import { useResultView } from '@/hooks/useResultView'
 import { PANEL_FITS } from '@/lib/panelFit'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
@@ -85,33 +81,27 @@ function RunDetail({ run }: { run: RunMeta }) {
   const [seedOpen, setSeedOpen] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'result' | 'trace'>('trace')
-  const deck = usePanelDeck()
-  const [fit, setFit] = usePanelFit()
-  const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={fit} onChange={setFit} />
+
+  // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
+  // chain's *current* declaration, not what it looked like when the run happened (#72).
+  const resultChain = useMemo(() => findChainForRun(chains, run.chainName), [chains, run.chainName])
+  const view = useResultView({ kind: 'meta', run, chain: resultChain })
+  const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={view.fit} onChange={view.setFit} />
 
   useEffect(() => {
     fetch('/api/workspace')
       .then(res => res.json())
       .then(data => {
         setAgents(data.agents || [])
-        const loaded: ChainDef[] = data.chains || []
-        setChains(loaded)
-        const chain = findChainForRun(loaded, run.chainName)
-        const model = chain ? buildLayoutModel(chain, run.agentOutputs) : null
-        if (model && isRenderableLayout(model)) setViewMode('result')
+        setChains(data.chains || [])
       })
       .catch(err => console.error('Failed to fetch agents for graph:', err))
       .finally(() => setChainsLoaded(true))
-  }, [run.chainName, run.agentOutputs])
+  }, [])
 
-  // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
-  // chain's *current* declaration, not what it looked like when the run happened (#72).
-  const resultChain = useMemo(() => findChainForRun(chains, run.chainName), [chains, run.chainName])
-  const layoutModel = useMemo(
-    () => (resultChain ? buildLayoutModel(resultChain, run.agentOutputs) : null),
-    [resultChain, run.agentOutputs],
-  )
-  const isClassified = layoutModel !== null && isRenderableLayout(layoutModel)
+  // Opens on the result view the moment the chain says there is one to draw — the same
+  // value the render below reads, so the two cannot disagree (#72, #106).
+  useEffect(() => { if (view.renderable) setViewMode('result') }, [view.renderable])
 
   // A read-only stand-in for the chain the run was executed from, so node kinds can
   // resolve their slots. Empty when the run predates graph capture; buildData is only
@@ -124,22 +114,6 @@ function RunDetail({ run }: { run: RunMeta }) {
     nodes: g?.nodes ?? [],
     edges: g?.edges ?? [],
   }), [g, run.chainName])
-
-  const overlay = useMemo(() => buildRunStateMap(run.agentOutputs), [run.agentOutputs])
-  const traceOrder = useMemo(() => runOrderOf(run.agentOutputs), [run.agentOutputs])
-
-  const resultFrame = useMemo(() => (resultChain ? buildRunFrame({
-    chain: resultChain,
-    seed: { kind: 'log' },
-    states: overlay,
-    parameter: run.parameter,
-    startedAt: new Date(run.startedAt).getTime(),
-    // A reopened run has settled whatever its log says; without an end it would read
-    // as still running forever.
-    endedAt: new Date(run.completedAt ?? run.startedAt).getTime(),
-    requestError: run.status === 'error' ? 'this run failed — see the full log' : undefined,
-    now: Date.now(),
-  }) : null), [resultChain, overlay, run.startedAt, run.completedAt])
 
   const selectedIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId])
   const canvasIds = useMemo(() => new Set((g?.nodes ?? []).map(n => n.id)), [g])
@@ -156,13 +130,13 @@ function RunDetail({ run }: { run: RunMeta }) {
       sockets: socketHandles(node, workspace),
       agents: agents.map(a => ({ slug: a.slug, name: a.name })),
       contextFiles: [],
-      run: overlay[node.id],
+      run: view.states[node.id],
       issues: [],
       onChange: () => {},
       chains: [],
       readOnly: true,
     }
-  }, [chainDef, agents, overlay])
+  }, [chainDef, agents, view.states])
 
   async function handleFork(nodeId: string) {
     setIsForking(true)
@@ -188,7 +162,7 @@ function RunDetail({ run }: { run: RunMeta }) {
         <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
         <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
 
-        {isClassified && (
+        {view.renderable && (
           <div className="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 shrink-0">
             {(['result', 'trace'] as const).map(m => (
               <button
@@ -235,17 +209,17 @@ function RunDetail({ run }: { run: RunMeta }) {
           <div className="flex items-center justify-center h-full text-zinc-300">
             <div className="w-5 h-5 border-2 border-zinc-200 border-t-zinc-800 rounded-full animate-spin" />
           </div>
-        ) : viewMode === 'result' && layoutModel && resultFrame ? (
+        ) : viewMode === 'result' && view.model && view.frame ? (
           <div className="h-full overflow-auto">
             <div className="w-full max-w-[120rem] mx-auto px-6 py-4">
               {/* The rail absorbs the fit switch, so it costs no band above the output (#65). */}
               <LayoutModelView
-                model={layoutModel}
-                frame={resultFrame}
-                runId={null}
-                deck={deck}
+                model={view.model}
+                frame={view.frame}
+                runId={view.runId}
+                deck={view.deck}
                 actions={switches}
-                fit={fit}
+                fit={view.fit}
               />
             </div>
           </div>
@@ -298,8 +272,8 @@ function RunDetail({ run }: { run: RunMeta }) {
           dock={
             <RunDock
               run={run}
-              order={traceOrder}
-              states={overlay}
+              order={view.order}
+              states={view.states}
               selection={{ selected: selectedNodeId, onSelect: setSelectedNodeId }}
               fork={{ onFork: handleFork, isForking }}
             />
