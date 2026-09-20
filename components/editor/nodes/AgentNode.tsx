@@ -1,11 +1,12 @@
 'use client'
 import React, { memo } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeDataOf } from '../nodeData'
 import { statusDotClass } from '../nodeData'
+import { Sockets } from './Sockets'
 
 function AgentNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'agent' | 'decider'>>>) {
-  const { node, inputs, outputs, run, issues } = data
+  const { node, run, issues } = data
   const kindLabel = node.kind === 'decider' ? 'Decider' : 'Agent'
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[240px] bg-white ${run?.status === 'skipped' ? 'opacity-60' : ''} ${issues.length ? 'border-red-400' : selected ? 'border-zinc-900 ring-4 ring-zinc-900/5' : 'border-zinc-200'}`}>
@@ -49,28 +50,7 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'agent' |
           </button>
         )}
 
-        <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
-          <div className="flex flex-col gap-1.5">
-            {inputs.map(s => (
-              <div key={s} className="relative pl-3 flex items-center h-5">
-                <Handle type="target" id={s} position={Position.Left}
-                  style={{ left: -16, top: '50%', transform: 'translateY(-50%)' }}
-                  className="w-2.5 h-2.5 border-2 border-white !bg-zinc-400" />
-                <span className="truncate max-w-[100px]" title={s}>{s}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1.5 text-right">
-            {outputs.map(s => (
-              <div key={s} className="relative pr-3 flex items-center justify-end h-5">
-                <span className="truncate max-w-[100px]" title={`.${s}`}>.{s}</span>
-                <Handle type="source" id={s} position={Position.Right}
-                  style={{ right: -16, top: '50%', transform: 'translateY(-50%)' }}
-                  className="w-2.5 h-2.5 border-2 border-white !bg-zinc-900" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <Sockets handles={data.sockets} />
       </div>
     </div>
   )

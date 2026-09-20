@@ -1,11 +1,12 @@
 'use client'
 import React, { memo } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeDataOf } from '../nodeData'
 import { statusDotClass } from '../nodeData'
+import { Sockets } from './Sockets'
 
 function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-end'>>>) {
-  const { node, inputs, outputs, run, issues } = data
+  const { node, run, issues } = data
   return (
     <div className={`relative rounded-lg shadow-md border-2 min-w-[220px] bg-amber-50/40 ${issues.length ? 'border-red-400' : selected ? 'border-amber-600 ring-4 ring-amber-600/10' : 'border-amber-300'}`}>
       <div className="px-4 py-2 border-b border-amber-200 rounded-t-lg flex items-center gap-2">
@@ -29,28 +30,7 @@ function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-e
           disabled={data.readOnly}
           className="w-full text-[11px] font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
 
-        <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
-          <div className="flex flex-col gap-1.5">
-            {inputs.map(s => (
-              <div key={s} className="relative pl-3 flex items-center h-5">
-                <Handle type="target" id={s} position={Position.Left}
-                  style={{ left: -16, top: '50%', transform: 'translateY(-50%)' }}
-                  className="w-2.5 h-2.5 border-2 border-white !bg-amber-400" />
-                <span>{s}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1.5 text-right">
-            {outputs.map(s => (
-              <div key={s} className="relative pr-3 flex items-center justify-end h-5">
-                <span>.{s}</span>
-                <Handle type="source" id={s} position={Position.Right}
-                  style={{ right: -16, top: '50%', transform: 'translateY(-50%)' }}
-                  className="w-2.5 h-2.5 border-2 border-white !bg-amber-500" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <Sockets handles={data.sockets} tone="loop" />
       </div>
     </div>
   )

@@ -60,14 +60,30 @@ export type ChainNodeKind = 'seed' | 'context' | /* … */ | 'report' | 'note'
 
 Each component renders exactly one kind. **Declare that kind in the props** via `EditorNodeDataOf<'note'>` — then `data.node` arrives already narrowed to the `note` variant (no cast), and step 4 can compiler-check that this component is registered under `'note'`.
 
+Render the body only. The node's sockets are already on `data.sockets`, built from the
+descriptor — hand them to `<Sockets>` and the handles, their ids, sides, hollow rings for
+optional inputs and wide bars for multi-input slots all follow. **Never write a `<Handle>`
+in a node component**: `tests/socket-handles.test.ts` fails any that appear outside
+`nodes/Sockets.tsx`, which is the one seam (#114, ADR-0001).
+
 ```tsx
 import type { EditorNodeDataOf } from '../nodeData'
+import { Sockets } from './Sockets'
 
 function NoteNode({ data }: NodeProps<Node<EditorNodeDataOf<'note'>>>) {
   const { node } = data                      // node: NodeOfKind<'note'> — text is in scope
-  return (/* … render node.text, call data.onChange({ text }) … */)
+  return (
+    <div>
+      {/* … render node.text, call data.onChange({ text }) … */}
+      <Sockets handles={data.sockets} />
+    </div>
+  )
 }
 ```
+
+If a dot has to sit on a row the body owns — a branch case, a loop-state name — look the
+handle up by its socket name with `handleNamed(data.sockets, 'output', label)` and drop a
+`<SocketDot>` into that (`relative`) row instead.
 
 A component may render more than one kind — `AgentNode` uses `EditorNodeDataOf<'agent' | 'decider'>` and is registered under both.
 
@@ -95,6 +111,7 @@ Per ADR-0001, behaviour lives here, not in the descriptor. The dispatch is an `i
 - [ ] `ChainNodeKind` string + `ChainNode` union variant (fields match the descriptor)
 - [ ] `registry` descriptor in `lib/nodeKinds.ts` (compiler-forced)
 - [ ] `XxxNode.tsx` component typed `EditorNodeDataOf<'xxx'>` (no cast)
+- [ ] Render sockets through `<Sockets handles={data.sockets} />` — no `<Handle>` in the component
 - [ ] Register in the `nodeTypes` map (compiler-forced; mis-wire is a type error)
 - [ ] Executor dispatch arm (compiler-forced by the `never` default; write a no-op if there's no behaviour)
 - [ ] `tsc` clean; add/extend a test (`node:assert` inside a vitest `test()`: `npx vitest run tests/<file>.test.ts`)
@@ -102,6 +119,7 @@ Per ADR-0001, behaviour lives here, not in the descriptor. The dispatch is an `i
 ## Concept list
 
 - **Descriptor** — the registry entry for a kind: its facts (`fields`, `inputs`/`outputs` sockets, `palette`). No behaviour.
+- **Socket seam** — `components/editor/nodes/Sockets.tsx`, the app's only `<Handle>`. It draws one handle per socket `lib/nodeSockets.ts` reads off the descriptor, so a handle can't name a slot the chain doesn't have.
 - **Field codec** — how a persisted field serializes/parses (`string`/`number`/`stringList`/`cases`). Drives round-tripping automatically.
 - **`ChainNodeBase`** — shared fields on every node (`id`, `pos`, `zone`). Never restated on a variant.
 - **`NodeOfKind<K>` / `EditorNodeDataOf<K>`** — narrow the `ChainNode` union (or the editor data carrying it) to one kind. A component types its props with `EditorNodeDataOf<K>` to declare which kind it renders (`components/editor/nodeData.ts`).

@@ -1,13 +1,19 @@
 'use client'
 import React, { memo } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { type NodeProps, type Node } from '@xyflow/react'
 import type { BranchCase } from '@/lib/types'
+import { handleNamed, inputHandles } from '@/lib/nodeSockets'
 import type { EditorNodeDataOf } from '../nodeData'
 import { statusDotClass } from '../nodeData'
+import { SocketDot, SocketList } from './Sockets'
 
 function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'>>>) {
   const { node, run, issues } = data
   const cases: BranchCase[] = node.cases ?? []
+  // A case's output socket is named by its label, so its dot rides that case's own row
+  // and stays readable as the edge's source.
+  const outFor = (label: string) => handleNamed(data.sockets, 'output', label)
+  const defaultOut = node.default ? outFor(node.default) : undefined
 
   const setCase = (i: number, patch: Partial<BranchCase>) =>
     data.onChange({ cases: cases.map((c, j) => j === i ? { ...c, ...patch } : c) })
@@ -31,32 +37,30 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'
         )}
       </div>
       <div className="px-4 py-2">
-        <div className="relative pl-3 flex items-center h-5 text-[9px] font-mono text-zinc-400 mb-2">
-          <Handle type="target" id="in" position={Position.Left}
-            style={{ left: -16, top: '50%', transform: 'translateY(-50%)' }}
-            className="w-2.5 h-2.5 border-2 border-white !bg-zinc-400" />
-          <span>in</span>
+        <div className="text-[9px] font-mono text-zinc-400 mb-2">
+          <SocketList handles={inputHandles(data.sockets)} />
         </div>
 
         <div className="space-y-1.5">
           {/* Using index as key is necessary because items are editable objects; using unique field values like label as key would cause text inputs to lose focus on every keystroke. */}
-          {cases.map((c, i) => (
-            <div key={i} className="relative flex items-center gap-1">
-              <input value={c.label} onChange={e => setCase(i, { label: e.target.value })}
-                disabled={data.readOnly}
-                className="w-16 text-[10px] font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
-              <input value={c.condition} onChange={e => setCase(i, { condition: e.target.value })}
-                placeholder="condition"
-                disabled={data.readOnly}
-                className="flex-1 text-[10px] font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
-              {!data.readOnly && (
-                <button onClick={() => removeCase(i)} className="text-zinc-300 hover:text-red-500 text-xs nodrag">×</button>
-              )}
-              <Handle type="source" id={c.label} position={Position.Right}
-                style={{ right: -16, top: '50%', transform: 'translateY(-50%)' }}
-                className="w-2.5 h-2.5 border-2 border-white !bg-zinc-900" />
-            </div>
-          ))}
+          {cases.map((c, i) => {
+            const out = outFor(c.label)
+            return (
+              <div key={i} className="relative flex items-center gap-1">
+                <input value={c.label} onChange={e => setCase(i, { label: e.target.value })}
+                  disabled={data.readOnly}
+                  className="w-16 text-[10px] font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+                <input value={c.condition} onChange={e => setCase(i, { condition: e.target.value })}
+                  placeholder="condition"
+                  disabled={data.readOnly}
+                  className="flex-1 text-[10px] font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+                {!data.readOnly && (
+                  <button onClick={() => removeCase(i)} className="text-zinc-300 hover:text-red-500 text-xs nodrag">×</button>
+                )}
+                {out && <SocketDot handle={out} />}
+              </div>
+            )
+          })}
         </div>
 
         {!data.readOnly && (
@@ -69,11 +73,7 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'
             placeholder="default label"
             disabled={data.readOnly}
             className="flex-1 text-[10px] font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
-          {node.default && (
-            <Handle type="source" id={node.default} position={Position.Right}
-              style={{ right: -16, top: '50%', transform: 'translateY(-50%)' }}
-              className="w-2.5 h-2.5 border-2 border-white !bg-zinc-500" />
-          )}
+          {defaultOut && <SocketDot handle={defaultOut} tone="muted" />}
         </div>
       </div>
     </div>

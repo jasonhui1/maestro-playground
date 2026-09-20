@@ -1,7 +1,8 @@
 'use client'
 import React, { memo } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeDataOf } from '../nodeData'
+import { Sockets } from './Sockets'
 
 function ContextNode({ data }: NodeProps<Node<EditorNodeDataOf<'context'>>>) {
   const { node } = data
@@ -21,14 +22,7 @@ function ContextNode({ data }: NodeProps<Node<EditorNodeDataOf<'context'>>>) {
           <option value="">— pick a context file —</option>
           {data.contextFiles.map(f => <option key={f.slug} value={f.slug}>{f.name}</option>)}
         </select>
-        <div className="flex justify-end text-[9px] font-mono text-zinc-400">
-          <div className="relative pr-3 flex items-center justify-end h-5">
-            <span>.output</span>
-            <Handle type="source" id="output" position={Position.Right}
-              style={{ right: -16, top: '50%', transform: 'translateY(-50%)' }}
-              className="w-2.5 h-2.5 border-2 border-white !bg-zinc-900" />
-          </div>
-        </div>
+        <Sockets handles={data.sockets} />
       </div>
     </div>
   )

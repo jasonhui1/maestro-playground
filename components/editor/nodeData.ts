@@ -1,10 +1,11 @@
 import { ChainNode } from '@/lib/types'
 import { NodeRunState } from '@/lib/runState'
+import { SocketHandle } from '@/lib/nodeSockets'
 
 export interface EditorNodeData {
   node: ChainNode
-  inputs: string[]
-  outputs: string[]
+  /** Every socket the registry declares for this node, built by `socketHandles` (#114). */
+  sockets: SocketHandle[]
   agents: { slug: string; name: string }[]
   contextFiles: { slug: string; name: string }[]
   run?: NodeRunState

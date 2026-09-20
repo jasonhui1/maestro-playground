@@ -4,7 +4,7 @@ import dagre from 'dagre'
 import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain, issuesByNode } from '@/lib/chainGraph'
-import { kindOf } from '@/lib/nodeKinds'
+import { socketHandles } from '@/lib/nodeSockets'
 import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph } from '@/lib/editorOps'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
@@ -226,8 +226,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
-    inputs: kindOf(node.kind).inputs(node, { chain, agents, chains }).map(s => s.name),
-    outputs: kindOf(node.kind).outputs(node, { chain, agents, chains }),
+    sockets: socketHandles(node, { chain, agents, chains }),
     agents: agents.map(a => ({ slug: a.slug, name: a.name })),
     contextFiles,
     run: runState[node.id],

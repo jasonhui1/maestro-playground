@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
-import { kindOf } from '@/lib/nodeKinds'
+import { socketHandles } from '@/lib/nodeSockets'
 import { buildRunStateMap, runOrderOf } from '@/lib/runHistoryState'
 import { forkFromNode } from '@/lib/forkFromNode'
 import DockSplit from '@/components/workspace/DockSplit'
@@ -153,8 +153,7 @@ function RunDetail({ run }: { run: RunMeta }) {
     const workspace = { chain: chainDef, agents, chains: [] }
     return {
       node,
-      inputs: kindOf(node.kind).inputs(node, workspace).map(s => s.name),
-      outputs: kindOf(node.kind).outputs(node, workspace),
+      sockets: socketHandles(node, workspace),
       agents: agents.map(a => ({ slug: a.slug, name: a.name })),
       contextFiles: [],
       run: overlay[node.id],

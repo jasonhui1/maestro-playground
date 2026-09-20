@@ -1,9 +1,10 @@
 'use client'
 import React, { memo } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { type NodeProps, type Node } from '@xyflow/react'
 import { FileText } from 'lucide-react'
 import type { EditorNodeDataOf } from '../nodeData'
 import { statusDotClass } from '../nodeData'
+import { Sockets } from './Sockets'
 
 function ReportNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'report'>>>) {
   const { node, run, issues } = data
@@ -34,13 +35,8 @@ function ReportNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'report'
             Display (no output yet)
           </div>
         )}
-        <div className="mt-2 flex justify-between text-[9px] font-mono text-zinc-400">
-          <div className="relative pl-3 flex items-center h-5">
-            <Handle type="target" id="in" position={Position.Left}
-              style={{ left: -16, top: '50%', transform: 'translateY(-50%)' }}
-              className="w-2.5 h-2.5 border-2 border-white !bg-zinc-400" />
-            <span>in</span>
-          </div>
+        <div className="mt-2">
+          <Sockets handles={data.sockets} />
         </div>
       </div>
     </div>
