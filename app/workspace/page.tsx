@@ -9,8 +9,9 @@ import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
 import ChainEditor from '@/components/editor/ChainEditor';
 import { parseChainContent } from '@/lib/parseChain';
-import { ChainDef, AgentDef, ToolDef, SkillDef, ValidationIssue } from '@/lib/types';
+import { ChainDef, ValidationIssue } from '@/lib/types';
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore';
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore';
 import { validateChain } from '@/lib/chainGraph';
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import DockPanel from '@/components/workspace/DockPanel';
@@ -33,31 +34,21 @@ function WorkspaceContent() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   
   const [chainView, setChainView] = useState<'graph' | 'yaml'>('graph');
-  const [editorAgents, setEditorAgents] = useState<AgentDef[]>([]);
-  const [editorContext, setEditorContext] = useState<{ slug: string; name: string }[]>([]);
-  const [editorChains, setEditorChains] = useState<ChainDef[]>([]);
-  const [editorTools, setEditorTools] = useState<ToolDef[]>([]);
-  const [editorSkills, setEditorSkills] = useState<SkillDef[]>([]);
-  const [defaults, setDefaults] = useState<Record<string, unknown> | undefined>(undefined);
 
-  const refetchEditorData = useCallback(() => {
-    fetch('/api/workspace')
-      .then(r => r.json())
-      .then(w => {
-        setEditorAgents(w.agents ?? []);
-        setEditorContext(w.context ?? []);
-        setEditorChains(w.chains ?? []);
-        setEditorTools(w.tools ?? []);
-        setEditorSkills(w.skills ?? []);
-        if (w.defaults) setDefaults(w.defaults);
-      })
-      .catch(() => { setEditorAgents([]); setEditorContext([]); setEditorChains([]); setEditorTools([]); setEditorSkills([]) })
-  }, [])
+  // Every view reads the same list from the store, so a file created while a tool or a
+  // skill is open is visible there too — not only in the chain editor (#120).
+  const editorAgents = useWorkspaceStore(s => s.files.agents);
+  const editorContext = useWorkspaceStore(s => s.files.context);
+  const editorChains = useWorkspaceStore(s => s.files.chains);
+  const editorTools = useWorkspaceStore(s => s.files.tools);
+  const editorSkills = useWorkspaceStore(s => s.files.skills);
+  const defaults = useWorkspaceStore(s => s.files.defaults);
+  // Bumped when a restore rewrote the open file underneath the editor.
+  const revision = useWorkspaceStore(s => s.revision);
 
   useEffect(() => {
-    if (type !== 'chain' && type !== 'agent') return
-    refetchEditorData()
-  }, [type, slug, refetchEditorData])
+    useWorkspaceStore.getState().load()
+  }, [])
 
   const parsedChain = useMemo<ChainDef | null>(() => {
     if (type !== 'chain' || !slug || !initialContent) return null;
@@ -160,7 +151,7 @@ function WorkspaceContent() {
     }
 
     fetchContent();
-  }, [type, slug, chainView]);
+  }, [type, slug, chainView, revision]);
 
   if (!type || !slug) {
     return (
@@ -235,7 +226,6 @@ function WorkspaceContent() {
                   initialChain={parsedChain}
                   agents={editorAgents}
                   contextFiles={editorContext}
-                  refetchAgents={refetchEditorData}
                   initialSeedPrompt={seedParam}
                   chains={editorChains}
                   tools={editorTools}

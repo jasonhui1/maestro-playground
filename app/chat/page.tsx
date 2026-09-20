@@ -4,17 +4,20 @@ import { useState, useEffect, useCallback, Suspense, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ChatHistory } from '@/components/workspace/ChatHistory'
 import { ChatInput } from '@/components/workspace/ChatInput'
-import { ChatMessage, AgentDef, RunMeta } from '@/lib/types'
+import { ChatMessage, RunMeta } from '@/lib/types'
 import { streamRun, type ChatStreamEvent } from '@/lib/runStream'
 import { Bot, Settings2, AlertCircle, Loader2, ChevronLeft, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 
 function ChatContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const runIdParam = searchParams.get('runId')
 
-  const [agents, setAgents] = useState<AgentDef[]>([])
+  const agents = useWorkspaceStore(s => s.files.agents)
+  // A workspace that would not load leaves no agent to chat with, so it shares the banner.
+  const loadError = useWorkspaceStore(s => s.error)
   const [selectedAgent, setSelectedAgent] = useState<string>('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -35,26 +38,13 @@ function ChatContent() {
 
   // Fetch agents on mount
   useEffect(() => {
-    async function fetchAgents() {
-      try {
-        const res = await fetch('/api/workspace')
-        const data = await res.json()
-        if (data.agents) {
-          setAgents(data.agents)
-          // Only set default agent if we're not loading a history
-          if (data.agents.length > 0 && !activeRunIdRef.current) {
-            setSelectedAgent(data.agents[0].name)
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch agents:', err)
-        setError('Failed to load agents. Please refresh.')
-      } finally {
-        setIsLoadingAgents(false)
-      }
-    }
-    fetchAgents()
+    useWorkspaceStore.getState().load().finally(() => setIsLoadingAgents(false))
   }, [])
+
+  // The first agent is only a default, and never overrides the one a loaded history names.
+  useEffect(() => {
+    if (!activeRunIdRef.current) setSelectedAgent(cur => cur || agents[0]?.name || '')
+  }, [agents])
 
   // Fetch recent chats for the selected agent
   useEffect(() => {
@@ -318,10 +308,10 @@ function ChatContent() {
         </div>
 
         {/* Error Banner */}
-        {error && (
+        {(error || loadError) && (
           <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center gap-3 text-red-700 text-sm animate-in slide-in-from-top duration-300">
             <AlertCircle size={16} className="flex-shrink-0" />
-            <p className="font-medium">{error}</p>
+            <p className="font-medium">{error ?? loadError}</p>
             <button 
               onClick={() => setError(null)}
               className="ml-auto text-red-400 hover:text-red-600 transition-colors"

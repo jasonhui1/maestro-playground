@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, use, useMemo, useCallback } from 'react'
-import { RunMeta, AgentDef, ChainDef, ChainNode } from '@/lib/types'
+import { RunMeta, ChainNode } from '@/lib/types'
 import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import Link from 'next/link'
@@ -17,6 +17,7 @@ import { useResultView } from '@/hooks/useResultView'
 import { PANEL_FITS } from '@/lib/panelFit'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -72,8 +73,8 @@ function RunDetail({ run }: { run: RunMeta }) {
   const router = useRouter()
   const g = run.graph
 
-  const [agents, setAgents] = useState<AgentDef[]>([])
-  const [chains, setChains] = useState<ChainDef[]>([])
+  const agents = useWorkspaceStore(s => s.files.agents)
+  const chains = useWorkspaceStore(s => s.files.chains)
   // Gates the view below on the one fetch classification needs, so a classified run
   // opens straight into its result view instead of flashing the trace first (#72).
   const [chainsLoaded, setChainsLoaded] = useState(false)
@@ -93,14 +94,7 @@ function RunDetail({ run }: { run: RunMeta }) {
   const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={view.fit} onChange={view.setFit} />
 
   useEffect(() => {
-    fetch('/api/workspace')
-      .then(res => res.json())
-      .then(data => {
-        setAgents(data.agents || [])
-        setChains(data.chains || [])
-      })
-      .catch(err => console.error('Failed to fetch agents for graph:', err))
-      .finally(() => setChainsLoaded(true))
+    useWorkspaceStore.getState().load().finally(() => setChainsLoaded(true))
   }, [])
 
   // A read-only stand-in for the chain the run was executed from, so node kinds can

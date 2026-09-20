@@ -140,3 +140,11 @@ One non-base panel in the compare overlay, rendered as its own pairwise diff aga
 ## Shared reading
 
 The word sequence every ticked panel carries, in order — compare's second mode dims it in all N columns and leaves each panel's divergence bold (#74). Shared means *every* panel, never merely another one: a phrase four of five share is still the fifth's own divergence, which is why the mode needs an N-way alignment rather than N−1 pairwise diffs against a **base**. There is no base in this mode: the alignment folds the panels in name order, so the reading depends on which panels are ticked and never on the order they were ticked. It is *a* subsequence common to all N rather than provably the longest — an exact N-way LCS is not worth its cost here. The insight-chain docs call it 骨架 — what survives every version. _Avoid_: intersection, common diff.
+
+## Workspace files
+
+The client's copy of every file the workspace declares — agents, skills, chains, templates, context, tools and the defaults — held once in `useWorkspaceStore` alongside the **workspace root** recovered from those paths and the **empty folders** that discovery cannot see. Every view reads this one list rather than fetching its own, and every write goes through the store's mutations, which refetch it. Invalidation is two-part: a mutation changes the *list*; `invalidateFile()` bumps a revision to say an open file's *content* changed underneath the editor, which is what a version restore does instead of reloading the page (#120). _Avoid_: workspace (the server's `Workspace { root, runs, definitions() }` is a different thing); workspace data, file list.
+
+## Surface
+
+Where a failed mutation's message lands. `form` means a modal or an inline row editor is open and can hold it while the user picks another name; `bare` means nothing is, so the only place left is a toast. Each mutation declares its surface once, and only a name the user could retype — 400 or 409 — is allowed to stay inline; every other failure toasts from either surface (#120). _Avoid_: inline error, validation error.

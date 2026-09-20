@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import matter from 'gray-matter';
 import { diff_match_patch } from 'diff-match-patch';
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore';
 
 
 interface Props {
@@ -148,14 +149,10 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
       }
 
       setRestoreStatus({ version, success: true });
-      
-      // Refresh the page or the editor content
-      // Since this is a client component in the workspace, the parent might need to know
-      // For now, a simple reload or letting the auto-save handle the sync might work
-      // Best is to reload the window to ensure everything is in sync
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+
+      // The file on disk no longer matches the editor's buffer; the store's invalidation
+      // is what re-reads it, in place of reloading the page (#120).
+      useWorkspaceStore.getState().invalidateFile();
     } catch (err) {
       console.error(err);
       setRestoreStatus({ version, success: false });

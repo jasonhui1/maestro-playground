@@ -1,13 +1,8 @@
 'use client';
 
-/** What a rename would do, as `/api/workspace/[type]/[slug]/rename` reports it (#54). */
-export interface RenamePlan {
-  from: string;
-  to: string;
-  rewrites: { slug: string; type: string; fields: string[] }[];
-  runs: string[];
-  manual: { slug: string; type: string }[];
-}
+import type { RenamePlan } from '@/lib/types';
+
+export type { RenamePlan };
 
 interface RenameDialogProps {
   entityType: string;

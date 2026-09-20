@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { ChainDef } from '@/lib/types'
 import { streamRun, runErrorMessage } from '@/lib/runStream'
 import { SeedSource } from '@/lib/runFrame'
 import { declaresSeed, pinnedFiles } from '@/lib/launchForm'
@@ -9,17 +8,18 @@ import { useLaunchMemory } from '@/hooks/useLaunchMemory'
 import { PANEL_FITS } from '@/lib/panelFit'
 import { CONTROL } from '@/lib/resultControls'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
-import { LaunchForm, ContextFile } from '@/components/result/LaunchForm'
+import { LaunchForm } from '@/components/result/LaunchForm'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { RunTrace } from '@/components/RunTrace'
 
 export default function ResultPage() {
-  const [chains, setChains] = useState<ChainDef[]>([])
-  const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
+  const chains = useWorkspaceStore(s => s.files.chains)
+  const contextFiles = useWorkspaceStore(s => s.files.context)
+  const loadError = useWorkspaceStore(s => s.error)
   // The chain, the seed and the parameter are the session; they survive a reload (#65).
   const [launch, setLaunch] = useLaunchMemory()
   const { chainSlug, mode, pasted, fileSlug, paramValue } = launch
-  const [loadError, setLoadError] = useState<string | null>(null)
   // The frame and the layout describe the run that started, not the form as it now
   // stands — the form stays live while a finished result is still on screen (#73).
   const view = useResultView()
@@ -27,15 +27,7 @@ export default function ResultPage() {
   // the result starts at the top of the fold rather than below 600px of controls.
   const [formOpen, setFormOpen] = useState(true)
 
-  useEffect(() => {
-    fetch('/api/workspace')
-      .then(r => r.json())
-      .then(data => {
-        setChains(data.chains ?? [])
-        setContextFiles(data.context ?? [])
-      })
-      .catch(() => setLoadError('Could not load the workspace'))
-  }, [])
+  useEffect(() => { useWorkspaceStore.getState().load() }, [])
 
   const chain = chains.find(c => c.slug === chainSlug)
   const seedFile = contextFiles.find(f => f.slug === fileSlug)

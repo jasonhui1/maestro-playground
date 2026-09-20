@@ -17,6 +17,7 @@ import NodePalette from './NodePalette'
 import AgentDrawer from './AgentDrawer'
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore'
 import { useSelectionStore } from '@/hooks/store/useSelectionStore'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { parseChainContent } from '@/lib/parseChain'
 import { reconcileExternalEdit } from '@/lib/syncReconcile'
 import { useFileWatch } from '@/hooks/useFileWatch'
@@ -41,12 +42,11 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, refetchAgents, initialSeedPrompt, chains, tools, skills, onSaveStatus, onValidation }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, initialSeedPrompt, chains, tools, skills, onSaveStatus, onValidation }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
   contextFiles: { slug: string; name: string }[]
-  refetchAgents?: () => void
   initialSeedPrompt?: string
   chains: ChainDef[]
   tools?: ToolDef[]
@@ -280,7 +280,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
                   agentName={agents.find(a => a.slug === drawerSlug)?.name ?? drawerSlug}
                   skills={skills}
                   onClose={() => setDrawerSlug(null)}
-                  onSaved={refetchAgents}
+                  onSaved={() => useWorkspaceStore.getState().load()}
                 />
               </Panel>
             </Group>

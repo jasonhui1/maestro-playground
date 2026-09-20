@@ -3,24 +3,20 @@
 import { useState, useEffect } from 'react'
 import { RunMeta } from '@/lib/types'
 import RunCard from '@/components/RunCard'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
 
 export default function HistoryPage() {
   const [runs, setRuns] = useState<RunMeta[]>([])
   const [loading, setLoading] = useState(true)
-  const [chains, setChains] = useState<string[]>([])
   
   const [filterChain, setFilterChain] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterKeyword, setFilterKeyword] = useState('')
 
-  useEffect(() => {
-    fetch('/api/workspace')
-      .then(res => res.json())
-      .then(data => {
-        setChains(data.chains.map((c: { name: string }) => c.name))
-      })
-  }, [])
+  const chains = useWorkspaceStore(s => s.files.chains)
+
+  useEffect(() => { useWorkspaceStore.getState().load() }, [])
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -54,7 +50,7 @@ export default function HistoryPage() {
             onChange={(e) => setFilterChain(e.target.value)}
           >
             <option value="">All Chains</option>
-            {chains.map(c => <option key={c} value={c}>{c}</option>)}
+            {chains.map(c => <option key={c.slug} value={c.name}>{c.name}</option>)}
           </select>
           
           <select 

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef, WorkspaceTabType } from '@/lib/types';
-import { parseTabs, serializeTabs, openTab, closeTab, renameTab, tabKey } from '@/lib/fs/tabs';
+import { WorkspaceTabType } from '@/lib/types';
+import { parseTabs, serializeTabs, openTab, tabKey } from '@/lib/fs/tabs';
 import Fuse from 'fuse.js';
 import { 
   Bot, 
@@ -21,9 +21,9 @@ import {
   PanelLeftOpen
 } from 'lucide-react';
 import { useWorkspaceUiStore, type EntityType } from '@/hooks/store/useWorkspaceUiStore';
-import { useToastStore } from '@/hooks/store/useToastStore';
+import { useWorkspaceStore, NO_FOLDERS, type TabState } from '@/hooks/store/useWorkspaceStore';
 import { ENTITY_DIRS } from '@/lib/entityDirs';
-import { buildTreeRows, buildSearchRows, workspaceRootOf, allFolders, folderOf, type TreeItem } from '@/lib/fileTree';
+import { buildTreeRows, buildSearchRows, allFolders, folderOf, type TreeItem } from '@/lib/fileTree';
 import FileList from './FileList';
 import RenameDialog, { type RenamePlan } from './RenameDialog';
 
@@ -37,19 +37,12 @@ const CATEGORIES: { id: EntityType; label: string; icon: typeof Bot }[] = [
   { id: 'tool', label: 'Tools', icon: Wrench },
 ];
 
-interface WorkspaceData {
-  agents: AgentDef[];
-  skills: SkillDef[];
-  chains: ChainDef[];
-  templates: TemplateDef[];
-  context: { slug: string; name: string; filePath: string }[];
-  tools: ToolDef[];
-}
-
 export default function Sidebar() {
-  const [data, setData] = useState<WorkspaceData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const files = useWorkspaceStore((s) => s.files);
+  const workspaceRoot = useWorkspaceStore((s) => s.root);
+  const loaded = useWorkspaceStore((s) => s.loaded);
+  const error = useWorkspaceStore((s) => s.error);
+  const folderMap = useWorkspaceStore((s) => s.emptyFolders);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -70,19 +63,38 @@ export default function Sidebar() {
   const [renamePlan, setRenamePlan] = useState<RenamePlan | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [emptyFolders, setEmptyFolders] = useState<string[]>([]);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [folderParent, setFolderParent] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [folderCreateError, setFolderCreateError] = useState<string | null>(null);
 
-  const addToast = useToastStore((state) => state.addToast);
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const activeType = searchParams.get('type');
   const activeSlug = searchParams.get('slug');
+
+  // The tabs a mutation has to repoint live in the URL; the store returns where they land,
+  // and these two carry them out of and back into the query.
+  const tabState = (): TabState => {
+    const tabs = parseTabs(searchParams.get('tabs'), activeType, activeSlug);
+    return { tabs, active: activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null };
+  };
+
+  const writeTabState = (params: URLSearchParams, next: TabState) => {
+    if (next.tabs.length === 0) params.delete('tabs');
+    else params.set('tabs', serializeTabs(next.tabs));
+
+    if (next.active) {
+      const [nextType, nextSlug] = next.active.split(':');
+      params.set('type', nextType);
+      params.set('slug', nextSlug);
+    } else {
+      params.delete('type');
+      params.delete('slug');
+    }
+  };
 
   useEffect(() => {
     if (activeType) {
@@ -91,19 +103,7 @@ export default function Sidebar() {
   }, [activeType, setActiveCategory]);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch('/api/workspace');
-        if (!res.ok) throw new Error('Failed to fetch workspace');
-        const json = await res.json();
-        setData(json);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    useWorkspaceStore.getState().load();
 
     // Load favorites from localStorage
     const storedFavorites = localStorage.getItem('maestro_favorites');
@@ -118,20 +118,14 @@ export default function Sidebar() {
 
   // UI-only: discovery never reports a bare directory, so an empty folder is fetched
   // separately and merged into the tree client-side (#52).
-  const refreshEmptyFolders = async (category: EntityType) => {
-    try {
-      const res = await fetch(`/api/workspace/folders?type=${category}`);
-      if (!res.ok) return;
-      const json = await res.json();
-      setEmptyFolders(json.folders ?? []);
-    } catch {
-      // best-effort: an empty folder just won't show up until the next successful fetch
-    }
-  };
-
   useEffect(() => {
-    if (activeCategory) refreshEmptyFolders(activeCategory);
+    if (activeCategory) useWorkspaceStore.getState().loadFolders(activeCategory);
   }, [activeCategory]);
+
+  const emptyFolders = useMemo(
+    () => (activeCategory ? folderMap[activeCategory] ?? NO_FOLDERS : NO_FOLDERS),
+    [folderMap, activeCategory],
+  );
 
   const toggleFavorite = (e: React.MouseEvent, type: string, slug: string) => {
     e.stopPropagation();
@@ -150,90 +144,45 @@ export default function Sidebar() {
 
     setIsCreating(true);
     setCreateError(null);
-    try {
-      const res = await fetch('/api/workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: modalType,
-          name: newName,
-          ...(modalType === 'chain' && fromTemplate ? { fromTemplate } : {}),
-          ...(targetFolder ? { folder: targetFolder } : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        // A name clash is a form validation, not an operation failure — shown inline,
-        // not as a toast, so the modal stays open for the user to pick another name.
-        if (res.status === 409) {
-          setCreateError(err.error || 'That name is already taken');
-          return;
-        }
-        throw new Error(err.error || 'Failed to create entity');
-      }
-
-      const result = await res.json();
-
-      // Refresh data
-      const dataRes = await fetch('/api/workspace');
-      const newData = await dataRes.json();
-      setData(newData);
-      refreshEmptyFolders(modalType);
-
-      addToast(`Created new ${modalType}: ${newName}`, 'success');
-
-      // Close modal and redirect
-      setIsModalOpen(false);
-      setNewName('');
-      setFromTemplate('');
-      setTargetFolder('');
-      handleSelect(modalType, result.slug, result.seedPrompt);
-    } catch (err: any) {
-      addToast(err.message, 'error');
-    } finally {
-      setIsCreating(false);
+    const out = await useWorkspaceStore.getState().create({
+      type: modalType,
+      name: newName,
+      fromTemplate,
+      folder: targetFolder,
+    });
+    setIsCreating(false);
+    if (!out.ok) {
+      setCreateError(out.inline);
+      return;
     }
+
+    setIsModalOpen(false);
+    setNewName('');
+    setFromTemplate('');
+    setTargetFolder('');
+    handleSelect(modalType, out.slug, out.seedPrompt);
   };
 
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFolderName.trim()) return;
+    if (!newFolderName.trim() || !activeCategory) return;
 
     setIsCreatingFolder(true);
     setFolderCreateError(null);
-    try {
-      const res = await fetch('/api/workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind: 'folder',
-          type: activeCategory,
-          name: newFolderName,
-          ...(folderParent ? { folder: folderParent } : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        if (res.status === 409) {
-          setFolderCreateError(err.error || 'That name is already taken');
-          return;
-        }
-        throw new Error(err.error || 'Failed to create folder');
-      }
-
-      await refreshEmptyFolders(activeCategory);
-      addToast(`Created new folder: ${newFolderName}`, 'success');
-
-      setIsFolderModalOpen(false);
-      setNewFolderName('');
-      setFolderParent('');
-    } catch (err: any) {
-      addToast(err.message, 'error');
-    } finally {
-      setIsCreatingFolder(false);
+    const out = await useWorkspaceStore.getState().createFolder({
+      type: activeCategory,
+      name: newFolderName,
+      parent: folderParent,
+    });
+    setIsCreatingFolder(false);
+    if (!out.ok) {
+      setFolderCreateError(out.inline);
+      return;
     }
+
+    setIsFolderModalOpen(false);
+    setNewFolderName('');
+    setFolderParent('');
   };
 
   const handleSelect = (type: string, slug: string, seed?: string) => {
@@ -251,127 +200,35 @@ export default function Sidebar() {
 
   const handleDelete = async () => {
     if (!itemToDelete) return;
-    const { type, slug, name } = itemToDelete;
 
     setIsDeleting(true);
-    try {
-      const res = await fetch(`/api/workspace/${type}/${slug}`, {
-        method: 'DELETE',
-      });
+    const out = await useWorkspaceStore.getState().remove(itemToDelete, tabState());
+    setIsDeleting(false);
+    if (!out.ok) return;
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete entity');
-      }
+    const params = new URLSearchParams(searchParams.toString());
+    writeTabState(params, out.tabs);
 
-      // Refresh data
-      const dataRes = await fetch('/api/workspace');
-      const newData = await dataRes.json();
-      setData(newData);
-
-      addToast(`Deleted ${type}: ${name}`, 'success');
-
-      const params = new URLSearchParams(searchParams.toString());
-      const currentTabs = parseTabs(params.get('tabs'), activeType, activeSlug);
-      const activeKey = activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null;
-      const { tabs: nextTabs, active: nextActive } = closeTab(currentTabs, activeKey, tabKey({ type, slug }));
-
-      if (nextTabs.length === 0) {
-        params.delete('tabs');
-        params.delete('type');
-        params.delete('slug');
-      } else {
-        params.set('tabs', serializeTabs(nextTabs));
-        if (nextActive) {
-          const [nextType, nextSlug] = nextActive.split(':');
-          params.set('type', nextType);
-          params.set('slug', nextSlug);
-        } else {
-          params.delete('type');
-          params.delete('slug');
-        }
-      }
-      
-      const newQuery = params.toString();
-      router.push(newQuery ? `/workspace?${newQuery}` : '/workspace');
-      setItemToDelete(null);
-    } catch (err: any) {
-      addToast(err.message, 'error');
-    } finally {
-      setIsDeleting(false);
-    }
+    const newQuery = params.toString();
+    router.push(newQuery ? `/workspace?${newQuery}` : '/workspace');
+    setItemToDelete(null);
   };
 
   const handleMove = async (item: TreeItem, folder: string) => {
     // Same folder picked from the menu, or dropped back where it started (#56): a no-op.
     if (folderOf(item.filePath, item.entityType, workspaceRoot) === folder) return;
-    try {
-      const res = await fetch(`/api/workspace/${item.entityType}/${item.slug}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to move entity');
-      }
-
-      // Refresh data
-      const dataRes = await fetch('/api/workspace');
-      const newData = await dataRes.json();
-      setData(newData);
-      refreshEmptyFolders(item.entityType as EntityType);
-
-      addToast(`Moved ${item.name} to ${folder || '/'}`, 'success');
-    } catch (err: any) {
-      addToast(err.message, 'error');
-    }
+    await useWorkspaceStore.getState().move({ type: item.entityType, slug: item.slug, name: item.name }, folder);
   };
 
-  // Rename is cosmetic to the engine (ADR-0012): no preview, no ref-rewrite, just the
-  // fs rename. A collision resolves to an inline error string for the row to show (#55).
   const handleRenameFolder = async (folderPath: string, name: string): Promise<string | null> => {
     if (!activeCategory) return null;
-    try {
-      const res = await fetch('/api/workspace/folders', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: activeCategory, folder: folderPath, name }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        return err.error || 'Failed to rename folder';
-      }
-
-      await refreshEmptyFolders(activeCategory);
-      const dataRes = await fetch('/api/workspace');
-      setData(await dataRes.json());
-      return null;
-    } catch (err: unknown) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const out = await useWorkspaceStore.getState().renameFolder({ type: activeCategory, folder: folderPath, name });
+    return out.ok ? null : out.inline;
   };
 
-  // An empty folder deletes without ceremony; a non-empty one is refused with the file
-  // count, surfaced as a toast since there's no dialog for the immediate case (#55).
   const handleDeleteFolder = async (folderPath: string) => {
     if (!activeCategory) return;
-    try {
-      const res = await fetch(
-        `/api/workspace/folders?type=${activeCategory}&folder=${encodeURIComponent(folderPath)}`,
-        { method: 'DELETE' },
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete folder');
-      }
-
-      await refreshEmptyFolders(activeCategory);
-      addToast(`Deleted folder: ${folderPath.split('/').pop()}`, 'success');
-    } catch (err: unknown) {
-      addToast(err instanceof Error ? err.message : String(err), 'error');
-    }
+    await useWorkspaceStore.getState().removeFolder({ type: activeCategory, folder: folderPath });
   };
 
   const closeRename = () => {
@@ -381,33 +238,20 @@ export default function Sidebar() {
     setRenameError(null);
   };
 
-  // The plan is fetched before the write, so the user sees which files a rename rewrites
-  // and which hold a prose placeholder only they can fix (#54).
   const previewRename = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemToRename || !renameName.trim()) return;
 
     setIsRenaming(true);
     setRenameError(null);
-    try {
-      const res = await fetch(
-        `/api/workspace/${itemToRename.entityType}/${itemToRename.slug}/rename?to=${encodeURIComponent(renameName.trim())}`,
-      );
-      const json = await res.json();
-      if (!res.ok) {
-        // A taken or malformed name is a form validation, shown inline so the dialog stays open.
-        if (res.status === 409 || res.status === 400) {
-          setRenameError(json.error || 'That name is already taken');
-          return;
-        }
-        throw new Error(json.error || 'Failed to plan the rename');
-      }
-      setRenamePlan(json);
-    } catch (err: unknown) {
-      addToast(err instanceof Error ? err.message : String(err), 'error');
-    } finally {
-      setIsRenaming(false);
+    const out = await useWorkspaceStore.getState()
+      .planRename({ type: itemToRename.entityType, slug: itemToRename.slug }, renameName.trim());
+    setIsRenaming(false);
+    if (!out.ok) {
+      setRenameError(out.inline);
+      return;
     }
+    setRenamePlan(out.plan as RenamePlan);
   };
 
   const handleRename = async () => {
@@ -415,62 +259,24 @@ export default function Sidebar() {
     const { entityType, slug: oldSlug } = itemToRename;
 
     setIsRenaming(true);
-    try {
-      const res = await fetch(`/api/workspace/${entityType}/${oldSlug}/rename`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: renamePlan.to }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to rename entity');
-      }
+    const out = await useWorkspaceStore.getState()
+      .rename({ type: entityType, slug: oldSlug }, renamePlan.to, tabState());
+    setIsRenaming(false);
+    if (!out.ok) return;
 
-      const dataRes = await fetch('/api/workspace');
-      setData(await dataRes.json());
-
-      // The slug is the address, so every open tab pointing at the old one is repointed.
-      const params = new URLSearchParams(searchParams.toString());
-      const currentTabs = parseTabs(params.get('tabs'), activeType, activeSlug);
-      const activeKey = activeType && activeSlug ? tabKey({ type: activeType, slug: activeSlug }) : null;
-      const { tabs: nextTabs, active: nextActive } = renameTab(
-        currentTabs,
-        activeKey,
-        tabKey({ type: entityType, slug: oldSlug }),
-        { type: entityType as WorkspaceTabType, slug: renamePlan.to }
-      );
-      if (nextTabs.length > 0) {
-        params.set('tabs', serializeTabs(nextTabs));
-      }
-      if (nextActive) {
-        const [nextType, nextSlug] = nextActive.split(':');
-        params.set('type', nextType);
-        params.set('slug', nextSlug);
-      }
-      router.push(`/workspace?${params.toString()}`);
-
-      addToast(`Renamed ${oldSlug} to ${renamePlan.to}`, 'success');
-      closeRename();
-    } catch (err: unknown) {
-      addToast(err instanceof Error ? err.message : String(err), 'error');
-    } finally {
-      setIsRenaming(false);
-    }
+    const params = new URLSearchParams(searchParams.toString());
+    writeTabState(params, out.tabs);
+    router.push(`/workspace?${params.toString()}`);
+    closeRename();
   };
 
   const confirmDelete = (type: EntityType, slug: string, name: string) => {
     setItemToDelete({ type, slug, name });
   };
 
-  // The API never sends the workspace root, so it is recovered from every path it does send.
-  const workspaceRoot = useMemo(
-    () => (data ? workspaceRootOf(Object.values(ENTITY_DIRS).flatMap(dir => data[dir].map(i => i.filePath))) : undefined),
-    [data],
-  );
-
   const rows = useMemo(() => {
-    if (!data || !activeCategory) return [];
-    const items: TreeItem[] = data[ENTITY_DIRS[activeCategory]]
+    if (!activeCategory) return [];
+    const items: TreeItem[] = files[ENTITY_DIRS[activeCategory]]
       .map(i => ({ ...i, entityType: activeCategory }));
 
     if (searchQuery) {
@@ -489,16 +295,16 @@ export default function Sidebar() {
       activeSlug: activeType === activeCategory ? activeSlug : null,
       emptyFolders,
     });
-  }, [data, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot, emptyFolders]);
+  }, [files, activeCategory, searchQuery, favorites, expandedFolders, activeType, activeSlug, workspaceRoot, emptyFolders]);
 
   const availableFolders = useMemo(() => {
-    if (!data || !activeCategory) return [];
-    const items: TreeItem[] = data[ENTITY_DIRS[activeCategory]]
+    if (!activeCategory) return [];
+    const items: TreeItem[] = files[ENTITY_DIRS[activeCategory]]
       .map(i => ({ ...i, entityType: activeCategory }));
     return allFolders(items, activeCategory, workspaceRoot, emptyFolders);
-  }, [data, activeCategory, workspaceRoot, emptyFolders]);
+  }, [files, activeCategory, workspaceRoot, emptyFolders]);
 
-  if (loading) return (
+  if (!loaded) return (
     <div className="flex-1 flex items-center justify-center p-4 bg-zinc-50/30">
       <div className="flex flex-col items-center gap-3">
         <div className="w-5 h-5 border-2 border-zinc-200 border-t-zinc-800 rounded-full animate-spin" />
@@ -507,7 +313,6 @@ export default function Sidebar() {
     </div>
   );
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
-  if (!data) return null;
 
   return (
     <div className="w-full h-full flex flex-col border-r border-zinc-200 min-w-0 bg-white">
@@ -629,7 +434,7 @@ export default function Sidebar() {
                   <p className="mt-1 text-sm text-red-600">{createError}</p>
                 )}
               </div>
-              {modalType === 'chain' && data.templates.length > 0 && (
+              {modalType === 'chain' && files.templates.length > 0 && (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-zinc-700 mb-1">
                     From template <span className="text-zinc-400 font-normal">(optional)</span>
@@ -641,7 +446,7 @@ export default function Sidebar() {
                     disabled={isCreating}
                   >
                     <option value="">Empty chain</option>
-                    {data.templates.map(t => (
+                    {files.templates.map(t => (
                       <option key={t.slug} value={t.slug}>{t.name}</option>
                     ))}
                   </select>

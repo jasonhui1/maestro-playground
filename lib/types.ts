@@ -289,6 +289,15 @@ export interface ValidationResult {
 
 export type WorkspaceTabType = 'agent' | 'chain' | 'skill' | 'template' | 'context' | 'tool'
 
+/** What a rename would do, as `/api/workspace/[type]/[slug]/rename` reports it (#54). */
+export interface RenamePlan {
+  from: string
+  to: string
+  rewrites: { slug: string; type: string; fields: string[] }[]
+  runs: string[]
+  manual: { slug: string; type: string }[]
+}
+
 export interface WorkspaceTab {
   type: WorkspaceTabType
   slug: string

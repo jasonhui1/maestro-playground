@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react'
 import { ChainSelector } from '@/components/ChainSelector'
 import { TemplateSelector } from '@/components/TemplateSelector'
 import { RunTrace } from '@/components/RunTrace'
-import { ChainDef, TemplateDef } from '@/lib/types'
+import { TemplateDef } from '@/lib/types'
+import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { streamRun, runErrorMessage, endedRunId } from '@/lib/runStream'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
 
 export default function RunPage() {
-  const [chains, setChains] = useState<ChainDef[]>([])
-  const [templates, setTemplates] = useState<TemplateDef[]>([])
+  const chains = useWorkspaceStore(s => s.files.chains)
+  const templates = useWorkspaceStore(s => s.files.templates)
   const [selectedChain, setSelectedChain] = useState('')
   const [seedPrompt, setSeedPrompt] = useState('')
   const [parallelCount, setParallelCount] = useState(1)
@@ -19,15 +20,13 @@ export default function RunPage() {
   const [endedRuns, setEndedRuns] = useState<string[]>([])
   const [runError, setRunError] = useState<string | null>(null)
 
+  useEffect(() => { useWorkspaceStore.getState().load() }, [])
+
+  // The first chain is only a default: once the list arrives, a chain the user already
+  // picked stays picked.
   useEffect(() => {
-    fetch('/api/workspace')
-      .then(r => r.json())
-      .then(data => {
-        setChains(data.chains)
-        setTemplates(data.templates)
-        if (data.chains.length > 0) setSelectedChain(data.chains[0].name)
-      })
-  }, [])
+    setSelectedChain(cur => cur || chains[0]?.name || '')
+  }, [chains])
 
   function handleTemplateSelect(template: TemplateDef) {
     setSeedPrompt(template.seedPrompt)
