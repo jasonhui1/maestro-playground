@@ -18,12 +18,8 @@ export interface RunAgentOptions {
   onToolEvent?: ToolEventSink
 }
 
-/**
- * Runs one node's model call to completion and reports it as one AgentOutput
- * (ADR-0002). There is one body: an agent with no tools runs the same loop with
- * an empty tool set, which settles on its first turn, so the seam, the <thought>
- * rule and the cost rule below are the same whoever is calling (#112).
- */
+// One body, tools or not: no tools is the same loop with an empty tool set,
+// settling on its first turn (ADR-0002, #112).
 export async function runAgent(
   agent: AgentDef,
   resolvedSystemPrompt: string,

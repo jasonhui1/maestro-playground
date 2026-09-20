@@ -1,34 +1,9 @@
-// What a model turn is made of on the way in and out: the retry policy, the
-// <thought> grammar, and the chunk-to-facts narration. Kept apart from the
-// provider adapter (./chatCall) so a test can mock that one module without
-// losing these (#112).
+// A streamed model turn read as facts: the <thought> grammar and the narration
+// the loop's hooks report while a turn is in flight. Apart from ./chatCall so a
+// test can mock the provider without losing these (#112).
+import { withRetry } from './retry'
 import type { ChatCallHooks } from './tools/loop'
 import type { StreamChunk } from './tools/streamAssembly'
-
-// Retry policy for model calls. 429 and 5xx only — a 400 is a config error and
-// must fail loudly on the first try. #18's "intermittent 400s" turned out to be
-// the two env footguns above; retrying them would only have hidden them longer.
-export function isTransient(err: unknown): boolean {
-  const status = (err as { status?: unknown } | null)?.status
-  return typeof status === 'number' && (status === 429 || status >= 500)
-}
-
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  opts: { attempts?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
-): Promise<T> {
-  const attempts = opts.attempts ?? 3
-  const delayMs = opts.delayMs ?? 500
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
-  for (let i = 0; ; i++) {
-    try {
-      return await fn()
-    } catch (err) {
-      if (!isTransient(err) || i >= attempts - 1) throw err
-      await sleep(delayMs * 2 ** i)
-    }
-  }
-}
 
 export interface ThoughtSplitter {
   push(delta: string): void
@@ -117,10 +92,8 @@ export function createStreamNarrator(hooks?: ChatCallHooks) {
   }
 }
 
-// The retry spans opening AND draining: a turn that dies mid-body is as transient
-// as one that never opened, and the loop's contract is one chatCall = one settled
-// turn. Only the first attempt narrates — a retry would replay text the client has
-// already seen and announce the same turn's tool call twice (#35).
+// The retry spans opening AND draining: one chatCall is one settled turn. Only
+// the first attempt narrates, or a retry replays text the client has seen (#35).
 export async function streamOneTurn(
   open: () => Promise<AsyncIterable<unknown>>,
   hooks?: ChatCallHooks,

@@ -5,55 +5,40 @@ import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
 import type { ChatMessage, RunMeta } from '../lib/types'
-import type { ChatCall } from '../lib/tools/loop'
 import { requestEntry } from './helpers/requestWorkspace'
+import { answer, callRetrieve, fakeModel, retrieveToolFile, tavernsContextFile } from './helpers/fakeModel'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
-// The model is the only stand-in (#112): runAgent, the tool loop, cost accounting,
-// the executor, the routes and the logger are all real. A node's own turn arrives
-// as the executor's two-message opener; a chat turn as the node's transcript.
+// A node's own turn arrives as the executor's two-message opener; a chat turn as
+// the node's transcript, which is what these arrays collect.
 const chats: ChatMessage[][] = []
 const chatModels: string[] = []
 const chatTools: string[][] = []
 let duringAfter: (() => void) | undefined
-vi.mock('@/lib/chatCall', () => ({
-  createChatCall: (agent: { slug: string; model: string }): ChatCall => async (req, hooks) => {
-    const messages = req.messages
-    const last = messages.at(-1)!
-    const reply = (content: string) => ({ choices: [{ message: { role: 'assistant' as const, content } }] })
-    if (messages.length === 2) {
-      if (agent.slug === 'after') duringAfter?.()
-      return reply(`## Candidate 1\nfrom ${agent.slug}`)
-    }
-    if (last.role === 'tool') return reply(`grounded: ${last.content}`)
-    chats.push(messages.map(m => ({ role: m.role, content: m.content }) as ChatMessage))
-    chatModels.push(agent.model)
-    chatTools.push(req.tools.map(t => t.function.name))
-    if (last.content === 'fail') throw new Error('model down')
-    if (req.tools.length > 0) {
-      return {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{ id: 't1', function: { name: 'retrieve', arguments: JSON.stringify({ query: 'Gilded Flagon' }) } }],
-          },
-        }],
-      }
-    }
-    const n = messages.filter(m => m.role === 'user').length - 1
-    hooks?.onToken?.('hmm', 'thought')
-    hooks?.onToken?.(`reply ${n}`, 'output')
-    return reply(`<thought>hmm</thought>reply ${n}`)
-  },
-}))
+const fake = fakeModel(({ last, tools, messages, model, agentSlug, hooks }) => {
+  if (messages.length === 2) {
+    if (agentSlug === 'after') duringAfter?.()
+    return answer(`## Candidate 1\nfrom ${agentSlug}`)
+  }
+  chats.push(messages.map(m => ({ role: m.role, content: m.content }) as ChatMessage))
+  chatModels.push(model)
+  chatTools.push(tools)
+  if (last.content === 'fail') throw new Error('model down')
+  if (tools.length > 0) return callRetrieve('Gilded Flagon')
+  const n = messages.filter(m => m.role === 'user').length - 1
+  hooks?.onToken?.('hmm', 'thought')
+  hooks?.onToken?.(`reply ${n}`, 'output')
+  return answer(`<thought>hmm</thought>reply ${n}`)
+})
+vi.mock('@/lib/chatCall', () => ({ createChatCall: fake.createChatCall }))
 
 afterEach(() => {
   chats.length = 0
   chatModels.length = 0
   chatTools.length = 0
   duringAfter = undefined
+  fake.reset()
 })
 
 const chain = `---
@@ -307,9 +292,9 @@ test('a chat turn gets the tools the agent file declares, and they really run (#
     fs.mkdirSync(path.dirname(path.join(wp, rel)), { recursive: true })
     fs.writeFileSync(path.join(wp, rel), body)
   }
-  write('tools/retrieve.md', '---\nname: retrieve\nexecutor: retrieve\nparams:\n  query:\n    type: string\n    required: true\nconfig:\n  folders:\n    - context\n---\nSearch the lore.\n')
+  write('tools/retrieve.md', retrieveToolFile)
   write('agents/decider.md', '---\nname: Decider\nmodel: m\ntools:\n  - retrieve\n---\ndecide {input}\n')
-  write('context/taverns.md', '# Taverns\n\n## The Gilded Flagon\n\nOwned by Mirna Copperhand.\n')
+  write('context/taverns.md', tavernsContextFile)
   const runId = await startRun()
 
   const events = await sse(await chat(runId, 'dec', { message: 'who owns the Gilded Flagon?' }))

@@ -12,7 +12,7 @@
 // undeclared tool provokes MALFORMED_FUNCTION_CALL dead-ends).
 //
 // Transient-retry policy lives in the injected chatCall, not here: the real
-// wiring (runner.ts `withRetry`) retries 429 and 5xx only. Explicitly not 400s —
+// wiring (lib/retry.ts `withRetry`) retries 429 and 5xx only. Explicitly not 400s —
 // #18's apparent "intermittent 400s" were two env footguns (a CRLF-induced \r on
 // the model name, a trailing-slash base URL), never flakiness, and a retry would
 // have hidden them for longer. Either way the loop treats one chatCall as one

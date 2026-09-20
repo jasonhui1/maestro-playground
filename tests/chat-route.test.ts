@@ -3,42 +3,25 @@ import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import type { ChatCall } from '../lib/tools/loop'
 import type { RunMeta } from '../lib/types'
 import { requestEntry } from './helpers/requestWorkspace'
+import { answer, callRetrieve, fakeModel, retrieveToolFile, tavernsContextFile } from './helpers/fakeModel'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
-// The model is the only stand-in (#112): runAgent, the tool loop, cost accounting,
-// the route and the logger are all real.
-const seen: Array<{ model: string; tools: string[]; roles: string[] }> = []
-vi.mock('@/lib/chatCall', () => ({
-  createChatCall: (agent: { model: string }): ChatCall => async (req, hooks) => {
-    const last = req.messages.at(-1)!
-    if (last.role === 'tool') return { choices: [{ message: { role: 'assistant', content: `grounded: ${last.content}` } }] }
-    seen.push({ model: agent.model, tools: req.tools.map(t => t.function.name), roles: req.messages.map(m => m.role) })
-    if (last.content === 'fail') throw new Error('model down')
-    if (req.tools.length > 0) {
-      return {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{ id: 't1', function: { name: 'retrieve', arguments: JSON.stringify({ query: 'Gilded Flagon' }) } }],
-          },
-        }],
-      }
-    }
-    hooks?.onToken?.('weighing', 'thought')
-    hooks?.onToken?.('Mirna owns it.', 'output')
-    return {
-      choices: [{ message: { role: 'assistant', content: '<thought>weighing</thought>Mirna owns it.' } }],
-      usage: { prompt_tokens: 30, completion_tokens: 7 },
-    }
-  },
-}))
+const model = fakeModel(({ last, tools, hooks }) => {
+  if (last.content === 'fail') throw new Error('model down')
+  if (tools.length > 0) return callRetrieve('Gilded Flagon')
+  hooks?.onToken?.('weighing', 'thought')
+  hooks?.onToken?.('Mirna owns it.', 'output')
+  return answer('<thought>weighing</thought>Mirna owns it.', [30, 7])
+})
+vi.mock('@/lib/chatCall', () => ({ createChatCall: model.createChatCall }))
 
-afterEach(() => { seen.length = 0 })
+const seen = model.seen
+const roles = (i: number) => seen[i].messages.map(m => m.role)
+
+afterEach(() => model.reset())
 
 function write(wp: string, rel: string, body: string) {
   fs.mkdirSync(path.dirname(path.join(wp, rel)), { recursive: true })
@@ -90,15 +73,15 @@ test('a chat turn streams tokens, splits the thought, and lands in the run', asy
   const meta = await readMeta(done.runId)
   assert.strictEqual(meta.status, 'complete')
   assert.strictEqual(meta.agentOutputs.length, 1)
-  assert.deepStrictEqual(seen[0].roles, ['system', 'user'], 'the system prompt leads the transcript')
+  assert.deepStrictEqual(roles(0), ['system', 'user'], 'the system prompt leads the transcript')
   assert.deepStrictEqual(seen[0].tools, [], 'an agent that declares no tools sends none')
   assert.strictEqual(seen[0].model, 'm')
 })
 
 test('a chat turn gets the tools the agent file declares, and they really run (#112)', async () => {
   const wp = newWorkspace('name: Lore Keeper\nmodel: m\ntools:\n  - retrieve')
-  write(wp, 'tools/retrieve.md', '---\nname: retrieve\nexecutor: retrieve\nparams:\n  query:\n    type: string\n    required: true\nconfig:\n  folders:\n    - context\n---\nSearch the lore.\n')
-  write(wp, 'context/taverns.md', '# Taverns\n\n## The Gilded Flagon\n\nOwned by Mirna Copperhand.\n')
+  write(wp, 'tools/retrieve.md', retrieveToolFile)
+  write(wp, 'context/taverns.md', tavernsContextFile)
 
   const events = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'who owns it?' }] }))
 
@@ -133,7 +116,7 @@ test('a turn continues an existing run rather than starting a new one', async ()
   }))
 
   assert.strictEqual(second[0].runId as string, runId)
-  assert.deepStrictEqual(seen[1].roles, ['system', 'user', 'assistant', 'user'])
+  assert.deepStrictEqual(roles(1), ['system', 'user', 'assistant', 'user'])
   assert.strictEqual((await readMeta(runId)).agentOutputs.length, 2)
 })
 

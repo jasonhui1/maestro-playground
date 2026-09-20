@@ -1,6 +1,5 @@
-// The provider adapter behind the loop's one seam. It is a module of its own so
-// that a route test can replace the model — and only the model — with a scripted
-// fake, leaving runAgent, the loop and cost accounting real (#112).
+// The provider adapter behind the loop's one seam, alone in this module so a
+// test can replace the model and nothing else (#112).
 import OpenAI from 'openai'
 import { AgentDef } from './types'
 import { resolveProvider } from './provider'
@@ -17,13 +16,8 @@ function getClient(): OpenAI {
   return _client
 }
 
-// Wires the real client into the loop's one seam. Streamed (#34): the chunk
-// sequence is reassembled into one settled response before it reaches the loop,
-// which still sees whole messages. `include_usage` is what makes a streamed turn
-// report tokens at all — without it every tool node costs a silent zero.
-// The casts are load-bearing: the SDK's types don't know the provider extras
-// (`reasoning`, `reasoning_details`, `extra_content`) that wire-truth requires we
-// echo, and #18 verified they survive the client's serialization regardless.
+// `include_usage` is what makes a streamed turn report tokens at all; the casts
+// carry provider extras the SDK's types don't know (ADR-0002, #34, #18).
 export function createChatCall(agent: AgentDef): ChatCall {
   return async (req, hooks) => {
     const chunks = await streamOneTurn(() => getClient().chat.completions.create({
