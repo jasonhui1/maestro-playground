@@ -82,7 +82,7 @@ export interface RunSession {
  * as SSE, ending with the run's meta.json written as complete, waiting or error.
  */
 export function streamChainRun(s: RunSession): Response {
-  const { ws: { root, runs }, runId, chain, workspace: { agents, skills, chains, tools } } = s
+  const { ws: { root, runs }, runId, chain } = s
   const replay = [...s.replay.logged, ...s.replay.fresh]
   const onDisk = new Set(s.replay.logged)
 
@@ -108,7 +108,7 @@ export function streamChainRun(s: RunSession): Response {
 
     try {
       const results = await runChainGraph(
-        chain, { agents, skills, chains, tools, path: root },
+        chain, { ...s.workspace, root },
         {
           onStart: (nodeId, agent) => {
             const n = step++

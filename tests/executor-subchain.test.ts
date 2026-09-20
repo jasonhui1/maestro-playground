@@ -39,7 +39,7 @@ const parent: ChainDef = {
 const agents = [agent('w', 'X={x}'), agent('v', 'Y={y}')]
 
 async function main() {
-  const results = await runChainGraph(parent, { agents, chains: [inner], path: '/tmp' }, noop,
+  const results = await runChainGraph(parent, { agents, chains: [inner], root: '/tmp' }, noop,
     { seedPrompt: 'PARENT', run: fakeRun })
   // each declared output landed in per-socket storage; injection filled the inner slots
   const rw = results.find(r => r.nodeId === 'sub::rw')
@@ -49,7 +49,7 @@ async function main() {
   assert.ok(!rw!.output.includes('not wired'), 'inner slot x was injected, not left unwired')
 
   // depth guard
-  await assert.rejects(() => runChainGraph(parent, { agents, chains: [inner], path: '/tmp' }, noop,
+  await assert.rejects(() => runChainGraph(parent, { agents, chains: [inner], root: '/tmp' }, noop,
     { seedPrompt: 'PARENT', run: fakeRun, depth: 99 }), /too deep/i)
 
   // subchain declares two inputs (topic, tone); only topic is wired by the host — the
@@ -67,7 +67,7 @@ async function main() {
       nodes: [{ id: 'seed', kind: 'seed' }, { id: 'sub', kind: 'subchain', subchain: 'partial' }],
       edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: 'sub', toSocket: 'topic' }],
     }
-    const res = await runChainGraph(partialParent, { agents, chains: [partialInner], path: '/tmp' }, noop,
+    const res = await runChainGraph(partialParent, { agents, chains: [partialInner], root: '/tmp' }, noop,
       { seedPrompt: 'PARENT', run: fakeRun })
     const status = res.find(r => r.nodeId === 'sub')
     assert.ok(status && status.status !== 'skipped', 'subchain with only one of two declared inputs wired still runs')
@@ -80,7 +80,7 @@ async function main() {
       nodes: [{ id: 'n', kind: 'agent', agent: 'needsInput' }],
       edges: [],
     }
-    const res = await runChainGraph(chain, { agents: agents2, path: '/tmp' }, noop,
+    const res = await runChainGraph(chain, { agents: agents2, root: '/tmp' }, noop,
       { seedPrompt: 'SEED', run: fakeRun })
     assert.strictEqual(res.find(r => r.nodeId === 'n')!.status, 'skipped', 'agent node with an unwired slot still skips')
   }

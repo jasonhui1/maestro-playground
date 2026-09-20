@@ -29,18 +29,19 @@ function controlOutput(nodeId: string, label: string, output: string, status: Ag
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }
 }
 
-/** The definitions a run reads, and the workspace root their file references resolve against. */
-export interface ExecutorWorkspace {
+/** The definitions a run reads. `root` alone is required: an empty one silently
+ * resolves context and tool files against the process cwd (#105). */
+export interface ExecutorDefs {
+  root: string
   agents?: AgentDef[]
   skills?: SkillDef[]
   chains?: ChainDef[]
   tools?: ToolDef[]
-  /** Workspace root; context files and tool binding resolve against it. */
-  path?: string
 }
 
 /** What one run supplies over those definitions. */
 export interface RunRequest {
+  /** The text the chain's seed node hands downstream. */
   seedPrompt: string
   /** The chain parameter's value for this run; '' when the chain declares none. */
   paramValue?: string
@@ -56,11 +57,11 @@ export interface RunRequest {
 
 export async function runChainGraph(
   chain: ChainDef,
-  workspace: ExecutorWorkspace,
+  defs: ExecutorDefs,
   callbacks: RunCallbacks,
   request: RunRequest,
 ): Promise<AgentOutput[]> {
-  const { agents = [], skills = [], chains = [], tools = [], path: workspacePath = '' } = workspace
+  const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
   const { seedPrompt, paramValue = '', context: contextOverrides = {}, replay: startOutputs = [],
     run: runFn = runAgent, depth = 0 } = request
   const MAX_SUBCHAIN_DEPTH = 10
@@ -315,7 +316,7 @@ export async function runChainGraph(
         // them can report until that record exists (#40).
         const deferredWarnings: SectionWarning[] = []
         const innerResults = await runChainGraph(
-          ref, workspace,
+          ref, defs,
           {
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),

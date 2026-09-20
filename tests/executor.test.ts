@@ -34,7 +34,7 @@ const stub = (async (a: AgentDef, systemPrompt: string) => {
 const noop = { onStart() {}, onToken() {}, onDone() {} }
 
 async function main() {
-  const results = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'MY SEED', run: stub })
+  const results = await runChainGraph(chain, { agents, root: '/ws' }, noop, { seedPrompt: 'MY SEED', run: stub })
   assert.deepStrictEqual(order, ['a', 'b'], 'topological order a before b')
   assert.ok(seenPrompts['a'].includes('MY SEED'), 'seed wired into a')
   assert.ok(seenPrompts['b'].includes('OUT(a)'), "a's output wired into b")
@@ -45,7 +45,7 @@ async function main() {
   // branching: replay na, only b runs
   order.length = 0
   const replay: AgentOutput[] = [{ ...results[0] }]
-  const results2 = await runChainGraph(chain, { agents, path: '/ws' }, noop,
+  const results2 = await runChainGraph(chain, { agents, root: '/ws' }, noop,
     { seedPrompt: 'MY SEED', run: stub, replay })
   assert.deepStrictEqual(order, ['b'], 'only b runs when na is replayed')
   assert.strictEqual(results2.length, 2)

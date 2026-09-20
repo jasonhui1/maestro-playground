@@ -32,7 +32,7 @@ async function main() {
         { fromNode: 'g', fromSocket: 'output', toNode: 'f', toSocket: 'in' },
       ],
     }
-    const res = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
+    const res = await runChainGraph(chain, { agents, root: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
     const f = res.find(o => o.nodeId === 'f')!
     assert.strictEqual(f.status, 'skipped', 'f skipped because gate blocked')
   }
@@ -56,7 +56,7 @@ async function main() {
         { fromNode: 'b', fromSocket: 'slow', toNode: 'ns', toSocket: 'in' },
       ],
     }
-    const res = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
+    const res = await runChainGraph(chain, { agents, root: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
     assert.strictEqual(res.find(o => o.nodeId === 'nf')!.status, 'success', 'fast ran')
     assert.strictEqual(res.find(o => o.nodeId === 'ns')!.status, 'skipped', 'slow skipped')
   }

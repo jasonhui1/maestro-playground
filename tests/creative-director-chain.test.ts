@@ -154,7 +154,7 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   const canonFile = chain.nodes.find(n => n.id === 'canon')!
   assert.ok(canonFile.kind === 'context' && canonFile.file)
   const overrides = { [canonFile.file]: CANON }
-  const results = await runChainGraph(chain, { agents, skills, chains, tools, path: '/nonexistent' },
+  const results = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
     callbacks, { seedPrompt: seed, run: stub as never, paramValue: dial, context: overrides })
 
   // An empty brief must not leave a proposer with nothing to read.
@@ -181,7 +181,7 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   }
 
   const { output: answer } = answerHold(holds, holds[0], DIRECTION)
-  const resumed = await runChainGraph(chain, { agents, skills, chains, tools, path: '/nonexistent' },
+  const resumed = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
     noop, { seedPrompt: seed, run: stub as never, replay: [...results, answer], paramValue: dial, context: overrides })
 
   const greenlight = resumed.find(r => r.nodeId === 'greenlight')!

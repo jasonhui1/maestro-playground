@@ -44,8 +44,8 @@ const chain: ChainDef = {
 }
 
 test('results stay in topo order regardless of who finishes first', async () => {
-  const results = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
+  const results = await runChainGraph(chain, { agents, root: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   assert.deepStrictEqual(results.map(r => r.nodeId), ['n1', 'n2', 'n3', 'j', 'ns'])
-  const again = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
+  const again = await runChainGraph(chain, { agents, root: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   assert.deepStrictEqual(again.map(r => r.nodeId), results.map(r => r.nodeId), 'order is stable')
 })

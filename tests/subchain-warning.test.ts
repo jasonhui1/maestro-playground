@@ -45,7 +45,7 @@ const cast = [agent('digger', 'Topic: {topic}'), agent('writer', 'World: {world}
 async function runStory(diggerOutput: string, inner: ChainDef = research()) {
   const warnings: SectionWarning[] = []
   const results = await runChainGraph(
-    story, { agents: cast, chains: [inner], path: '/tmp' },
+    story, { agents: cast, chains: [inner], root: '/tmp' },
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings.push(w) },
     { seedPrompt: 'SEED', run: runFnOf({ digger: diggerOutput, writer: 'PROSE' }) },
   )
@@ -104,7 +104,7 @@ const researchDeep: ChainDef = {
 test('a violation inside the subchain surfaces on the subchain node, naming its producer', async () => {
   const warnings: SectionWarning[] = []
   const results = await runChainGraph(
-    story, { agents: [...cast, agent('polisher', 'Draft: {draft}')], chains: [researchDeep], path: '/tmp' },
+    story, { agents: [...cast, agent('polisher', 'Draft: {draft}')], chains: [researchDeep], root: '/tmp' },
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings.push(w) },
     { seedPrompt: 'SEED', run: runFnOf({ digger: 'NO HEADINGS', polisher: 'POLISHED', writer: 'PROSE' }) },
   )
@@ -135,7 +135,7 @@ test('a violation two subchains deep re-anchors at each boundary', async () => {
 
   const warnings: SectionWarning[] = []
   const results = await runChainGraph(
-    story, { agents: [...cast, agent('miner', 'Topic: {topic}')], chains: [nested, deep], path: '/tmp' },
+    story, { agents: [...cast, agent('miner', 'Topic: {topic}')], chains: [nested, deep], root: '/tmp' },
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings.push(w) },
     { seedPrompt: 'SEED', run: runFnOf({ miner: 'NO HEADINGS', writer: 'PROSE' }) },
   )
@@ -167,7 +167,7 @@ test('two ports failing on one inner output stay distinct, and repeat readers do
 
   const warnings: SectionWarning[] = []
   await runChainGraph(
-    twoReaders, { agents: cast, chains: [twoPorts], path: '/tmp' },
+    twoReaders, { agents: cast, chains: [twoPorts], root: '/tmp' },
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings.push(w) },
     { seedPrompt: 'SEED', run: runFnOf({ digger: 'NO HEADINGS', writer: 'PROSE' }) },
   )

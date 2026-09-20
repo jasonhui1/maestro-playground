@@ -15,7 +15,7 @@ test('report-executor', async () => {
     const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
-      chain, { path: process.cwd() },
+      chain, { root: process.cwd() },
       { onStart() {}, onToken() {}, onDone() {} },
       { seedPrompt: 'HELLO WORLD', run: runFn },
     )

@@ -48,7 +48,7 @@ test('fan-out → join → synthesize, end to end', async () => {
   assert.ok(validateChain(chain, agents).valid, 'example chain validates')
 
   const t = Date.now()
-  const results = await runChainGraph(chain, { agents, path: '/ws' }, noop,
+  const results = await runChainGraph(chain, { agents, root: '/ws' }, noop,
     { seedPrompt: 'Should we ship on Friday?', run: slow })
   const elapsed = Date.now() - t
 
