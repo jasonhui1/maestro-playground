@@ -132,9 +132,9 @@ function runFnOf(bodyByAgent: Record<string, string>): typeof runAgent {
 async function runWith(chain: ChainDef, wbOutput: string) {
   const warnings: SectionWarning[] = []
   const results = await runChainGraph(
-    chain, agentsFor(), [], 'SEED', '/tmp',
+    chain, { agents: agentsFor(), path: '/tmp' },
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings.push(w) },
-    runFnOf({ 'world-builder': wbOutput, 'character-designer': 'CHARS' }),
+    { seedPrompt: 'SEED', run: runFnOf({ 'world-builder': wbOutput, 'character-designer': 'CHARS' }) },
   )
   return { warnings, results }
 }

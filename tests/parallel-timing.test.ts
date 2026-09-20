@@ -33,7 +33,7 @@ const chain: ChainDef = {
 
 test('independent nodes run concurrently, not one after another', async () => {
   const t = Date.now()
-  const results = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, slow)
+  const results = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: slow })
   const elapsed = Date.now() - t
   assert.strictEqual(results.filter(r => r.status === 'success').length, 3, 'all three ran')
   assert.ok(elapsed < 130, `3 independent nodes should run ~60ms concurrently, not ~180ms; got ${elapsed}ms`)

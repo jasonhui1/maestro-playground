@@ -108,7 +108,7 @@ export function streamChainRun(s: RunSession): Response {
 
     try {
       const results = await runChainGraph(
-        chain, agents, skills, s.seedPrompt, root,
+        chain, { agents, skills, chains, tools, path: root },
         {
           onStart: (nodeId, agent) => {
             const n = step++
@@ -141,13 +141,7 @@ export function streamChainRun(s: RunSession): Response {
           },
           onHold: hold => { reached.push(hold) },
         },
-        undefined,
-        replay,
-        chains,
-        tools,
-        0,
-        s.paramValue,
-        s.context,
+        { seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay },
       )
 
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results

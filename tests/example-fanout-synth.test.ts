@@ -48,7 +48,8 @@ test('fan-out → join → synthesize, end to end', async () => {
   assert.ok(validateChain(chain, agents).valid, 'example chain validates')
 
   const t = Date.now()
-  const results = await runChainGraph(chain, agents, [], 'Should we ship on Friday?', '/ws', noop, slow)
+  const results = await runChainGraph(chain, { agents, path: '/ws' }, noop,
+    { seedPrompt: 'Should we ship on Friday?', run: slow })
   const elapsed = Date.now() - t
 
   // Concurrent is ~100ms, sequential ~200ms; the margin absorbs CI timer jitter.

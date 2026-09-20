@@ -37,7 +37,7 @@ const joinToSyn = { fromNode: 'j', fromSocket: 'output', toNode: 'ns', toSocket:
 test('all live inputs merge, labeled, in edge-declaration order', async () => {
   const full = base([seedTo('n1'), seedTo('n2'), seedTo('n3'),
                      toJoin('n1'), toJoin('n2'), toJoin('n3'), joinToSyn])
-  const r1 = await runChainGraph(full, agents, [], 'SEED', '/ws', noop, stub)
+  const r1 = await runChainGraph(full, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   const j = r1.find(r => r.nodeId === 'j')!
   assert.ok(j.output.includes('## W1') && j.output.includes('out-w1'), 'W1 block present')
   assert.ok(j.output.includes('## W2') && j.output.includes('## W3'), 'W2/W3 blocks present')
@@ -51,7 +51,7 @@ test('all live inputs merge, labeled, in edge-declaration order', async () => {
 test('a dead input is dropped; the live ones remain', async () => {
   const partial = base([seedTo('n1'), seedTo('n2'),   // n3 has no seed → n3 skipped
                         toJoin('n1'), toJoin('n2'), toJoin('n3'), joinToSyn])
-  const r2 = await runChainGraph(partial, agents, [], 'SEED', '/ws', noop, stub)
+  const r2 = await runChainGraph(partial, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   const j2 = r2.find(r => r.nodeId === 'j')!
   assert.ok(j2.output.includes('## W1') && j2.output.includes('## W2'), 'live inputs kept')
   assert.ok(!j2.output.includes('## W3'), 'dead input dropped')
@@ -60,7 +60,7 @@ test('a dead input is dropped; the live ones remain', async () => {
 
 test('all inputs dead → the join and everything downstream is skipped', async () => {
   const dead = base([toJoin('n1'), toJoin('n2'), toJoin('n3'), joinToSyn]) // no seed edges at all
-  const r3 = await runChainGraph(dead, agents, [], 'SEED', '/ws', noop, stub)
+  const r3 = await runChainGraph(dead, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   assert.strictEqual(r3.find(r => r.nodeId === 'j')!.status, 'skipped', 'join skipped when all inputs dead')
   assert.strictEqual(r3.find(r => r.nodeId === 'ns')!.status, 'skipped', 'syn skipped downstream')
 })

@@ -32,8 +32,8 @@ const noop = { onStart() {}, onToken() {}, onDone() {} }
 test('a request-supplied context value wins over the workspace file', async () => {
   const agents = [agent('writer', 'Canon: {canon}')]
   const results = await runChainGraph(
-    chain(), agents, [], 'go', '/nonexistent', noop, stubRun, [], [], [], 0, '',
-    { 'canon-test': 'INLINE CANON TEXT' },
+    chain(), { agents, path: '/nonexistent' }, noop,
+    { seedPrompt: 'go', run: stubRun, context: { 'canon-test': 'INLINE CANON TEXT' } },
   )
   const writer = results.find(r => r.agentName === 'writer')!
   assert.ok(writer.systemPrompt.includes('INLINE CANON TEXT'))
@@ -42,7 +42,7 @@ test('a request-supplied context value wins over the workspace file', async () =
 test('falls back to the not-found placeholder when neither override nor file exists', async () => {
   const agents = [agent('writer', 'Canon: {canon}')]
   const results = await runChainGraph(
-    chain(), agents, [], 'go', '/nonexistent', noop, stubRun, [], [], [], 0, '', {},
+    chain(), { agents, path: '/nonexistent' }, noop, { seedPrompt: 'go', run: stubRun, context: {} },
   )
   const writer = results.find(r => r.agentName === 'writer')!
   assert.ok(writer.systemPrompt.includes('[context canon-test not found]'))

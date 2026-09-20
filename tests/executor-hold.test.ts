@@ -60,7 +60,7 @@ test('wavefront stop: a hold records nothing, its descendants are never recorded
     return agentOutput(a, sp, a.slug === 'dec' ? decision : undefined)
   }
 
-  const results = await runChainGraph(chain, agents, [], 'SEED', '/ws', callbacks, stub)
+  const results = await runChainGraph(chain, { agents, path: '/ws' }, callbacks, { seedPrompt: 'SEED', run: stub })
 
   assert.deepStrictEqual(results.map(r => r.nodeId).sort(), ['dec', 's'], 'exactly the pre-hold outputs')
   assert.ok(!starts.includes('d'), 'd never starts')
@@ -91,7 +91,8 @@ test('a hold with a dead input is skipped, not held', async () => {
     ],
   }
   let held = false
-  const results = await runChainGraph(chain, [], [], 'SEED', '/ws', { ...noop, onHold: () => { held = true } })
+  const results = await runChainGraph(chain, { path: '/ws' }, { ...noop, onHold: () => { held = true } },
+    { seedPrompt: 'SEED' })
   assert.strictEqual(held, false)
   assert.strictEqual(results.find(r => r.nodeId === 'h')?.status, 'skipped')
 })
@@ -135,7 +136,8 @@ test('resume as replay: a hold already answered does not pause; only post-hold u
   let held = false
 
   const results = await runChainGraph(
-    chain, agents, [], 'SEED', '/ws', { ...noop, onHold: () => { held = true } }, stub, startOutputs,
+    chain, { agents, path: '/ws' }, { ...noop, onHold: () => { held = true } },
+    { seedPrompt: 'SEED', run: stub, replay: startOutputs },
   )
 
   assert.strictEqual(held, false, 'the replayed hold does not pause')
@@ -163,9 +165,9 @@ test('a hold offered no candidates warns against the node that fed it (#96)', as
   }
   const run = async (output: string) => {
     const warnings: unknown[] = []
-    const results = await runChainGraph(chain, agents, [], 'go', '/ws',
+    const results = await runChainGraph(chain, { agents, path: '/ws' },
       { ...noop, onHold() {}, onWarning: w => warnings.push(w) },
-      (async (a: AgentDef, sp: string) => agentOutput(a, sp, output)) as typeof runAgent)
+      { seedPrompt: 'go', run: (async (a: AgentDef, sp: string) => agentOutput(a, sp, output)) as typeof runAgent })
     return { warnings, dec: results.find(r => r.nodeId === 'dec')! }
   }
 

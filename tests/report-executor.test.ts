@@ -15,8 +15,9 @@ test('report-executor', async () => {
     const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
-      chain, [], [], 'HELLO WORLD', process.cwd(),
-      { onStart() {}, onToken() {}, onDone() {} }, runFn,
+      chain, { path: process.cwd() },
+      { onStart() {}, onToken() {}, onDone() {} },
+      { seedPrompt: 'HELLO WORLD', run: runFn },
     )
     const rep = results.find(r => r.nodeId === 'r')!
     assert.strictEqual(rep.output, 'HELLO WORLD', 'report passes seed through')

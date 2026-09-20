@@ -50,7 +50,7 @@ const chain: ChainDef = {
 }
 
 async function main() {
-  const res = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, stub)
+  const res = await runChainGraph(chain, { agents, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   // patch ran 3 times (draft-1, draft-2, draft-3 -> review APPROVED)
   const patchRounds = res.filter(o => o.nodeId === 'patch')
   assert.strictEqual(patchRounds.length, 3, 'patch ran 3 rounds')
@@ -67,7 +67,8 @@ async function main() {
   }) as never
 
   // Re-run with the completed results as startOutputs
-  const resCompletedBranch = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, stubNoCalls, res)
+  const resCompletedBranch = await runChainGraph(chain, { agents, path: '/ws' }, noop,
+    { seedPrompt: 'SEED', run: stubNoCalls, replay: res })
   // The result should contain the same outputs and not have failed
   assert.strictEqual(resCompletedBranch.length, res.length, 'Resumed completed run has same length')
   const repCompleted = resCompletedBranch.find(o => o.nodeId === 'rep')!
@@ -91,7 +92,8 @@ async function main() {
 
   // Take elements up to review (round 1)
   const partialOutputs = res.slice(0, 9)
-  const resPartialBranch = await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, stubFromRound2, partialOutputs)
+  const resPartialBranch = await runChainGraph(chain, { agents, path: '/ws' }, noop,
+    { seedPrompt: 'SEED', run: stubFromRound2, replay: partialOutputs })
   
   // Since we started with round 0 & 1 completed, it should run round 2:
   // patch round 2 -> output "draft-3"

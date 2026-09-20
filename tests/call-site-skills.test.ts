@@ -65,7 +65,7 @@ const stub = (async (a: AgentDef, systemPrompt: string) => {
 const noop = { onStart() {}, onToken() {}, onDone() {} }
 
 test('two nodes naming the same agent with different markers produce two different system prompts', async () => {
-  const results = await runChainGraph(chain, agents, skills, 'SEED', '/ws', noop, stub)
+  const results = await runChainGraph(chain, { agents, skills, path: '/ws' }, noop, { seedPrompt: 'SEED', run: stub })
   const skep = results.find(r => r.nodeId === 'skep')!
   const opt = results.find(r => r.nodeId === 'opt')!
   assert.notStrictEqual(skep.systemPrompt, opt.systemPrompt)

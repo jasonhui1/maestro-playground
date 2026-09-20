@@ -15,7 +15,7 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 const hops: AgentOutput[] = []
 vi.mock('@/lib/executor', () => ({
   runChainGraph: async (
-    _chain: unknown, _agents: unknown, _skills: unknown, _seed: unknown, _wp: unknown,
+    _chain: unknown, _defs: unknown,
     callbacks: { onStart: (n: string, a: string) => void; onDone: (n: string, o: AgentOutput) => void },
   ) => {
     for (const output of hops) {

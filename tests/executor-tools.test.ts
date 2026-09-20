@@ -64,7 +64,7 @@ async function main() {
     const agents = [agentDef({ tools: ['retrieve'] })]
     const { runFn, seen } = spyRun('FINAL TEXT', [record])
     const results = await runChainGraph(
-      chain, agents, [], 'SEED', '/ws', noop, runFn, [], [], [retrieveTool],
+      chain, { agents, tools: [retrieveTool], path: '/ws' }, noop, { seedPrompt: 'SEED', run: runFn },
     )
 
     assert.strictEqual(seen.length, 1)
@@ -85,7 +85,8 @@ async function main() {
   {
     const agents = [agentDef()]
     const { runFn, seen } = spyRun('PLAIN')
-    await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, runFn, [], [], [retrieveTool])
+    await runChainGraph(chain, { agents, tools: [retrieveTool], path: '/ws' }, noop,
+      { seedPrompt: 'SEED', run: runFn })
     assert.strictEqual(seen[0].boundTools.length, 0, 'an available tool is not bound unless declared')
   }
 
@@ -94,7 +95,8 @@ async function main() {
   {
     const agents = [agentDef({ tools: ['nonexistent'] })]
     const { runFn, seen } = spyRun('PLAIN')
-    await runChainGraph(chain, agents, [], 'SEED', '/ws', noop, runFn, [], [], [retrieveTool])
+    await runChainGraph(chain, { agents, tools: [retrieveTool], path: '/ws' }, noop,
+      { seedPrompt: 'SEED', run: runFn })
     assert.strictEqual(seen[0].boundTools.length, 0)
   }
 
@@ -112,7 +114,8 @@ async function main() {
     const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
-      chain, agents, [], 'SEED', '/ws', noop, runFn, [replayed], [], [retrieveTool],
+      chain, { agents, tools: [retrieveTool], path: '/ws' }, noop,
+      { seedPrompt: 'SEED', run: runFn, replay: [replayed] },
     )
 
     assert.strictEqual(called, 0, 'a replayed node re-executes nothing — tools included')
@@ -138,7 +141,8 @@ async function main() {
     const agents = [agentDef({ tools: ['retrieve'] })]
     const { runFn, seen } = spyRun('INNER TEXT', [record])
 
-    await runChainGraph(parent, agents, [], 'SEED', '/ws', noop, runFn, [], [inner], [retrieveTool])
+    await runChainGraph(parent, { agents, chains: [inner], tools: [retrieveTool], path: '/ws' }, noop,
+      { seedPrompt: 'SEED', run: runFn })
 
     assert.strictEqual(seen.length, 1, 'the inner agent node ran')
     assert.strictEqual(seen[0].boundTools.length, 1, 'tools were threaded through the subchain recursion')
@@ -162,13 +166,13 @@ async function main() {
 
     let tokenTurn: number | undefined
     await runChainGraph(
-      chain, agents, [], 'SEED', '/ws',
+      chain, { agents, tools: [retrieveTool], path: '/ws' },
       {
         onStart() {}, onDone() {},
         onToken(_id, _t, _ty, turn) { tokenTurn = turn },
         onToolEvent(nodeId, e) { stamped.push({ nodeId, type: e.type, turn: e.turn }) },
       },
-      runFn, [], [], [retrieveTool],
+      { seedPrompt: 'SEED', run: runFn },
     )
 
     assert.deepStrictEqual(stamped, [
@@ -183,9 +187,9 @@ async function main() {
     const agents = [agentDef()]
     const { runFn } = spyRun('PLAIN')
     await runChainGraph(
-      chain, agents, [], 'SEED', '/ws',
+      chain, { agents, tools: [retrieveTool], path: '/ws' },
       { ...noop, onToolEvent() { assert.fail('a tool-less agent narrated a tool event') } },
-      runFn, [], [], [retrieveTool],
+      { seedPrompt: 'SEED', run: runFn },
     )
   }
 }

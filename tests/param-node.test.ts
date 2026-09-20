@@ -78,7 +78,8 @@ test('runChainGraph threads the chosen parameter value into the agent that reads
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput
   }) as never
   const noop = { onStart() {}, onToken() {}, onDone() {} }
-  await runChainGraph(chain, agents, [], 'MY DOC', '/ws', noop, stub, [], [], [], 0, 'a compiler')
+  await runChainGraph(chain, { agents, path: '/ws' }, noop,
+    { seedPrompt: 'MY DOC', run: stub, paramValue: 'a compiler' })
   assert.strictEqual(seenPrompt, 'Rewrite for a compiler: MY DOC')
 })
 

@@ -154,8 +154,8 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   const canonFile = chain.nodes.find(n => n.id === 'canon')!
   assert.ok(canonFile.kind === 'context' && canonFile.file)
   const overrides = { [canonFile.file]: CANON }
-  const results = await runChainGraph(chain, agents, skills, seed,
-    '/nonexistent', callbacks, stub as never, [], chains, tools, 0, dial, overrides)
+  const results = await runChainGraph(chain, { agents, skills, chains, tools, path: '/nonexistent' },
+    callbacks, { seedPrompt: seed, run: stub as never, paramValue: dial, context: overrides })
 
   // An empty brief must not leave a proposer with nothing to read.
   for (const id of [...PROPOSERS, 'creative-director']) {
@@ -181,8 +181,8 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   }
 
   const { output: answer } = answerHold(holds, holds[0], DIRECTION)
-  const resumed = await runChainGraph(chain, agents, skills, seed,
-    '/nonexistent', noop, stub as never, [...results, answer], chains, tools, 0, dial, overrides)
+  const resumed = await runChainGraph(chain, { agents, skills, chains, tools, path: '/nonexistent' },
+    noop, { seedPrompt: seed, run: stub as never, replay: [...results, answer], paramValue: dial, context: overrides })
 
   const greenlight = resumed.find(r => r.nodeId === 'greenlight')!
   assert.ok(greenlight.systemPrompt.includes(DIRECTION), 'greenlight reads the whole Direction')

@@ -9,7 +9,7 @@ import { topoOrder } from './chainGraph'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
-import { kindOf, agentSlugOf, resolveNodeSkills } from './nodeKinds'
+import { kindOf, agentSlugOf, resolveNodeSkills, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
 export interface RunCallbacks {
@@ -29,21 +29,40 @@ function controlOutput(nodeId: string, label: string, output: string, status: Ag
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }
 }
 
+/** The definitions a run reads, and the workspace root their file references resolve against. */
+export interface ExecutorWorkspace {
+  agents?: AgentDef[]
+  skills?: SkillDef[]
+  chains?: ChainDef[]
+  tools?: ToolDef[]
+  /** Workspace root; context files and tool binding resolve against it. */
+  path?: string
+}
+
+/** What one run supplies over those definitions. */
+export interface RunRequest {
+  seedPrompt: string
+  /** The chain parameter's value for this run; '' when the chain declares none. */
+  paramValue?: string
+  /** Context files supplied inline, overriding the ones on disk. */
+  context?: Record<string, string>
+  /** Outputs handed to the graph as already done: a resume, a fork, or an answered hold. */
+  replay?: AgentOutput[]
+  /** The agent runner; ADR-0002 fixes its shape. */
+  run?: typeof runAgent
+  /** Subchain recursion depth; callers outside the executor leave it at 0. */
+  depth?: number
+}
+
 export async function runChainGraph(
   chain: ChainDef,
-  agents: AgentDef[],
-  skills: SkillDef[],
-  seedPrompt: string,
-  workspacePath: string,
+  workspace: ExecutorWorkspace,
   callbacks: RunCallbacks,
-  runFn: typeof runAgent = runAgent,
-  startOutputs: AgentOutput[] = [],
-  chains: ChainDef[] = [],
-  tools: ToolDef[] = [],
-  depth = 0,
-  paramValue = '',
-  contextOverrides: Record<string, string> = {},
+  request: RunRequest,
 ): Promise<AgentOutput[]> {
+  const { agents = [], skills = [], chains = [], tools = [], path: workspacePath = '' } = workspace
+  const { seedPrompt, paramValue = '', context: contextOverrides = {}, replay: startOutputs = [],
+    run: runFn = runAgent, depth = 0 } = request
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
@@ -71,13 +90,13 @@ export async function runChainGraph(
   const liveEdgeForSlot = (nodeId: string, slot: string): number | undefined =>
     (incomingByNode.get(nodeId) || []).find(i => chain.edges[i].toSocket === slot && live.has(i))
 
-  const workspace = { chain, agents, chains }
+  const lookup: WorkspaceLookup = { chain, agents, chains }
   // A node is skipped unless every non-optional input has a live edge; an
   // optional input (subchain only, today) counts only if it is actually wired —
   // an unwired optional input never blocks the node.
   const usedSlots = (node: ChainNode): string[] => {
     const wired = new Set((incomingByNode.get(node.id) ?? []).map(i => chain.edges[i].toSocket))
-    return kindOf(node.kind).inputs(node, workspace)
+    return kindOf(node.kind).inputs(node, lookup)
       .filter(s => !s.optional || wired.has(s.name))
       .map(s => s.name)
   }
@@ -296,12 +315,12 @@ export async function runChainGraph(
         // them can report until that record exists (#40).
         const deferredWarnings: SectionWarning[] = []
         const innerResults = await runChainGraph(
-          ref, agents, skills, seedPrompt, workspacePath,
+          ref, workspace,
           {
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
           },
-          runFn, innerStart, chains, tools, depth + 1, paramValue, contextOverrides,
+          { ...request, replay: innerStart, depth: depth + 1 },
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()

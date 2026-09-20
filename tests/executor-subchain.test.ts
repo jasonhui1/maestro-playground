@@ -39,7 +39,8 @@ const parent: ChainDef = {
 const agents = [agent('w', 'X={x}'), agent('v', 'Y={y}')]
 
 async function main() {
-  const results = await runChainGraph(parent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [inner])
+  const results = await runChainGraph(parent, { agents, chains: [inner], path: '/tmp' }, noop,
+    { seedPrompt: 'PARENT', run: fakeRun })
   // each declared output landed in per-socket storage; injection filled the inner slots
   const rw = results.find(r => r.nodeId === 'sub::rw')
   const rv = results.find(r => r.nodeId === 'sub::rv')
@@ -48,7 +49,8 @@ async function main() {
   assert.ok(!rw!.output.includes('not wired'), 'inner slot x was injected, not left unwired')
 
   // depth guard
-  await assert.rejects(() => runChainGraph(parent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [inner], [], 99), /too deep/i)
+  await assert.rejects(() => runChainGraph(parent, { agents, chains: [inner], path: '/tmp' }, noop,
+    { seedPrompt: 'PARENT', run: fakeRun, depth: 99 }), /too deep/i)
 
   // subchain declares two inputs (topic, tone); only topic is wired by the host — the
   // subchain still runs (unwired optional inputs never block).
@@ -65,7 +67,8 @@ async function main() {
       nodes: [{ id: 'seed', kind: 'seed' }, { id: 'sub', kind: 'subchain', subchain: 'partial' }],
       edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: 'sub', toSocket: 'topic' }],
     }
-    const res = await runChainGraph(partialParent, agents, [], 'PARENT', '/tmp', noop, fakeRun, [], [partialInner])
+    const res = await runChainGraph(partialParent, { agents, chains: [partialInner], path: '/tmp' }, noop,
+      { seedPrompt: 'PARENT', run: fakeRun })
     const status = res.find(r => r.nodeId === 'sub')
     assert.ok(status && status.status !== 'skipped', 'subchain with only one of two declared inputs wired still runs')
   }
@@ -77,7 +80,8 @@ async function main() {
       nodes: [{ id: 'n', kind: 'agent', agent: 'needsInput' }],
       edges: [],
     }
-    const res = await runChainGraph(chain, agents2, [], 'SEED', '/tmp', noop, fakeRun)
+    const res = await runChainGraph(chain, { agents: agents2, path: '/tmp' }, noop,
+      { seedPrompt: 'SEED', run: fakeRun })
     assert.strictEqual(res.find(r => r.nodeId === 'n')!.status, 'skipped', 'agent node with an unwired slot still skips')
   }
 
