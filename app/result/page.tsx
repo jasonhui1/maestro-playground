@@ -65,7 +65,7 @@ export default function ResultPage() {
     }
   }
 
-  const collapsed = view.frame !== null && !formOpen
+  const collapsed = view.started && !formOpen
 
   // The rail already names the chain and the seed, so under that treatment the page
   // spends no title, no restate bar, and no top padding above the output.
@@ -95,7 +95,7 @@ export default function ResultPage() {
           running={view.running}
           loadError={loadError}
           onRun={handleRun}
-          onCancel={view.frame ? () => setFormOpen(false) : undefined}
+          onCancel={view.started ? () => setFormOpen(false) : undefined}
         />
       )}
 

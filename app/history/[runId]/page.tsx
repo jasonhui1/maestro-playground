@@ -80,12 +80,16 @@ function RunDetail({ run }: { run: RunMeta }) {
   const [isForking, setIsForking] = useState(false)
   const [seedOpen, setSeedOpen] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'result' | 'trace'>('trace')
+  // The reader's own pick, once they make one. Null means "whatever the chain says",
+  // so a classified run is already in its result view on the first render that shows
+  // anything — an effect would flip it a frame later, flashing the canvas (#72).
+  const [picked, setPicked] = useState<'result' | 'trace' | null>(null)
 
   // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
   // chain's *current* declaration, not what it looked like when the run happened (#72).
   const resultChain = useMemo(() => findChainForRun(chains, run.chainName), [chains, run.chainName])
-  const view = useResultView({ kind: 'meta', run, chain: resultChain })
+  const view = useResultView({ run, chain: resultChain })
+  const viewMode = picked ?? (view.renderable ? 'result' : 'trace')
   const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={view.fit} onChange={view.setFit} />
 
   useEffect(() => {
@@ -98,10 +102,6 @@ function RunDetail({ run }: { run: RunMeta }) {
       .catch(err => console.error('Failed to fetch agents for graph:', err))
       .finally(() => setChainsLoaded(true))
   }, [])
-
-  // Opens on the result view the moment the chain says there is one to draw — the same
-  // value the render below reads, so the two cannot disagree (#72, #106).
-  useEffect(() => { if (view.renderable) setViewMode('result') }, [view.renderable])
 
   // A read-only stand-in for the chain the run was executed from, so node kinds can
   // resolve their slots. Empty when the run predates graph capture; buildData is only
@@ -167,7 +167,7 @@ function RunDetail({ run }: { run: RunMeta }) {
             {(['result', 'trace'] as const).map(m => (
               <button
                 key={m}
-                onClick={() => setViewMode(m)}
+                onClick={() => setPicked(m)}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
                   viewMode === m ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
                 }`}

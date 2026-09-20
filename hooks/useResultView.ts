@@ -19,17 +19,19 @@ import {
   type ResultViewState,
 } from '@/lib/resultView'
 
-/** The two adapters the one fold has: a run streaming now, or one read from disk (#106). */
-export type ResultSource =
-  | { kind: 'stream' }
-  | { kind: 'meta'; run: RunMeta; chain: ChainDef | undefined }
+/** A run read back from its log, and the chain its name resolves to now — undefined
+ *  while the workspace is still loading (#72). The second of the fold's two adapters. */
+export interface ReopenedRun {
+  run: RunMeta
+  chain: ChainDef | undefined
+}
 
 type Action =
   | { type: 'start'; chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string }
   | { type: 'event'; event: RunEvent }
   | { type: 'settle'; at: number }
 
-function reduce(state: ResultViewState, action: Action): ResultViewState {
+function reduceResultView(state: ResultViewState, action: Action): ResultViewState {
   switch (action.type) {
     case 'start': return startResultView(action)
     case 'event': return applyResultEvent(state, action.event)
@@ -40,16 +42,23 @@ function reduce(state: ResultViewState, action: Action): ResultViewState {
 /** How often a live run's elapsed time is re-read. */
 const TICK_MS = 500
 
+/** What both surfaces render from. */
 export interface ResultViewHandle extends ResultView {
   states: RunStateMap
   order: string[]
-  /** The finished run's id, once the stream named one; null for a run being read from
-   *  its own history page. */
-  runId: string | null
+  /** False until a run exists to show — the form is the whole screen until then. */
+  started: boolean
   running: boolean
+  /** The finished run's id, once the stream named one; null for a run being read on
+   *  its own history page, which has nowhere to link. */
+  runId: string | null
   deck: PanelDeck & { reset: () => void }
   fit: PanelFit
   setFit: (next: PanelFit) => void
+}
+
+/** The live surface also drives the fold; a reopened run is handed one already folded. */
+export interface LiveResultViewHandle extends ResultViewHandle {
   /** Begins a new run: one call, so no half of the previous one survives into it. */
   start: (input: { chain: ChainDef; seed: SeedSource; paramValue: string }) => void
   apply: (event: RunEvent) => void
@@ -58,24 +67,29 @@ export interface ResultViewHandle extends ResultView {
 }
 
 /**
- * The result view both surfaces render. The stream adapter drives it with
- * `start`/`apply`/`settle`; the meta adapter hands it a run and drives nothing.
+ * The result view both surfaces render (#106). Called bare, it is the live page's and
+ * takes the run stream; called with a reopened run, it takes that instead and the
+ * caller drives nothing.
  */
-export function useResultView(source: ResultSource = { kind: 'stream' }): ResultViewHandle {
-  const [streamed, dispatch] = useReducer(reduce, idleResultView)
+export function useResultView(): LiveResultViewHandle
+export function useResultView(past: ReopenedRun): ResultViewHandle
+export function useResultView(past?: ReopenedRun): LiveResultViewHandle {
+  const [streamed, dispatch] = useReducer(reduceResultView, idleResultView)
   const deck = usePanelDeck()
   const [fit, setFit] = usePanelFit()
 
-  // Both branches are computed every render — a hook cannot be called conditionally —
-  // and the disk one wins when there is one.
-  const meta = source.kind === 'meta' ? source.run : undefined
-  const metaChain = source.kind === 'meta' ? source.chain : undefined
-  const fromDisk = useMemo(() => (meta ? resultViewFromMeta(meta, metaChain) : null), [meta, metaChain])
-  const state = fromDisk ?? streamed
+  // A hook cannot be called conditionally, so both adapters run every render and the
+  // reopened one wins where there is one.
+  const pastRun = past?.run
+  const pastChain = past?.chain
+  const fromLog = useMemo(() => (pastRun ? resultViewFromMeta(pastRun, pastChain) : null), [pastRun, pastChain])
+  const state = fromLog ?? streamed
 
   const running = state.run !== null && state.endedAt === undefined
-  // Only a live run reads the clock: a settled one has an `endedAt` to measure against.
-  const [now, setNow] = useState(0)
+  // Only a live run reads the clock: a settled one measures against its own `endedAt`.
+  // Seeded rather than left at the epoch, so a reader that ever does consult it on a
+  // settled run gets a time rather than 1970.
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => setNow(Date.now()), TICK_MS)
@@ -98,8 +112,9 @@ export function useResultView(source: ResultSource = { kind: 'stream' }): Result
     ...view,
     states: state.states,
     order: state.order,
-    runId: state.runId,
+    started: state.run !== null,
     running,
+    runId: state.runId,
     deck,
     fit,
     setFit,
