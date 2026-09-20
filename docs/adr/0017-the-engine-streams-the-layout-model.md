@@ -71,3 +71,8 @@ its result ten times. This is localhost, and the trade buys one rule instead of
 two.
 
 `GET /api/runs/:id/layout` is unchanged: it is still how a finished run is read.
+
+Superseded in part by #106: the fallback build moved out of
+`app/result/page.tsx` into `lib/resultView.ts`, which holds outputs as a list, so
+it no longer collapses a live sidebar's rounds. The streamed model is still
+preferred; the stream contract is unchanged.
