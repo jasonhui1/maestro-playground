@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { runAgent } from '@/lib/runner'
+import { bindAgentTools } from '@/lib/tools/registry'
 import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
 import { loadRunFor } from '@/lib/loadRun'
 import { requestWorkspace } from '@/lib/requestWorkspace'
@@ -22,7 +23,8 @@ export async function POST(
   const { runs } = ws
   const meta = loadRunFor(runs, runId, { mustNotBeRunning: true })
   if ('error' in meta) return toResponse(meta)
-  const speaker = chatSpeaker(runs, meta, nodeId, ws.definitions().agents)
+  const { agents, tools } = ws.definitions()
+  const speaker = chatSpeaker(runs, meta, nodeId, agents)
   if ('error' in speaker) return toResponse(speaker)
   const { target, agent } = speaker
 
@@ -31,6 +33,8 @@ export async function POST(
       const result = await runAgent(agent, target.record.systemPrompt, message, {
         history: chatTranscript(target.record, message),
         onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
+        // A node keeps the tools it ran with when a human follows up (#112).
+        boundTools: bindAgentTools(agent, tools, ws.root),
       })
       if (result.status !== 'success') {
         send({ type: 'error', error: result.error ?? 'chat failed' })

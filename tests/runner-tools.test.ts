@@ -1,6 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { runAgent, splitThought, isTransient, withRetry, DEFAULT_MAX_TOOL_TURNS } from '../lib/runner'
+import { runAgent, DEFAULT_MAX_TOOL_TURNS } from '../lib/runner'
+import { splitThought, isTransient, withRetry } from '../lib/modelStream'
 import { ChatCall, ChatCallRequest, ChatCallResponse, AssistantWireMessage } from '../lib/tools/loop'
 import { BoundTool } from '../lib/tools/registry'
 import { AgentDef, ToolDef } from '../lib/types'
@@ -44,11 +45,12 @@ function response(message: AssistantWireMessage, usage?: [number, number]): Chat
 }
 
 // Scripted fake standing in for the model; records every request it received.
+// The message list is snapshotted because the loop keeps appending to the same array.
 function fakeChat(script: Array<(req: ChatCallRequest) => ChatCallResponse>) {
   const requests: ChatCallRequest[] = []
   let i = 0
   const chatCall: ChatCall = async (req) => {
-    requests.push(req)
+    requests.push({ ...req, messages: [...req.messages] })
     const step = script[i++]
     if (!step) throw new Error(`fake chat called ${i} times; script has ${script.length}`)
     return step(req)
@@ -206,10 +208,77 @@ async function main() {
     assert.ok(requests[1].tools.length > 0, 'tools stay declared on the forced final (#18)')
     assert.strictEqual(DEFAULT_MAX_TOOL_TURNS, 8)
   }
+
+  // no tools — the same loop with an empty tool set, reached through the same seam (#112)
+  {
+    const { chatCall, requests } = fakeChat([
+      () => response(assistant({ content: '<thought>easy</thought>Mirna owns it.' }), [12, 5]),
+    ])
+    const out = await runAgent(agentDef(), 'be brief', 'who owns it?', { chatCall })
+
+    assert.strictEqual(requests.length, 1, 'no tools -> the loop settles on the first turn')
+    assert.deepStrictEqual(requests[0].tools, [], 'an empty tool set is declared as empty')
+    assert.strictEqual(requests[0].tool_choice, undefined)
+    assert.strictEqual(out.status, 'success')
+    assert.strictEqual(out.output, 'Mirna owns it.')
+    assert.strictEqual(out.thought, 'easy')
+    assert.strictEqual(out.tokensIn, 12)
+    assert.strictEqual(out.tokensOut, 5)
+  }
+
+  // no tools — a native `reasoning` field still lands in thought (#35 round-trip)
+  {
+    const { chatCall } = fakeChat([
+      () => response(assistant({ content: 'Answer.', reasoning: 'weighed it up' })),
+    ])
+    const out = await runAgent(agentDef(), 'be brief', 'go', { chatCall })
+    assert.strictEqual(out.output, 'Answer.')
+    assert.strictEqual(out.thought, 'weighed it up')
+  }
+
+  // no tools — history replaces the system/user pair verbatim
+  {
+    const { chatCall, requests } = fakeChat([() => response(assistant({ content: 'ok' }))])
+    await runAgent(agentDef(), 'be brief', 'third', {
+      chatCall,
+      history: [
+        { role: 'system', content: 'be brief' },
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'second', thought: 'dropped' },
+        { role: 'user', content: 'third' },
+      ],
+    })
+    assert.deepStrictEqual(requests[0].messages, [
+      { role: 'system', content: 'be brief' },
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'second' },
+      { role: 'user', content: 'third' },
+    ], 'only role and content reach the wire')
+  }
+
+  // one cost rule — tokens from settled turns are reported on error, tools or not (#112)
+  {
+    const spentThenFailed = (): Array<(req: ChatCallRequest) => ChatCallResponse> => [
+      () => ({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } }),
+    ]
+    const withTools = await runAgent(
+      agentDef(), 'be brief', 'go',
+      { boundTools: [bound(() => 'r')], chatCall: fakeChat(spentThenFailed()).chatCall },
+    )
+    const without = await runAgent(
+      agentDef(), 'be brief', 'go',
+      { chatCall: fakeChat(spentThenFailed()).chatCall },
+    )
+    const accounting = (o: typeof withTools) =>
+      ({ status: o.status, output: o.output, tokensIn: o.tokensIn, tokensOut: o.tokensOut, costUsd: o.costUsd })
+
+    assert.strictEqual(withTools.status, 'error')
+    assert.strictEqual(withTools.tokensIn, 100, 'tokens spent before the failure are reported')
+    assert.deepStrictEqual(
+      accounting(without), accounting(withTools),
+      'cost accounting on error is identical with and without tools',
+    )
+  }
 }
-// Note: "tool-less agents are byte-identical to today" is not asserted here on
-// purpose — that path makes a real streamed HTTP call, so a unit test of it would
-// hit the network. It is covered by the guard being a plain length check, by
-// executor-tools.test.ts (stub runFn, no tools bound), and by 1.9's manual run.
 
 test('runner-tools', main)

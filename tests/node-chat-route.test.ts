@@ -4,43 +4,55 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
+import type { ChatMessage, RunMeta } from '../lib/types'
+import type { ChatCall } from '../lib/tools/loop'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
-// The model is the only stand-in: the executor, routes and logger are real.
+// The model is the only stand-in (#112): runAgent, the tool loop, cost accounting,
+// the executor, the routes and the logger are all real. A node's own turn arrives
+// as the executor's two-message opener; a chat turn as the node's transcript.
 const chats: ChatMessage[][] = []
 const chatModels: string[] = []
+const chatTools: string[][] = []
 let duringAfter: (() => void) | undefined
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (
-    agent: { slug: string; name: string; model: string },
-    systemPrompt: string,
-    userMessage: string,
-    options: { history?: ChatMessage[]; onToken?: (t: string, type?: 'thought' | 'output') => void } = {},
-  ): Promise<AgentOutput> => {
-    const base = {
-      agentName: agent.name, systemPrompt, input: userMessage,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
-    }
-    if (!options.history) {
+vi.mock('@/lib/chatCall', () => ({
+  createChatCall: (agent: { slug: string; model: string }): ChatCall => async (req, hooks) => {
+    const messages = req.messages
+    const last = messages.at(-1)!
+    const reply = (content: string) => ({ choices: [{ message: { role: 'assistant' as const, content } }] })
+    if (messages.length === 2) {
       if (agent.slug === 'after') duringAfter?.()
-      return { ...base, output: `## Candidate 1\nfrom ${agent.slug}`, status: 'success' }
+      return reply(`## Candidate 1\nfrom ${agent.slug}`)
     }
-    chats.push(options.history)
+    if (last.role === 'tool') return reply(`grounded: ${last.content}`)
+    chats.push(messages.map(m => ({ role: m.role, content: m.content }) as ChatMessage))
     chatModels.push(agent.model)
-    if (userMessage === 'fail') return { ...base, output: '', status: 'error', error: 'model down' }
-    const n = options.history.filter(m => m.role === 'user').length - 1
-    options.onToken?.('hmm', 'thought')
-    options.onToken?.(`reply ${n}`, 'output')
-    return { ...base, output: `reply ${n}`, thought: 'hmm', status: 'success' }
+    chatTools.push(req.tools.map(t => t.function.name))
+    if (last.content === 'fail') throw new Error('model down')
+    if (req.tools.length > 0) {
+      return {
+        choices: [{
+          message: {
+            role: 'assistant' as const,
+            content: null,
+            tool_calls: [{ id: 't1', function: { name: 'retrieve', arguments: JSON.stringify({ query: 'Gilded Flagon' }) } }],
+          },
+        }],
+      }
+    }
+    const n = messages.filter(m => m.role === 'user').length - 1
+    hooks?.onToken?.('hmm', 'thought')
+    hooks?.onToken?.(`reply ${n}`, 'output')
+    return reply(`<thought>hmm</thought>reply ${n}`)
   },
 }))
 
 afterEach(() => {
   chats.length = 0
   chatModels.length = 0
+  chatTools.length = 0
   duringAfter = undefined
 })
 
@@ -84,8 +96,8 @@ function newWorkspace(): string {
     fs.writeFileSync(p, body)
   }
   write('chains/held.md', chain)
-  write('agents/decider.md', '---\nname: Decider\n---\ndecide {input}\n')
-  write('agents/after.md', '---\nname: After\n---\nbuild on {direction}\n')
+  write('agents/decider.md', '---\nname: Decider\nmodel: m\n---\ndecide {input}\n')
+  write('agents/after.md', '---\nname: After\nmodel: m\n---\nbuild on {direction}\n')
   return wp
 }
 
@@ -251,7 +263,8 @@ test('a failed reply is reported and recorded nowhere', async () => {
 
   const events = await sse(await chat(runId, 'dec', { message: 'fail' }))
 
-  assert.deepStrictEqual(events.at(-1), { type: 'error', error: 'model down' })
+  assert.strictEqual(events.at(-1)!.type, 'error')
+  assert.match(events.at(-1)!.error as string, /model down/)
   assert.strictEqual((await readMeta(runId)).agentOutputs.find(o => o.nodeId === 'dec')!.conversation, undefined)
   assert.strictEqual(fs.readFileSync(path.join(wp, 'logs', runId, '00-dec.md'), 'utf-8'), before)
 })
@@ -286,4 +299,23 @@ test('the reply comes from the model that wrote the output', async () => {
   const runId = await startRun()
   await sse(await chat(runId, 'dec', { message: 'hi' }))
   assert.deepStrictEqual(chatModels, ['m'])
+})
+
+test('a chat turn gets the tools the agent file declares, and they really run (#112)', async () => {
+  const wp = newWorkspace()
+  const write = (rel: string, body: string) => {
+    fs.mkdirSync(path.dirname(path.join(wp, rel)), { recursive: true })
+    fs.writeFileSync(path.join(wp, rel), body)
+  }
+  write('tools/retrieve.md', '---\nname: retrieve\nexecutor: retrieve\nparams:\n  query:\n    type: string\n    required: true\nconfig:\n  folders:\n    - context\n---\nSearch the lore.\n')
+  write('agents/decider.md', '---\nname: Decider\nmodel: m\ntools:\n  - retrieve\n---\ndecide {input}\n')
+  write('context/taverns.md', '# Taverns\n\n## The Gilded Flagon\n\nOwned by Mirna Copperhand.\n')
+  const runId = await startRun()
+
+  const events = await sse(await chat(runId, 'dec', { message: 'who owns the Gilded Flagon?' }))
+
+  assert.deepStrictEqual(chatTools.at(-1), ['retrieve'], 'the chat turn declares the tools the agent file names')
+  const done = events.at(-1)!
+  assert.strictEqual(done.type, 'chat_done')
+  assert.match((done.message as ChatMessage).content, /Mirna Copperhand/, 'the tool ran against the workspace')
 })

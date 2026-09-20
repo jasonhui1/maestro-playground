@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
+import { bindAgentTools } from '@/lib/tools/registry'
 import { makeContextReader } from '@/lib/fs/contextReader'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const ws = requestWorkspace()
     const { root, runs } = ws
-    const { agents, skills } = ws.definitions()
+    const { agents, skills, tools } = ws.definitions()
     const agentDef = agents.find(a => a.name === agentName || a.slug === agentName)
     
     if (!agentDef) {
@@ -84,6 +85,9 @@ export async function POST(req: NextRequest) {
           {
             onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
             history: fullHistory,
+            // A human talking to an agent gets the tools its file declares, under
+            // the same cap a run uses — the agent file says what it may use (#112).
+            boundTools: bindAgentTools(agentDef, tools, root),
           }
         )
 
