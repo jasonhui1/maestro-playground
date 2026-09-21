@@ -36,3 +36,27 @@ export function calcCost(model: string, tokensIn: number, tokensOut: number): nu
   return p.input * tokensIn + p.output * tokensOut
 }
 
+// #128
+export const PRICED_MODELS: string[] = Object.keys(PRICING)
+
+// #128
+export function knownModelCatalogue(declaredModels: string[] = [], configuredModel?: string): string[] {
+  const set = new Set<string>(PRICED_MODELS)
+  if (configuredModel?.trim()) set.add(configuredModel.trim())
+  for (const m of declaredModels) {
+    if (m?.trim()) set.add(m.trim())
+  }
+  return Array.from(set)
+}
+
+// #128
+export function resolveContinuationModelOverride(
+  sourceOverride: string | undefined,
+  requestOverride: string | null | undefined,
+): string | undefined {
+  if (requestOverride === undefined) return sourceOverride
+  if (requestOverride === null) return undefined
+  const clean = requestOverride.trim()
+  return clean ? clean : sourceOverride
+}
+

@@ -10,6 +10,8 @@ import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import fs from 'fs'
 import { WorkspaceError } from './errors'
+import { knownModelCatalogue } from '../pricing'
+import { resolveProvider } from '../provider'
 
 export * from './errors'
 export type { VariantSource }
@@ -125,8 +127,9 @@ export function loadWorkspace(root: string) {
     rawContent: f.raw,
   }))
 
+  const agents = loadAllAgents(root)
   return {
-    agents: loadAllAgents(root),
+    agents,
     skills: loadAllSkills(root),
     chains: loadAllChains(root),
     templates: loadAllTemplates(root),
@@ -134,5 +137,8 @@ export function loadWorkspace(root: string) {
     context,
     defaults: loadAgentDefaults(root),
     defaultsRaw: readAgentDefaultsRaw(root),
+    // #128: catalogue of known model IDs and whether env override is active
+    models: knownModelCatalogue(agents.map(a => a.model), resolveProvider().model),
+    envModelOverride: process.env.AI_MODEL_OVERRIDE === 'true',
   }
 }

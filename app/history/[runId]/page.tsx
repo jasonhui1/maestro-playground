@@ -18,6 +18,7 @@ import { PANEL_FITS } from '@/lib/panelFit'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
+import { ResumeForm } from '@/components/trace/ResumeForm'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -132,10 +133,10 @@ function RunDetail({ run }: { run: RunMeta }) {
     }
   }, [chainDef, agents, view.states])
 
-  async function handleFork(nodeId: string) {
+  async function handleFork(nodeId: string, opts?: { modelOverride?: string | null }) {
     setIsForking(true)
     try {
-      const newRunId = await forkFromNode(run.runId, nodeId)
+      const newRunId = await forkFromNode(run.runId, nodeId, opts)
       if (newRunId) router.push(`/history/${newRunId}`)
     } catch (err) {
       console.error('Fork failed:', err)
@@ -195,6 +196,27 @@ function RunDetail({ run }: { run: RunMeta }) {
           &ldquo;{run.seedPrompt}&rdquo;
         </div>
       )}
+
+      {run.status === 'waiting' && (() => {
+        const openHold = run.holds?.find(h => !h.resolvedAt)
+        if (!openHold) return null
+        return (
+          <div className="p-4 border-b border-amber-200 bg-amber-50/30 shrink-0">
+            <ResumeForm
+              runId={run.runId}
+              hold={openHold}
+              initialModelOverride={run.modelOverride}
+              onResumed={(resumedId) => {
+                if (resumedId && resumedId !== run.runId) {
+                  router.push(`/history/${resumedId}`)
+                } else {
+                  window.location.reload()
+                }
+              }}
+            />
+          </div>
+        )
+      })()}
 
       <div className="flex-1 min-h-0">
         {!chainsLoaded ? (

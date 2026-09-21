@@ -53,6 +53,8 @@ export interface RunRequest {
   run?: typeof runAgent
   /** Subchain recursion depth; callers outside the executor leave it at 0. */
   depth?: number
+  /** Model override for this run (#128). */
+  modelOverride?: string
 }
 
 export async function runChainGraph(
@@ -63,7 +65,7 @@ export async function runChainGraph(
 ): Promise<AgentOutput[]> {
   const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
   const { seedPrompt, paramValue = '', context: contextOverrides = {}, replay: startOutputs = [],
-    run: runFn = runAgent, depth = 0 } = request
+    run: runFn = runAgent, depth = 0, modelOverride } = request
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
@@ -146,17 +148,29 @@ export async function runChainGraph(
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
-    const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext, paramValue)
+    // #128: Run override applies immediately before execution without mutating definitions.
+    const effectiveAgent: AgentDef = modelOverride ? {
+      ...agent,
+      model: modelOverride,
+      resolution: {
+        forbidden: agent.resolution?.forbidden ?? [],
+        sources: {
+          ...(agent.resolution?.sources ?? {}),
+          model: 'run override',
+        },
+      } as AgentDef['resolution'],
+    } : agent
+    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
     // two nodes naming the same agent may still produce two different system prompts.
-    const systemPrompt = injectSkills({ ...agent, skills: resolveNodeSkills(node, agent.skills) }, skills, resolved.prompt)
+    const systemPrompt = injectSkills({ ...effectiveAgent, skills: resolveNodeSkills(node, effectiveAgent.skills) }, skills, resolved.prompt)
     // Binding is all the scheduler knows about tools: it hands the runner a list
     // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
     // took one API call or nine is entirely below this line.
-    const boundTools = bindAgentTools(agent, tools, workspacePath)
+    const boundTools = bindAgentTools(effectiveAgent, tools, workspacePath)
     const output = await runFn(
-      agent, systemPrompt, 'Follow your instructions.',
+      effectiveAgent, systemPrompt, 'Follow your instructions.',
       {
         onToken: (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
         boundTools,

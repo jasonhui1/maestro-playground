@@ -38,10 +38,11 @@ export interface AnswerRequest {
   direction: string
   chosen?: string
   custom?: string
+  modelOverride?: string | null
 }
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
-export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | Refusal {
+export function readAnswerRequest({ holdId, direction, chosen, custom, modelOverride }: Record<string, unknown>): AnswerRequest | Refusal {
   const dir = typeof direction === 'string' ? direction : ''
   const hasPick = (chosen != null && typeof chosen === 'string' && chosen.trim() !== '') ||
                   (custom != null && typeof custom === 'string' && custom.trim() !== '')
@@ -49,7 +50,18 @@ export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<
   if (holdId != null && typeof holdId !== 'string') return badRequest('holdId must be a node id')
   if (chosen != null && typeof chosen !== 'string') return badRequest('chosen must be a candidate heading')
   if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
-  return { direction: dir, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
+  if (modelOverride !== undefined && modelOverride !== null) {
+    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
+      return badRequest('modelOverride must be a non-empty string or null')
+    }
+  }
+  return {
+    direction: dir,
+    holdId: holdId ?? undefined,
+    chosen: chosen ?? undefined,
+    custom: custom ?? undefined,
+    ...(modelOverride !== undefined ? { modelOverride: modelOverride === null ? null : modelOverride.trim() } : {}),
+  }
 }
 
 /** The hold a resume answers: the named one, else the open one, else a finished run's only hold. */

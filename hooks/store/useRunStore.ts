@@ -25,16 +25,18 @@ export interface FileRunState {
   error: string | null
   seedPrompt: string
   parallel: number
+  modelOverride?: string
 }
 
 const defaults = (): FileRunState => ({
-  runState: {}, runOrder: {}, instanceCount: 0, currentInstance: 0, running: false, error: null, seedPrompt: '', parallel: 1,
+  runState: {}, runOrder: {}, instanceCount: 0, currentInstance: 0, running: false, error: null, seedPrompt: '', parallel: 1, modelOverride: '',
 })
 
 interface RunStore {
   byFile: Record<string, FileRunState>
   setSeed: (key: string, seed: string) => void
   setParallel: (key: string, n: number) => void
+  setModelOverride: (key: string, model: string) => void
   setCurrentInstance: (key: string, i: number) => void
   reset: (key: string) => void
   run: (key: string, opts?: { bodyOverride?: (seed: string) => Record<string, unknown>; parallel?: number }) => Promise<void>
@@ -48,6 +50,7 @@ export const useRunStore = create<RunStore>((set, get) => {
     byFile: {},
     setSeed: (key, seed) => patch(key, { seedPrompt: seed }),
     setParallel: (key, n) => patch(key, { parallel: Math.max(1, Math.min(10, n || 1)) }),
+    setModelOverride: (key, model) => patch(key, { modelOverride: model }),
     setCurrentInstance: (key, i) => patch(key, { currentInstance: i }),
     reset: (key) => patch(key, { runState: {}, runOrder: {}, instanceCount: 0, currentInstance: 0, error: null }),
 
@@ -63,10 +66,13 @@ export const useRunStore = create<RunStore>((set, get) => {
 
       const runOne = async (i: number) => {
         try {
+          const baseBody = buildBody(seed)
+          const override = cur.modelOverride?.trim()
+          const body = override ? { ...baseBody, modelOverride: override } : baseBody
           const res = await fetch('/api/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(buildBody(seed)),
+            body: JSON.stringify(body),
           })
           if (!res.ok) {
             patch(key, { error: await runErrorMessage(res) })

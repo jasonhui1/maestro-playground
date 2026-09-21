@@ -6,6 +6,7 @@ import { CONTROL } from '@/lib/resultControls'
 import { ChainRow, declaresSeed, groupChains, pinnedFiles, runBlockedReason, SeedMode } from '@/lib/launchForm'
 import { LaunchMemory } from '@/hooks/useLaunchMemory'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
+import { ModelPicker } from '@/components/ModelPicker'
 
 export interface ContextFile { slug: string; name: string; rawContent?: string }
 
@@ -59,6 +60,7 @@ function ChainList({ rows, selected, onSelect }: {
 
 export function LaunchForm({
   chains, contextFiles, launch, onChange, seedText, running, loadError, onRun, onCancel,
+  modelOverride, onModelOverrideChange,
 }: {
   chains: ChainDef[]
   contextFiles: ContextFile[]
@@ -71,6 +73,8 @@ export function LaunchForm({
   loadError?: string | null
   onRun: () => void
   onCancel?: () => void
+  modelOverride?: string
+  onModelOverrideChange?: (model: string) => void
 }) {
   const [query, setQuery] = useState('')
   const groups = useMemo(() => groupChains(chains, query), [chains, query])
@@ -140,20 +144,32 @@ export function LaunchForm({
           </select>
         )}
 
-        {chain?.parameter && (
+        <div className="flex flex-wrap items-center gap-6">
+          {chain?.parameter && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor={paramId} className={`${TYPE.label} text-zinc-600`}>{chain.parameter.name}</label>
+              <select
+                id={paramId}
+                value={paramValue}
+                onChange={e => onChange({ paramValue: e.target.value })}
+                className={`${CONTROL.field} self-start`}
+              >
+                <option value="">choose {chain.parameter.name}…</option>
+                {chain.parameter.options.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1">
-            <label htmlFor={paramId} className={`${TYPE.label} text-zinc-600`}>{chain.parameter.name}</label>
-            <select
-              id={paramId}
-              value={paramValue}
-              onChange={e => onChange({ paramValue: e.target.value })}
+            <label htmlFor="launch-model-override" className={`${TYPE.label} text-zinc-600`}>model</label>
+            <ModelPicker
+              id="launch-model-override"
+              value={modelOverride ?? ''}
+              onChange={m => onModelOverrideChange?.(m)}
               className={`${CONTROL.field} self-start`}
-            >
-              <option value="">choose {chain.parameter.name}…</option>
-              {chain.parameter.options.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            />
           </div>
-        )}
+        </div>
 
         {loadError && (
           <p role="alert" className="border-l-2 border-red-200 pl-2 text-sm text-red-600">{loadError}</p>

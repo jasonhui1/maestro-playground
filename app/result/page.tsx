@@ -29,6 +29,9 @@ export default function ResultPage() {
 
   useEffect(() => { useWorkspaceStore.getState().load() }, [])
 
+  // #128: Run override defaults to 'As declared' on fresh launch; not saved to localStorage.
+  const [modelOverride, setModelOverride] = useState('')
+
   const chain = chains.find(c => c.slug === chainSlug)
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
   const supplied = !chain || declaresSeed(chain)
@@ -40,13 +43,19 @@ export default function ResultPage() {
 
   async function handleRun() {
     if (!chain) return
-    view.start({ chain, seed, paramValue })
+    const override = modelOverride.trim() || undefined
+    view.start({ chain, seed, paramValue, modelOverride: override })
     setFormOpen(false)
     try {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chainName: chain.name, seedPrompt: seedText, paramValue }),
+        body: JSON.stringify({
+          chainName: chain.name,
+          seedPrompt: seedText,
+          paramValue,
+          ...(override ? { modelOverride: override } : {}),
+        }),
       })
       if (!res.ok) { view.apply({ type: 'error', error: await runErrorMessage(res) }); return }
       const reader = res.body?.getReader()
@@ -88,6 +97,8 @@ export default function ResultPage() {
           loadError={loadError}
           onRun={handleRun}
           onCancel={view.started ? () => setFormOpen(false) : undefined}
+          modelOverride={modelOverride}
+          onModelOverrideChange={setModelOverride}
         />
       )}
 

@@ -18,7 +18,11 @@ export function RunTrace({ order, states, selection, fork }: {
   // History drives selection from a canvas as well as the rail, so the two agree (#64).
   // Left out, the rail owns it.
   selection?: { selected: string | null; onSelect: (id: string) => void }
-  fork?: { onFork: (nodeId: string) => void; isForking: boolean }
+  fork?: {
+    onFork: (nodeId: string, opts?: { modelOverride?: string | null }) => void
+    isForking: boolean
+    modelOverride?: string
+  }
 }) {
   const [own, setOwn] = useState<string | null>(null)
   const selected = selection ? selection.selected : own
@@ -66,7 +70,11 @@ export function RunTrace({ order, states, selection, fork }: {
             key={panel}
             nodeId={panel}
             state={states[panel]}
-            fork={fork && { onFork: () => fork.onFork(panel), isForking: fork.isForking }}
+            fork={fork && {
+              onFork: (opts) => fork.onFork(panel, opts),
+              isForking: fork.isForking,
+              modelOverride: fork.modelOverride,
+            }}
           />
         : <div className="p-6 text-sm text-zinc-300 italic">
             {selected

@@ -36,9 +36,11 @@ export function continueRun(
   return 'error' in res ? toResponse(res) : res
 }
 
+import { resolveContinuationModelOverride } from './pricing'
+
 function answer(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta,
-  { holdId, direction, chosen, custom }: AnswerRequest,
+  { holdId, direction, chosen, custom, modelOverride }: AnswerRequest,
   context: Record<string, string>,
 ): Response | Refusal {
   const hold = selectHold(meta, holdId)
@@ -46,17 +48,26 @@ function answer(
   const pick = readPick(hold, chosen, custom)
   if (pick && 'error' in pick) return pick
 
+  // #128: Omission inherits source override; null clears; nonempty string replaces.
+  const effectiveOverride = resolveContinuationModelOverride(meta.modelOverride, modelOverride)
+
   const answered = answerHold(meta.holds ?? [], hold, direction, pick)
   if (answered.mode === 'fork') {
-    return forkRun(ws, workspace, meta, { anchors: [hold.nodeId], outputs: [answered.output], hold: answered.record }, context)
+    return forkRun(ws, workspace, meta, { anchors: [hold.nodeId], outputs: [answered.output], hold: answered.record, modelOverride: effectiveOverride }, context)
   }
   if (meta.status !== 'waiting') return conflict(`Run is ${meta.status}, not waiting`)
 
   // The answer is recorded up front, so a run that fails after it still shows what was said.
   const { holds, output } = answered
+  const metaUpdate: Partial<RunMeta> = {
+    holds,
+    agentOutputs: [...meta.agentOutputs, output],
+    ...(modelOverride === null ? { modelOverride: undefined } : effectiveOverride ? { modelOverride: effectiveOverride } : {}),
+  }
   return inPlace(ws, workspace, meta, {
     logged: meta.agentOutputs, fresh: output, holds,
-    metaUpdate: { holds, agentOutputs: [...meta.agentOutputs, output] },
+    modelOverride: effectiveOverride,
+    metaUpdate,
   }, context)
 }
 
@@ -111,6 +122,8 @@ function inPlace(
     metaUpdate: Partial<RunMeta>
     /** An earlier step whose log is rewritten as the stretch starts. */
     rewriteLog?: { step: number; output: AgentOutput }
+    /** Model override active for this stretch (#128). */
+    modelOverride?: string
   },
   context: Record<string, string>,
 ): Response | Refusal {
@@ -129,6 +142,7 @@ function inPlace(
     seedPrompt: meta.seedPrompt,
     paramValue: meta.parameter?.value ?? '',
     context,
+    modelOverride: stretch.modelOverride ?? meta.modelOverride,
     replay: { logged: stretch.logged, fresh: [stretch.fresh] },
     firstStep: ws.runs.nextStep(meta.runId),
     holds: stretch.holds,

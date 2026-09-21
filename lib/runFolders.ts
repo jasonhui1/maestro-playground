@@ -55,12 +55,22 @@ function runFolders({ create, read, write, writeStep, steps, list }: RunFolderBa
   return {
     create,
     read,
-    update: (runId, patch) => write({ ...read(runId), ...patch }),
+    update: (runId, patch) => {
+      const next = { ...read(runId), ...patch }
+      if ('modelOverride' in patch && patch.modelOverride === undefined) {
+        delete next.modelOverride
+      }
+      write(next)
+    },
     // Read and write with no await between: a second claim in this process sees the first.
     claim(runId, patch) {
       const meta = read(runId)
       if (meta.status === 'running') return false
-      write({ ...meta, ...patch, status: 'running' })
+      const next = { ...meta, ...patch, status: 'running' as const }
+      if ('modelOverride' in patch && patch.modelOverride === undefined) {
+        delete next.modelOverride
+      }
+      write(next)
       return true
     },
     writeStep,

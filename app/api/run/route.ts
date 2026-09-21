@@ -7,11 +7,17 @@ import { requestWorkspace } from '@/lib/requestWorkspace'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { seedPrompt, paramValue, context } = body
+  const { seedPrompt, paramValue, context, modelOverride } = body
   // Refused, not ignored: an old client would otherwise rerun the whole chain (#103).
   if (['branchOutputs', 'branchedFromRunId', 'branchedFromStep'].some(field => body[field] !== undefined)) {
     return Response.json({ error: 'Branch fields are retired; fork through POST /api/runs/:id/fork' }, { status: 400 })
   }
+  if (modelOverride !== undefined && modelOverride !== null) {
+    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
+      return Response.json({ error: 'modelOverride must be a non-empty string or null' }, { status: 400 })
+    }
+  }
+  const cleanOverride = typeof modelOverride === 'string' && modelOverride.trim() ? modelOverride.trim() : undefined
 
   const ws = requestWorkspace()
   const workspace = ws.definitions()
@@ -38,5 +44,6 @@ export async function POST(req: NextRequest) {
     parameter: chain.parameter && typeof paramValue === 'string' && paramValue
       ? { name: chain.parameter.name, value: paramValue } : undefined,
     context, versions, versionNumber: currentVersion,
+    modelOverride: cleanOverride,
   })
 }

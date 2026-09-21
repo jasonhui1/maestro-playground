@@ -7,12 +7,14 @@ import { TemplateDef } from '@/lib/types'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { streamRun, runErrorMessage, endedRunId } from '@/lib/runStream'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
+import { ModelPicker } from '@/components/ModelPicker'
 
 export default function RunPage() {
   const chains = useWorkspaceStore(s => s.files.chains)
   const templates = useWorkspaceStore(s => s.files.templates)
   const [selectedChain, setSelectedChain] = useState('')
   const [seedPrompt, setSeedPrompt] = useState('')
+  const [modelOverride, setModelOverride] = useState('')
   const [parallelCount, setParallelCount] = useState(1)
   const [runState, setRunState] = useState<InstanceRunMap>({})
   const [runOrder, setRunOrder] = useState<InstanceOrder>({})
@@ -36,10 +38,15 @@ export default function RunPage() {
   }
 
   async function runSingleInstance(runIndex: number) {
+    const override = modelOverride.trim() || undefined
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chainName: selectedChain, seedPrompt }),
+      body: JSON.stringify({
+        chainName: selectedChain,
+        seedPrompt,
+        ...(override ? { modelOverride: override } : {}),
+      }),
     })
 
     if (!res.ok) { setRunError(await runErrorMessage(res)); return }
@@ -104,7 +111,19 @@ export default function RunPage() {
             />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="run-model-override" className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                Model
+              </label>
+              <ModelPicker
+                id="run-model-override"
+                value={modelOverride}
+                onChange={setModelOverride}
+                className="w-48 rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 outline-none transition-all font-mono"
+              />
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                 Parallel Runs

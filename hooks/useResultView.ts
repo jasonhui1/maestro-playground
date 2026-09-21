@@ -27,7 +27,7 @@ export interface ReopenedRun {
 }
 
 type Action =
-  | { type: 'start'; chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string }
+  | { type: 'start'; chain: ChainDef; seed: SeedSource; startedAt: number; paramValue: string; modelOverride?: string }
   | { type: 'event'; event: RunEvent }
   | { type: 'settle'; at: number }
 
@@ -60,7 +60,7 @@ export interface ResultViewHandle extends ResultView {
 /** The live surface also drives the fold; a reopened run is handed one already folded. */
 export interface LiveResultViewHandle extends ResultViewHandle {
   /** Begins a new run: one call, so no half of the previous one survives into it. */
-  start: (input: { chain: ChainDef; seed: SeedSource; paramValue: string }) => void
+  start: (input: { chain: ChainDef; seed: SeedSource; paramValue: string; modelOverride?: string }) => void
   apply: (event: RunEvent) => void
   /** The stream closed, however it closed. */
   settle: () => void
@@ -99,7 +99,7 @@ export function useResultView(past?: ReopenedRun): LiveResultViewHandle {
   const view = useMemo(() => projectResultView(state, now), [state, now])
 
   const reset = deck.reset
-  const start = useCallback((input: { chain: ChainDef; seed: SeedSource; paramValue: string }) => {
+  const start = useCallback((input: { chain: ChainDef; seed: SeedSource; paramValue: string; modelOverride?: string }) => {
     const startedAt = Date.now()
     reset()
     setNow(startedAt)

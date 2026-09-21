@@ -94,6 +94,7 @@ const SOURCE_LABEL: Record<FieldSource, string> = {
   'built-in': 'built-in',
   env: '.env.local (AI_PROVIDER)',
   'env override': '.env.local (AI_MODEL_OVERRIDE)',
+  'run override': 'run override',
 }
 
 function fieldValue(agent: AgentDef, field: AgentField): string {

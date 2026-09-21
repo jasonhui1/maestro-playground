@@ -10,17 +10,24 @@ import { SectionWarnings } from '@/components/trace/SectionWarnings'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
 import { Markdown } from '@/components/ui/Markdown'
 import { RenderToggle } from '@/components/ui/RenderToggle'
+import { ModelPicker } from '@/components/ModelPicker'
 
 export function NodeRunPanel({ nodeId, state, fork }: {
   nodeId: string
   state: NodeRunState
-  // A fork reruns the whole node, so it is offered per node, not per round (#103).
-  fork?: { onFork: () => void; isForking: boolean }
+  // A fork reruns the whole node, so it is offered per node, not per round (#103, #128).
+  fork?: {
+    onFork: (opts?: { modelOverride?: string | null }) => void
+    isForking: boolean
+    modelOverride?: string
+  }
 }) {
   const [round, setRound] = useState<number | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
   const [showThinking, setShowThinking] = useState(false)
   const [raw, setRaw] = useState(false)
+  const [forkOpen, setForkOpen] = useState(false)
+  const [forkModel, setForkModel] = useState<string>(fork?.modelOverride ?? '')
   const r = state.result
   const looped = state.rounds.length > 1
   // null round means "latest": a live loop shows the streaming buffer, not an archived round
@@ -54,14 +61,46 @@ export function NodeRunPanel({ nodeId, state, fork }: {
           {state.status !== 'running' && shown && (
             <SaveToContextButton agentName={state.agentName ?? nodeId} output={shown} />
           )}
-          {fork && (
+          {fork && !forkOpen && (
             <button
-              onClick={fork.onFork}
+              onClick={() => {
+                setForkModel(fork.modelOverride ?? '')
+                setForkOpen(true)
+              }}
               disabled={fork.isForking}
               className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 border border-zinc-200 rounded-md px-3 py-1.5 transition-all hover:bg-zinc-50 disabled:opacity-50 whitespace-nowrap"
             >
               {fork.isForking ? 'FORKING...' : 'FORK FROM THIS NODE'}
             </button>
+          )}
+          {fork && forkOpen && (
+            <div className="flex items-center gap-2 border border-zinc-300 bg-white rounded-md px-2 py-1 shadow-sm">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase">Model:</span>
+              <ModelPicker
+                value={forkModel}
+                onChange={setForkModel}
+                className="text-xs font-mono border border-zinc-200 rounded px-1.5 py-0.5"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const resolved = forkModel.trim() ? forkModel.trim() : (fork.modelOverride ? null : undefined)
+                  fork.onFork({ modelOverride: resolved })
+                }}
+                disabled={fork.isForking}
+                className="text-[10px] font-bold bg-zinc-900 text-white rounded px-2.5 py-1 hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {fork.isForking ? 'Forking…' : 'Fork'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setForkOpen(false)}
+                disabled={fork.isForking}
+                className="text-[10px] font-bold text-zinc-400 hover:text-zinc-600 px-1 py-1"
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       </div>

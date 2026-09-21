@@ -67,7 +67,7 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, actions, chil
                 <dt className={TYPE.label}>{frame.models.length === 1 ? 'model' : 'models'}</dt>
                 {frame.models.map((m, idx) => (
                   <dd key={idx} className="font-mono text-zinc-600 break-words">
-                    {m.model}{m.source ? ` (${m.source})` : ''}
+                    {m.model}{m.source ? ` (${m.source === 'run override' ? 'override' : m.source})` : ''}
                   </dd>
                 ))}
               </div>

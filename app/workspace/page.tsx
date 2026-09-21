@@ -18,6 +18,7 @@ import DockPanel from '@/components/workspace/DockPanel';
 import DockSplit from '@/components/workspace/DockSplit';
 import SeedField from '@/components/workspace/SeedField';
 import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner';
+import { ModelPicker } from '@/components/ModelPicker';
 
 // A context file is bare prose with no frontmatter; every other type is frontmatter + body.
 function editorLanguage(type: string) {
@@ -83,6 +84,8 @@ function WorkspaceContent() {
   const running = useRunStore(state => state.byFile[currentFileKey]?.running ?? false);
   const parallel = useRunStore(state => state.byFile[currentFileKey]?.parallel ?? 1);
   const setParallel = useRunStore(state => state.setParallel);
+  const modelOverride = useRunStore(state => state.byFile[currentFileKey]?.modelOverride ?? '');
+  const setModelOverride = useRunStore(state => state.setModelOverride);
   const runFile = useRunStore(state => state.run);
   const seedPrompt = useRunStore(state => state.byFile[currentFileKey]?.seedPrompt ?? '');
   const setSeed = useRunStore(state => state.setSeed);
@@ -158,6 +161,15 @@ function WorkspaceContent() {
         {(type === 'agent' || type === 'chain') && (
           <>
             <SeedField value={seedPrompt} onChange={setSeedPrompt} />
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="workspace-model-override" className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Model</label>
+              <ModelPicker
+                id="workspace-model-override"
+                value={modelOverride}
+                onChange={(m) => setModelOverride(currentFileKey, m)}
+                className="w-36 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300 font-mono bg-white"
+              />
+            </div>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
               <input type="number" min={1} max={10} value={parallel}

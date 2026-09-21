@@ -79,7 +79,7 @@ export const AGENT_FIELDS = [
 ] as const satisfies readonly (keyof AgentDef)[]
 
 export type AgentField = typeof AGENT_FIELDS[number]
-export type FieldSource = 'file' | 'defaults' | 'variant' | 'built-in' | 'env' | 'env override'
+export type FieldSource = 'file' | 'defaults' | 'variant' | 'built-in' | 'env' | 'env override' | 'run override'
 
 /** Where each resolved field came from, and any inheritance field the file may not state (ADR-0010). */
 export interface AgentResolution {
@@ -262,6 +262,8 @@ export interface RunMeta {
   versionNumber?: number
   /** One entry per file the run touched, keyed `type/slug` — plus a bare `defaults` (ADR-0011). */
   versions?: Record<string, number>
+  /** Model override for this run (#128). */
+  modelOverride?: string
 }
 
 export interface TemplateDef {

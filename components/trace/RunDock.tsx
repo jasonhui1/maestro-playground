@@ -17,7 +17,10 @@ export default function RunDock({ run, order, states, selection, fork }: {
   order: string[]
   states: RunStateMap
   selection: { selected: string | null; onSelect: (id: string) => void }
-  fork: { onFork: (nodeId: string) => void; isForking: boolean }
+  fork: {
+    onFork: (nodeId: string, opts?: { modelOverride?: string | null }) => void
+    isForking: boolean
+  }
 }) {
   const active = clampTab(useWorkspaceUiStore(s => s.activeTab), RUN_TABS)
   // Latest write per node (#90) — a rerun's stale duplicate drops out of the picker;
@@ -30,7 +33,16 @@ export default function RunDock({ run, order, states, selection, fork }: {
     <DockShell tabs={RUN_TABS.map(id => ({ id, label: id }))} active={active}>
       {active === 'trace' && (
         <div className="p-3">
-          <RunTrace order={order} states={states} selection={selection} fork={fork} />
+          <RunTrace
+            order={order}
+            states={states}
+            selection={selection}
+            fork={{
+              onFork: fork.onFork,
+              isForking: fork.isForking,
+              modelOverride: run.modelOverride,
+            }}
+          />
         </div>
       )}
 

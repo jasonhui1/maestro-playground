@@ -4,6 +4,8 @@ import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspa
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
+import { resolveContinuationModelOverride } from './pricing'
+
 export interface Fork {
   /** The nodes whose output changes; each one's descendants rerun. The first names the fork. */
   anchors: string[]
@@ -12,6 +14,7 @@ export interface Fork {
   /** The re-answered hold, when an anchor is one. */
   hold?: HoldRecord
   versions?: ContinuationVersions
+  modelOverride?: string
 }
 
 /** `POST /api/runs/:id/fork`'s body, read (capability `runFork`): rerun from `from`, and/or set `revisions` (node id → text). */
@@ -19,25 +22,36 @@ export interface ForkRequest {
   from?: string
   revisions?: Record<string, string>
   versions?: ContinuationVersions
+  modelOverride?: string | null
 }
 
 /** A fork body's shape, before it meets a run. */
-export function readForkRequest({ from, revisions, versions }: Record<string, unknown>): ForkRequest | Refusal {
+export function readForkRequest({ from, revisions, versions, modelOverride }: Record<string, unknown>): ForkRequest | Refusal {
   if (from !== undefined && typeof from !== 'string') return badRequest('from must be a node id')
   if (revisions !== undefined && !isTextMap(revisions)) return badRequest('revisions must map node ids to text')
   if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
     return badRequest("versions must be 'current' or 'pinned'")
   }
+  if (modelOverride !== undefined && modelOverride !== null) {
+    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
+      return badRequest('modelOverride must be a non-empty string or null')
+    }
+  }
   if (from === undefined && !Object.keys(revisions ?? {}).length) return badRequest('from or revisions is required')
   if (from !== undefined && revisions && from in revisions) return badRequest(`Node ${from} cannot both rerun and be revised`)
-  return { from, revisions, versions }
+  return {
+    from,
+    revisions,
+    versions,
+    ...(modelOverride !== undefined ? { modelOverride: modelOverride === null ? null : modelOverride.trim() } : {}),
+  }
 }
 
 /**
  * A fork request read against its source. Every anchor's descendants rerun,
  * bar a revised one: the human's text stands even below another anchor.
  */
-export function planFork(source: RunMeta, { from, revisions, versions }: ForkRequest): Fork | Refusal {
+export function planFork(source: RunMeta, { from, revisions, versions, modelOverride }: ForkRequest): Fork | Refusal {
   const graph = source.graph
   if (!graph) return unprocessable('Run has no recorded graph')
   const revised = Object.entries(revisions ?? {})
@@ -55,7 +69,9 @@ export function planFork(source: RunMeta, { from, revisions, versions }: ForkReq
     if (!record) return badRequest(`Node ${nodeId} has no output in this run`)
     outputs.push(revisedOutput(record, text))
   }
-  return { anchors, outputs, versions }
+  // #128: Omission inherits source override; null clears; nonempty string replaces.
+  const effectiveOverride = resolveContinuationModelOverride(source.modelOverride, modelOverride)
+  return { anchors, outputs, versions, modelOverride: effectiveOverride }
 }
 
 /** A new run of the source's graph, replaying what the anchors leave standing (#99, #103). */
@@ -76,6 +92,7 @@ export function forkRun(
     pinnedContext,
     versions,
     versionNumber,
+    modelOverride: fork.modelOverride,
     replay: [...kept.replay, ...(fork.outputs ?? [])],
     holds: [...kept.holds, ...(fork.hold ? [fork.hold] : [])],
     forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },

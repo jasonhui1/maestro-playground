@@ -21,6 +21,9 @@ export interface ResultRun {
   startedAt: number
   /** The chain's declared dropdown and what this run set it to (#65). */
   parameter?: { name: string; value: string }
+  /** Model override for this run (#128). */
+  modelOverride?: string
+  status?: import('./runFrame').RunStatus
 }
 
 export interface ResultViewState {
@@ -58,14 +61,16 @@ export function startResultView(input: {
   seed: SeedSource
   startedAt: number
   paramValue: string
+  modelOverride?: string
 }): ResultViewState {
-  const { chain, seed, startedAt, paramValue } = input
+  const { chain, seed, startedAt, paramValue, modelOverride } = input
   return {
     ...idleResultView,
     run: {
       chain,
       seed,
       startedAt,
+      ...(modelOverride ? { modelOverride } : {}),
       ...(chain.parameter && paramValue
         ? { parameter: { name: chain.parameter.name, value: paramValue } }
         : {}),
@@ -109,6 +114,8 @@ export function resultViewFromMeta(meta: RunMeta, chain: ChainDef | undefined): 
           seed: { kind: 'log' },
           startedAt: new Date(meta.startedAt).getTime(),
           ...(meta.parameter ? { parameter: meta.parameter } : {}),
+          ...(meta.modelOverride ? { modelOverride: meta.modelOverride } : {}),
+          status: meta.status === 'waiting' ? 'waiting' : undefined,
         }
       : null,
     states: buildRunStateMap(meta.agentOutputs),
@@ -147,6 +154,8 @@ export function projectResultView(state: ResultViewState, now: number): ResultVi
     now,
     parameter: run.parameter,
     requestError: state.error ?? undefined,
+    modelOverride: run.modelOverride,
+    status: run.status,
   })
   return { model, frame, renderable: isRenderableLayout(model) }
 }

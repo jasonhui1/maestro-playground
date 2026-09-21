@@ -23,11 +23,13 @@ export interface WorkspaceFiles {
   context: ContextFileDef[]
   tools: ToolDef[]
   defaults?: Record<string, unknown>
+  models?: string[]
+  envModelOverride?: boolean
 }
 
 // One frozen value, so a selector reading an untouched slice is referentially stable.
 export const EMPTY_FILES: WorkspaceFiles = Object.freeze({
-  agents: [], skills: [], chains: [], templates: [], context: [], tools: [],
+  agents: [], skills: [], chains: [], templates: [], context: [], tools: [], models: [],
 }) as WorkspaceFiles
 
 /** What the tabs looked like before a mutation, and what they look like after it. */

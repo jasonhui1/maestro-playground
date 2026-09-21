@@ -75,6 +75,8 @@ export interface RunSession {
   holds?: HoldRecord[]
   /** Every record the run holds before this stretch, including ones it reruns; the new records follow it. */
   history?: AgentOutput[]
+  /** Model override for this run (#128). */
+  modelOverride?: string
 }
 
 /**
@@ -141,7 +143,7 @@ export function streamChainRun(s: RunSession): Response {
           },
           onHold: hold => { reached.push(hold) },
         },
-        { seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay },
+        { seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride },
       )
 
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
@@ -181,6 +183,7 @@ export function startRun(ws: Workspace, run: {
   replay?: AgentOutput[]
   holds?: HoldRecord[]
   forkedFrom?: { runId: string; nodeId: string }
+  modelOverride?: string
 }): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
@@ -197,6 +200,7 @@ export function startRun(ws: Workspace, run: {
     ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
     versionNumber: versionNumber > 0 ? versionNumber : undefined,
     versions: run.versions,
+    ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),
   })
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
@@ -204,5 +208,6 @@ export function startRun(ws: Workspace, run: {
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },
     firstStep: 0,
+    modelOverride: run.modelOverride,
   })
 }

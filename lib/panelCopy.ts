@@ -26,7 +26,7 @@ const NOTICE: Record<Exclude<PanelState, 'filled'>, PanelNotice> = {
  */
 export function noticeFor(panel: LayoutPanel, status: RunStatus): PanelNotice | null {
   if (panel.state === 'filled') return null
-  if (panel.state === 'pending' && status !== 'running') {
+  if (panel.state === 'pending' && status !== 'running' && status !== 'waiting') {
     return { text: 'never ran', tone: 'text-zinc-400' }
   }
   const notice = NOTICE[panel.state]
@@ -35,12 +35,14 @@ export function noticeFor(panel: LayoutPanel, status: RunStatus): PanelNotice | 
 
 export const RUN_STATUS_TONE: Record<RunStatus, string> = {
   running: 'text-zinc-500',
+  waiting: 'text-amber-600',
   done: 'text-emerald-600',
   failed: 'text-red-600',
 }
 
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   running: 'running',
+  waiting: 'waiting',
   done: 'done',
   failed: 'failed',
 }

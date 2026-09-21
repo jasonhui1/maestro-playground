@@ -10,12 +10,15 @@ export type SeedSource =
   | { kind: 'log' }
   | { kind: 'pinned'; files: string[] }
 
+import { isModelPriced } from './pricing'
+
 /**
  * `running` — at least one node is still working, or none has finished.
+ * `waiting` — the run paused at a hold node.
  * `done`    — the run settled and no node failed.
  * `failed`  — the run settled and a node failed, or the request itself errored.
  */
-export type RunStatus = 'running' | 'done' | 'failed'
+export type RunStatus = 'running' | 'waiting' | 'done' | 'failed'
 
 /** What is true of every run whatever shape its result reads in (#73). */
 export interface RunFrameModel {
@@ -70,17 +73,23 @@ export function buildRunFrame(input: {
   parameter?: { name: string; value: string }
   /** A failure the run never got far enough to report through a node. */
   requestError?: string
+  modelOverride?: string
+  status?: RunStatus
 }): RunFrameModel {
-  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError } = input
+  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError, modelOverride } = input
   const nodeFailure = failureOf(states)
   const error = requestError ?? nodeFailure
   // A run is live until it has an end: `endedAt` is what the caller sets when the
   // stream closes, however it closed.
-  const status: RunStatus = endedAt === undefined ? 'running' : error ? 'failed' : 'done'
+  const status: RunStatus = input.status ?? (endedAt === undefined ? 'running' : error ? 'failed' : 'done')
 
-  // #127
+  // #127, #128
   const models: Array<{ model: string; source?: FieldSource }> = []
   const seen = new Set<string>()
+  if (modelOverride) {
+    models.push({ model: modelOverride, source: 'run override' })
+    seen.add(`${modelOverride}|run override`)
+  }
   for (const s of Object.values(states)) {
     if (s.result?.model) {
       const key = `${s.result.model}|${s.result.modelSource ?? ''}`
@@ -91,10 +100,16 @@ export function buildRunFrame(input: {
     }
   }
 
-  // #126
+  // #126, #128
   let sum = 0
   let hasUnpriced = false
   const unpricedModels = new Set<string>()
+  if (modelOverride && Object.values(states).every(s => !s.result && s.rounds.length === 0)) {
+    if (!isModelPriced(modelOverride)) {
+      hasUnpriced = true
+      unpricedModels.add(modelOverride)
+    }
+  }
   for (const s of Object.values(states)) {
     if (s.rounds.length > 0) {
       for (const r of s.rounds) {
