@@ -92,8 +92,13 @@ export function endpointOf(t: Token): Endpoint {
   return t.kind === 'slot' ? { node: t.name, socket: 'output' } : { node: t.node, socket: t.socket }
 }
 
+// Normalizes each segment on '/' to preserve section-path identity (#129).
 export function socketKey(socket: string): string {
-  return slugify(socket)
+  return socket
+    .split('/')
+    .map(slugify)
+    .filter(Boolean)
+    .join('/')
 }
 
 /** The run-state key of one named output socket on a node with several. */

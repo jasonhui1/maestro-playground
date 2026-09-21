@@ -1,6 +1,5 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ZoneStateEntry } from './types'
-import { promptSlots } from './tokens'
-import { slugify } from './graph'
+import { promptSlots, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 
 export interface WorkspaceLookup {
@@ -88,7 +87,7 @@ function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
-  const sockets = ['output', ...(a?.outputs ?? []).map(s => slugify(s.name))]
+  const sockets = ['output', ...(a?.outputs ?? []).map(s => socketKey(s.name))]
   return Array.from(new Set(sockets))
 }
 

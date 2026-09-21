@@ -128,6 +128,8 @@ export async function runChainGraph(
     const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
     if (read.missingSection) {
       reportWarning({ fromNode: e.fromNode, section: read.missingSection, toNode: e.toNode, toSocket: e.toSocket })
+    } else if (read.ambiguousSection) {
+      reportWarning({ fromNode: e.fromNode, section: read.ambiguousSection, toNode: e.toNode, toSocket: e.toSocket, reason: 'ambiguous' })
     }
     return read.value
   }
@@ -382,6 +384,8 @@ export async function runChainGraph(
           // convention violation — only a real answer can violate one (#40).
           if (read.missingSection && byNode.get(p.node)?.status === 'success') {
             deferredWarnings.push({ fromNode: nodeId, viaNode: p.node, section: read.missingSection, toNode: nodeId, toSocket: p.name })
+          } else if (read.ambiguousSection && byNode.get(p.node)?.status === 'success') {
+            deferredWarnings.push({ fromNode: nodeId, viaNode: p.node, section: read.ambiguousSection, toNode: nodeId, toSocket: p.name, reason: 'ambiguous' })
           }
           outMap.set(p.name, read.value)
         }

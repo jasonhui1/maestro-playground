@@ -1,9 +1,8 @@
 import { ChainDef, ChainNode, ChainEdge, AgentDef, ToolDef, SkillDef, ValidationIssue, ValidationResult } from './types'
-import { slugify } from './graph'
 import { inputAcceptsMany, kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
-import { scanTokens, endpointOf } from './tokens'
+import { scanTokens, endpointOf, socketKey } from './tokens'
 
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
@@ -177,7 +176,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     if (!src) { add(`Edge from unknown node "${e.fromNode}"`, { edge: e }); continue }
     if (!dst) { add(`Edge to unknown node "${e.toNode}"`, { edge: e }); continue }
     if (!acceptsInputs(dst)) add(`Edge targets node "${e.toNode}" which has no inputs`, { edge: e })
-    if (!kindOf(src.kind).outputs(src, workspace).map(slugify).includes(slugify(e.fromSocket))) {
+    if (!kindOf(src.kind).outputs(src, workspace).map(socketKey).includes(socketKey(e.fromSocket))) {
       if (src.kind === 'branch') {
         add(`Edge "${e.fromNode}.${e.fromSocket}": no such branch case`, { edge: e })
       } else {

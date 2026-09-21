@@ -1,14 +1,15 @@
 import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
-import { extractSection, extractSections } from './graph'
-import { promptSlots, fillSlot, socketKey, outputKey, isWholeOutput } from './tokens'
+import { extractSectionPath } from './graph'
+import { promptSlots, fillSlot, outputKey, isWholeOutput } from './tokens'
 import type { SectionWarning } from './sectionWarning'
 import { hasLiteralInput } from './chainGraph'
 
 // Pure — reporting the miss is the caller's job (#37).
 export interface SocketRead {
   value: string
-  missingSection?: string  // heading absent: a convention violation, warned on
-  emptySection?: string    // heading present, body blank: honoured the convention, not warned on
+  missingSection?: string    // heading absent: a convention violation, warned on
+  emptySection?: string      // heading present, body blank: honoured the convention, not warned on
+  ambiguousSection?: string  // duplicate headings: warned on, first match used (#129)
 }
 
 // Resolves the value carried on a source node's socket.
@@ -44,11 +45,21 @@ export function readSocket(
   const o = nodeOutputs.get(src.id)
   if (!o) return { value: '' }
   if (isWholeOutput(socket)) return { value: o.output }
-  const value = extractSection(o.output, socket)
-  if (value !== '') return { value }
-  return extractSections(o.output).includes(socketKey(socket))
-    ? { value, emptySection: socket }
-    : { value, missingSection: socket }
+  const res = extractSectionPath(o.output, socket)
+  if (res.status === 'missing') {
+    return { value: '', missingSection: socket }
+  }
+  if (res.status === 'ambiguous') {
+    return {
+      value: res.text,
+      ambiguousSection: socket,
+      ...(res.empty ? { emptySection: socket } : {}),
+    }
+  }
+  if (res.status === 'empty') {
+    return { value: '', emptySection: socket }
+  }
+  return { value: res.text }
 }
 
 export interface ResolvedPrompt {
@@ -79,10 +90,14 @@ export function resolveNodePrompt(
         value = read.value
         if (read.missingSection) {
           warnings.push({ fromNode: edge.fromNode, section: read.missingSection, toNode: node.id, toSocket: slot })
-        } else if (read.emptySection) {
+        } else if (read.ambiguousSection) {
+          warnings.push({ fromNode: edge.fromNode, section: read.ambiguousSection, toNode: node.id, toSocket: slot, reason: 'ambiguous' })
+        }
+        if (read.emptySection) {
           value = `[${slot}: "${read.emptySection}" section empty]`
         }
       }
+
     } else if (hasLiteralInput(node, slot)) {
       value = node.inputs![slot]
     } else {
