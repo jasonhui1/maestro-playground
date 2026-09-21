@@ -101,6 +101,16 @@ export async function runChainGraph(
       .filter(s => !s.optional || wired.has(s.name))
       .map(s => s.name)
   }
+  const inputsAvailable = (node: ChainNode): boolean => usedSlots(node).every(slot => {
+    const connected = (incomingByNode.get(node.id) || []).some(index => chain.edges[index].toSocket === slot)
+    if (connected) return liveEdgeForSlot(node.id, slot) !== undefined
+    return (node.kind === 'agent' || node.kind === 'decider') && hasLiteralInput(node, slot)
+  })
+  const recordSkipped = (node: ChainNode, anchorId: string = node.id, round?: number): void => {
+    const skipped = controlOutput(node.id, agentSlugOf(node) || node.kind, '', 'skipped')
+    if (round !== undefined) skipped.round = round
+    nodeOutputs.set(node.id, skipped); emit(anchorId, skipped); callbacks.onDone(node.id, skipped)
+  }
   // Deduped against the producing output, not the run: several readers of one bad
   // output warn once, but a later loop round is a new output and warns again (#37).
   const reportWarning = (w: SectionWarning) => {
@@ -220,15 +230,8 @@ export async function runChainGraph(
       for (const id of order) {
         const bn = nodeById.get(id)!
         if (bn.kind === 'agent' || bn.kind === 'decider') {
-          const slots = usedSlots(bn)
-          const available = slots.every(slot => {
-            const connected = incoming(bn.id).some(index => chain.edges[index].toSocket === slot)
-            return connected ? liveEdgeForSlot(bn.id, slot) !== undefined : hasLiteralInput(bn, slot)
-          })
-          if (!available) {
-            const skipped = controlOutput(bn.id, agentSlugOf(bn) || bn.kind, '', 'skipped')
-            skipped.round = round
-            nodeOutputs.set(bn.id, skipped); emit(zone.startId, skipped); callbacks.onDone(bn.id, skipped)
+          if (!inputsAvailable(bn)) {
+            recordSkipped(bn, zone.startId, round)
             continue
           }
           const a = bn.agent ? agentBySlug.get(bn.agent) : undefined
@@ -298,15 +301,8 @@ export async function runChainGraph(
 
     if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
-    const slots = usedSlots(node)
-    const available = slots.every(s => {
-      const isConnected = (incomingByNode.get(nodeId) || []).some(i => chain.edges[i].toSocket === s)
-      if (isConnected) return liveEdgeForSlot(nodeId, s) !== undefined
-      return (node.kind === 'agent' || node.kind === 'decider') && hasLiteralInput(node, s)
-    })
-    if (!available) {
-      const rec = controlOutput(nodeId, agentSlugOf(node) || node.kind, '', 'skipped')
-      nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
+    if (!inputsAvailable(node)) {
+      recordSkipped(node)
       return // out-edges remain dead
     }
 

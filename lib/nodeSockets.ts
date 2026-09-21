@@ -1,5 +1,5 @@
 import { ChainNode } from './types'
-import { kindOf, WorkspaceLookup } from './nodeKinds'
+import { inputIsMulti, kindOf, WorkspaceLookup } from './nodeKinds'
 
 /** One socket of a node, as the canvas needs to draw it and an edge needs to name it. */
 export interface SocketHandle {
@@ -20,7 +20,7 @@ export function socketHandles(node: ChainNode, workspace: WorkspaceLookup): Sock
       id: s.name,
       side: 'input',
       ...(s.optional ? { optional: true as const } : {}),
-      ...(s.multi || descriptor.multiInput ? { multi: true as const } : {}),
+      ...(inputIsMulti(s, descriptor) ? { multi: true as const } : {}),
     })),
     ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output' })),
   ]

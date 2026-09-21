@@ -229,9 +229,14 @@ export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
 }
 
+export function inputIsMulti(input: InputSocket, descriptor: NodeKindDescriptor): boolean {
+  return descriptor.multiInput === true || input.multi === true
+}
+
 export function inputAcceptsMany(node: ChainNode, socket: string, workspace: WorkspaceLookup): boolean {
   const descriptor = kindOf(node.kind)
-  return descriptor.multiInput === true || descriptor.inputs(node, workspace).some(input => input.name === socket && input.multi)
+  const input = descriptor.inputs(node, workspace).find(candidate => candidate.name === socket)
+  return descriptor.multiInput === true || (input !== undefined && inputIsMulti(input, descriptor))
 }
 
 export const allKinds: ChainNodeKind[] = Object.keys(registry) as ChainNodeKind[]
