@@ -20,13 +20,15 @@ function formatElapsed(ms: number): string {
  * output scrolls: it is reference, and reference that scrolls away has to be scrolled
  * back to.
  */
-export function RunFrame({ frame, runId, selectedCount, onCompare, actions, children }: {
+export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSource, actions, children }: {
   frame: RunFrameModel
   /** Absent until the run completes — the log has no id to link to before then. */
   runId?: string | null
   selectedCount: number
   /** Opens the compare overlay; the trigger needs two panels ticked before it fires. */
   onCompare: () => void
+  /** Opens the fork diff comparison overlay (#130). */
+  onCompareSource?: () => void
   /** Page-level controls the rail absorbs, so the page spends no band above the output. */
   actions?: ReactNode
   children: ReactNode
@@ -96,6 +98,17 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, actions, chil
             >
               Compare{selectedCount > 0 ? ` (${selectedCount})` : ''}
             </button>
+            {onCompareSource && (
+              <button
+                type="button"
+                onClick={onCompareSource}
+                className="rounded-lg border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700
+                  hover:bg-zinc-50 transition-colors outline-none
+                  focus-visible:ring-2 focus-visible:ring-zinc-900"
+              >
+                Compare with source
+              </button>
+            )}
             {runId && (
               <Link href={`/history/${runId}`} className="text-zinc-400 underline underline-offset-4 hover:text-zinc-700">
                 full log

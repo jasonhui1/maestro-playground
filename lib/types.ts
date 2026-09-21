@@ -258,6 +258,12 @@ export interface RunMeta {
   branchedFromStep?: number
   /** A fork's first anchor: the node it reran from, revised, promoted or re-answered (#99, #103). */
   branchedFromNode?: string
+  /** All anchors this fork diverged from (#130). */
+  forkAnchors?: string[]
+  /** Node IDs replayed from source without re-executing (#130). */
+  replayedNodeIds?: string[]
+  /** Baseline snapshot of source outputs at fork creation (#130). */
+  sourceOutputs?: AgentOutput[]
   /** Scalar pin of the entry point; the only pin old logs carry (ADR-0011). */
   versionNumber?: number
   /** One entry per file the run touched, keyed `type/slug` — plus a bare `defaults` (ADR-0011). */

@@ -9,12 +9,13 @@ import { Timeline } from '@/components/result/Timeline'
 import { Columns } from '@/components/result/Columns'
 import { Sidebar } from '@/components/result/Sidebar'
 import { CompareOverlay } from '@/components/result/CompareOverlay'
+import { ForkCompareOverlay } from '@/components/result/ForkCompareOverlay'
 
 /** The one place a `LayoutModel.kind` picks its renderer — the live result page and a
  *  run reopened from history (#72) share this instead of each switching on it. The
  *  compare overlay is mounted here rather than per layout, so every layout gets it
  *  from the same selection (#71). */
-export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEFAULT_FIT, actions }: {
+export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEFAULT_FIT, actions, onCompareSource }: {
   model: LayoutModel
   frame: RunFrameModel
   runId?: string | null
@@ -25,8 +26,14 @@ export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEF
   fit?: PanelFit
   /** Page controls the rail absorbs, so the page spends no band above the output. */
   actions?: ReactNode
+  /** External handler for compare with source, or handled internally via runId (#130). */
+  onCompareSource?: () => void
 }) {
   const [comparing, setComparing] = useState(false)
+  const [comparingSource, setComparingSource] = useState(false)
+
+  const handleCompareSource = onCompareSource
+    ?? (frame.forkSourceRunId && runId ? () => setComparingSource(true) : undefined)
 
   return (
     <RunFrame
@@ -35,6 +42,7 @@ export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEF
       actions={actions}
       selectedCount={deck.selected.length}
       onCompare={() => setComparing(true)}
+      onCompareSource={handleCompareSource}
     >
       {model.kind === 'timeline' && <Timeline panels={model.panels} deck={deck} fit={fit} status={frame.status} />}
       {model.kind === 'columns' && <Columns panels={model.panels} deck={deck} fit={fit} status={frame.status} />}
@@ -43,6 +51,9 @@ export function LayoutModelView({ model, frame, runId, deck, fallback, fit = DEF
       {model.kind === 'undeclared' && fallback}
       {comparing && (
         <CompareOverlay panels={model.panels} deck={deck} onClose={() => setComparing(false)} />
+      )}
+      {comparingSource && runId && (
+        <ForkCompareOverlay runId={runId} onClose={() => setComparingSource(false)} />
       )}
     </RunFrame>
   )

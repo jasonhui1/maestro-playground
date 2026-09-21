@@ -79,6 +79,9 @@ export function forkRun(
   if ('error' in continuation) return continuation
   const kept = runLog(source).replayFor(fork.anchors)
   const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation
+  // #130: Record complete anchors, replayed node IDs, and snapshot baseline source outputs.
+  const replayedNodeIds = [...new Set(kept.replay.map(o => o.nodeId).filter((id): id is string => Boolean(id)))]
+  const sourceOutputs = runLog(source).current()
   return startRun(ws, {
     chain,
     workspace: defs,
@@ -93,6 +96,9 @@ export function forkRun(
     replay: [...kept.replay, ...(fork.outputs ?? [])],
     holds: [...kept.holds, ...(fork.hold ? [fork.hold] : [])],
     forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },
+    forkAnchors: fork.anchors,
+    replayedNodeIds,
+    sourceOutputs,
   })
 }
 

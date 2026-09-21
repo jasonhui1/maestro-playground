@@ -183,6 +183,9 @@ export function startRun(ws: Workspace, run: {
   replay?: AgentOutput[]
   holds?: HoldRecord[]
   forkedFrom?: { runId: string; nodeId: string }
+  forkAnchors?: string[]
+  replayedNodeIds?: string[]
+  sourceOutputs?: AgentOutput[]
   modelOverride?: string
 }): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
@@ -198,6 +201,9 @@ export function startRun(ws: Workspace, run: {
     ...(holds ? { holds } : {}),
     graph: { nodes: chain.nodes, edges: chain.edges },
     ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
+    ...(run.forkAnchors ? { forkAnchors: run.forkAnchors } : {}),
+    ...(run.replayedNodeIds ? { replayedNodeIds: run.replayedNodeIds } : {}),
+    ...(run.sourceOutputs ? { sourceOutputs: run.sourceOutputs } : {}),
     versionNumber: versionNumber > 0 ? versionNumber : undefined,
     versions: run.versions,
     ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),

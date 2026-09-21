@@ -24,6 +24,8 @@ export interface ResultRun {
   /** Model override for this run (#128). */
   modelOverride?: string
   status?: import('./runFrame').RunStatus
+  /** The source run this fork diverged from (#130). */
+  forkSourceRunId?: string
 }
 
 export interface ResultViewState {
@@ -116,6 +118,7 @@ export function resultViewFromMeta(meta: RunMeta, chain: ChainDef | undefined): 
           ...(meta.parameter ? { parameter: meta.parameter } : {}),
           ...(meta.modelOverride ? { modelOverride: meta.modelOverride } : {}),
           status: meta.status === 'waiting' ? 'waiting' : undefined,
+          forkSourceRunId: meta.branchedFromRunId,
         }
       : null,
     states: buildRunStateMap(meta.agentOutputs),
@@ -156,6 +159,7 @@ export function projectResultView(state: ResultViewState, now: number): ResultVi
     requestError: state.error ?? undefined,
     modelOverride: run.modelOverride,
     status: run.status,
+    forkSourceRunId: run.forkSourceRunId,
   })
   return { model, frame, renderable: isRenderableLayout(model) }
 }

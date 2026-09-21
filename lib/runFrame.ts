@@ -34,6 +34,8 @@ export interface RunFrameModel {
   elapsedMs: number
   costUsd?: number
   costWarning?: string
+  /** The source run this fork diverged from (#130). */
+  forkSourceRunId?: string
 }
 
 function describeSeed(seed: SeedSource): string {
@@ -74,8 +76,9 @@ export function buildRunFrame(input: {
   requestError?: string
   modelOverride?: string
   status?: RunStatus
+  forkSourceRunId?: string
 }): RunFrameModel {
-  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError, modelOverride } = input
+  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError, modelOverride, forkSourceRunId } = input
   const nodeFailure = failureOf(states)
   const error = requestError ?? nodeFailure
   // A run is live until it has an end: `endedAt` is what the caller sets when the
@@ -144,5 +147,6 @@ export function buildRunFrame(input: {
   if (models.length > 0) frame.models = models
   if (error) frame.error = error
   if (parameter) frame.parameter = parameter
+  if (forkSourceRunId) frame.forkSourceRunId = forkSourceRunId
   return frame
 }

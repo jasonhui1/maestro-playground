@@ -5,7 +5,7 @@ import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Download } from 'lucide-react'
+import { ChevronLeft, Download, GitCompare } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { socketHandles } from '@/lib/nodeSockets'
@@ -17,6 +17,7 @@ import { useResultView } from '@/hooks/useResultView'
 import { PANEL_FITS } from '@/lib/panelFit'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
+import { ForkCompareOverlay } from '@/components/result/ForkCompareOverlay'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { ResumeForm } from '@/components/trace/ResumeForm'
 
@@ -86,6 +87,7 @@ function RunDetail({ run }: { run: RunMeta }) {
   // so a classified run is already in its result view on the first render that shows
   // anything — an effect would flip it a frame later, flashing the canvas (#72).
   const [picked, setPicked] = useState<'result' | 'trace' | null>(null)
+  const [comparingSource, setComparingSource] = useState(false)
 
   // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
   // chain's *current* declaration, not what it looked like when the run happened (#72).
@@ -181,6 +183,15 @@ function RunDetail({ run }: { run: RunMeta }) {
           &ldquo;{run.seedPrompt}&rdquo;
         </button>
 
+        {run.branchedFromRunId && (
+          <button
+            type="button"
+            onClick={() => setComparingSource(true)}
+            className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-700 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0"
+          >
+            <GitCompare size={12} />Compare with source
+          </button>
+        )}
         <a href={`/api/runs/${run.runId}/export?format=markdown`}
           className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0">
           <Download size={12} />MD
@@ -232,10 +243,11 @@ function RunDetail({ run }: { run: RunMeta }) {
               <LayoutModelView
                 model={view.model}
                 frame={view.frame}
-                runId={view.runId}
+                runId={run.runId}
                 deck={view.deck}
                 actions={switches}
                 fit={view.fit}
+                onCompareSource={run.branchedFromRunId ? () => setComparingSource(true) : undefined}
               />
             </div>
           </div>
@@ -297,6 +309,10 @@ function RunDetail({ run }: { run: RunMeta }) {
         />
         )}
       </div>
+
+      {comparingSource && (
+        <ForkCompareOverlay runId={run.runId} onClose={() => setComparingSource(false)} />
+      )}
     </div>
   )
 }
