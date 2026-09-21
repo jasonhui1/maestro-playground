@@ -35,6 +35,10 @@ export function edgeShapeError(e: ChainEdge): string | null {
   return null
 }
 
+export function hasLiteralInput(node: { inputs?: Record<string, string> } | undefined, slot: string): boolean {
+  return node?.inputs !== undefined && Object.hasOwn(node.inputs, slot)
+}
+
 export function issuesByNode(issues: ValidationIssue[]): Map<string, string[]> {
   const m = new Map<string, string[]>()
   for (const i of issues) {
@@ -145,6 +149,22 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
     // so a zoned join would never run, and a zoned hold could never pause.
     if ((n.kind === 'join' || n.kind === 'hold') && n.zone) {
       add(`Node "${n.id}": a ${n.kind} cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
+    }
+    if (n.inputs !== undefined) {
+      if (typeof n.inputs !== 'object' || n.inputs === null || Array.isArray(n.inputs)) {
+        add(`Node "${n.id}": inputs must be a key-value mapping`, { nodeId: n.id })
+      } else if (n.kind !== 'agent' && n.kind !== 'decider') {
+        add(`Node "${n.id}" of kind "${n.kind}" does not accept literal inputs`, { nodeId: n.id })
+      } else {
+        const declared = new Set(kindOf(n.kind).inputs(n, workspace).map(s => s.name))
+        for (const [k, v] of Object.entries(n.inputs)) {
+          if (!declared.has(k)) {
+            add(`Node "${n.id}": literal declared for unknown input slot "${k}"`, { nodeId: n.id })
+          } else if (typeof v !== 'string') {
+            add(`Node "${n.id}": literal for slot "${k}" must be a string`, { nodeId: n.id })
+          }
+        }
+      }
     }
   }
 

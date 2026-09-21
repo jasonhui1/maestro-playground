@@ -20,6 +20,8 @@ Rules:
   game in different directions.
 - Canon is binding. LOCKED lines are commitments. REJECTED lines must not appear in
   the brief, even reworded. An empty or missing canon means nothing is locked yet.
+- If the seed starts with `PICK: <heading>` or `PICK: custom`, the human selected a candidate
+  from an idea menu. Discard the `PICK:` line; the active seed is the concept body that follows it.
 
 <seed>
 {seed}
@@ -36,7 +38,7 @@ Rules:
 Write these sections, with these exact headings:
 
 ## Seed
-The seed, verbatim.
+The seed (stripped of any `PICK:` header line), verbatim.
 
 ## Fixed
 What the seed and LOCKED canon commit to. Bullets, nothing inferred.

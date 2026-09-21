@@ -18,6 +18,18 @@ One kind's entry in the registry.
 
 A **socket** is a wiring endpoint on a node: output sockets (`output`, `summary`, any markdown header slice) and input sockets. A **slot** is a `{token}` in an agent's prompt; an agent node's input sockets are exactly its prompt's slots. "Socket" is the graph-side word, "slot" the prompt-side word for the same input on agent nodes.
 
+## Literal input
+
+A typed constant value explicitly saved under `node.inputs[slot]` in the chain definition. Dual-mode with wires (ComfyUI pattern): when disconnected, the saved literal supplies the slot value; when connected, the incoming wire takes strict precedence and the literal is ignored. Connecting and disconnecting preserves the saved text. An explicitly saved empty string `""` is a valid literal (checked via `Object.hasOwn(node.inputs, slot)`).
+
+## Wire
+
+A directed edge (`ChainEdge`) connecting an upstream node's output socket to a downstream node's input slot. Takes strict precedence over any saved literal: if a wire is connected, the slot evaluates only the wire; if the upstream source fails or skips, the failure surfaces directly and the node skips—it never falls back to a literal.
+
+## Readiness
+
+Whether a node can be scheduled and executed. For a required input slot: if connected to an edge, readiness strictly requires that edge to be live; if disconnected, readiness requires an explicitly saved literal (`Object.hasOwn(node.inputs, slot)`).
+
 ## Token
 
 A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt, node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.

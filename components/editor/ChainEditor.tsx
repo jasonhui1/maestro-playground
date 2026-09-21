@@ -233,7 +233,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     onEditAgent: (s: string) => setDrawerSlug(s),
     onRunFromHere: (id: string) => { setSelectedIds([id]); runUpTo(id) },
     chains: chains.map(c => ({ slug: c.slug, name: c.name })),
-  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds])
+    wiredSockets: new Set(edges.filter(e => e.toNode === node.id).map(e => e.toSocket)),
+  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges])
 
   return (
     <div className="h-full flex flex-col">

@@ -23,6 +23,7 @@ export interface ChainNodeBase {
   id: string
   pos?: [number, number]
   zone?: string          // loop membership; any kind may carry it (loop-start/-end/body)
+  inputs?: Record<string, string>
 }
 
 // Discriminated union: each variant's kind-specific fields mirror that kind's `fields`

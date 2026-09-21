@@ -12,6 +12,7 @@ function serializeNode(n: ChainNode): Record<string, unknown> {
   const out: Record<string, unknown> = { id: n.id, kind: n.kind }
   if (n.pos) out.pos = n.pos
   if (n.zone !== undefined) out.zone = n.zone
+  if (n.inputs && Object.keys(n.inputs).length > 0) out.inputs = n.inputs
   for (const f of kindOf(n.kind).fields) {
     const value = serializeFieldValue((n as unknown as Record<string, unknown>)[f.key], f.codec)
     if (value !== undefined) out[f.key] = value

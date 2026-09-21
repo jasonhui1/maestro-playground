@@ -42,11 +42,14 @@ export interface AnswerRequest {
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
 export function readAnswerRequest({ holdId, direction, chosen, custom }: Record<string, unknown>): AnswerRequest | Refusal {
-  if (typeof direction !== 'string' || !direction.trim()) return badRequest('direction is required')
+  const dir = typeof direction === 'string' ? direction : ''
+  const hasPick = (chosen != null && typeof chosen === 'string' && chosen.trim() !== '') ||
+                  (custom != null && typeof custom === 'string' && custom.trim() !== '')
+  if (!dir.trim() && !hasPick) return badRequest('direction or candidate selection is required')
   if (holdId != null && typeof holdId !== 'string') return badRequest('holdId must be a node id')
   if (chosen != null && typeof chosen !== 'string') return badRequest('chosen must be a candidate heading')
   if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
-  return { direction, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
+  return { direction: dir, holdId: holdId ?? undefined, chosen: chosen ?? undefined, custom: custom ?? undefined }
 }
 
 /** The hold a resume answers: the named one, else the open one, else a finished run's only hold. */
@@ -101,7 +104,7 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
   const lead = !pick ? undefined
     : 'candidate' in pick ? `PICK: ${pick.candidate.heading}\n${pick.candidate.body}`
     : `PICK: custom\n${pick.custom}`
-  const text = lead ? `${lead}\n\n${direction}` : direction
+  const text = lead ? (direction && direction.trim() ? `${lead}\n\n${direction}` : lead) : direction
   const record: HoldRecord = { ...open, ...recorded, direction, resolvedAt: at }
   return {
     output: {

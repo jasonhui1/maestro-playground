@@ -15,6 +15,7 @@ export interface EditorNodeData {
   onRunFromHere?: (id: string) => void
   chains: { slug: string; name: string }[]
   readOnly?: boolean
+  wiredSockets?: Set<string>
   [key: string]: unknown
 }
 

@@ -32,6 +32,7 @@ const CANON = '## LOCKED\n- halo = burden\n\n## UNRESOLVED\n\n## REJECTED\n- gac
 const ran: string[] = []
 const reply = (slug: string) => {
   if (slug === 'creative-director') return [...VERDICT_SECTIONS, ...CANDIDATES].map(s => `## ${s}\n${s} body`).join('\n\n')
+  if (slug === 'idea-maker') return CANDIDATES.map(s => `## ${s}\n${s} body`).join('\n\n')
   if (slug === 'greenlight') return PITCH_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
   return `## Take\n${slug} take\n\n## Proposed canon\n- ${slug} line`
 }
@@ -85,11 +86,15 @@ test('one chain: the decider feeds a hold, the hold directs greenlight, greenlig
   const { chain, chains } = workspace()
   assert.strictEqual(chains.find(c => c.slug === 'develop-direction'), undefined, 'develop-direction is gone')
   assert.strictEqual(chain.nodes.find(n => n.id === 'hold')?.kind, 'hold')
+  assert.strictEqual(chain.nodes.find(n => n.id === 'hold-idea')?.kind, 'hold')
+  assert.strictEqual(chain.nodes.find(n => n.id === 'idea-maker')?.kind, 'decider')
   const greenlight = chain.nodes.find(n => n.id === 'greenlight')
   assert.ok(greenlight?.kind === 'agent' && greenlight.agent === 'greenlight')
 
   const edges = edgesOf(chain)
   for (const e of [
+    'idea-maker -> hold-idea.in',
+    'hold-idea -> creative-brief.seed',
     'creative-director -> hold.in',
     'hold -> greenlight.direction',
     'canon -> greenlight.canon',
@@ -157,20 +162,30 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   const results = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
     callbacks, { seedPrompt: seed, run: stub as never, paramValue: dial, context: overrides })
 
+  assert.deepStrictEqual(holds.map(h => h.nodeId), ['hold-idea'])
+  assert.ok(results.some(r => r.nodeId === 'idea-maker'))
+  assert.ok(!results.some(r => r.nodeId === 'creative-brief' || r.nodeId === 'greenlight'), 'nothing after first hold ran')
+
+  const { output: answerIdea } = answerHold(holds, holds[0], '', { candidate: { heading: 'Candidate 1', body: 'Candidate 1 body' } })
+  const secondHolds: HoldRecord[] = []
+  const secondCallbacks = { ...noop, onHold: (h: HoldRecord) => secondHolds.push(h) }
+  const secondResults = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
+    secondCallbacks, { seedPrompt: seed, run: stub as never, replay: [...results, answerIdea], paramValue: dial, context: overrides })
+
   // An empty brief must not leave a proposer with nothing to read.
   for (const id of [...PROPOSERS, 'creative-director']) {
-    assert.ok(results.find(r => r.nodeId === id)!.systemPrompt.includes(seed), `${id} reads the seed directly`)
+    assert.ok(secondResults.find(r => r.nodeId === id)!.systemPrompt.includes(seed), `${id} reads the seed directly`)
   }
-  const cd = results.find(r => r.nodeId === 'creative-director')!
+  const cd = secondResults.find(r => r.nodeId === 'creative-director')!
   for (const slug of PROPOSERS) assert.ok(cd.systemPrompt.includes(`${slug} take`), `verdict read ${slug}`)
-  const brief = results.find(r => r.nodeId === 'creative-brief')!
+  const brief = secondResults.find(r => r.nodeId === 'creative-brief')!
   assert.ok(brief.systemPrompt.includes(dial), 'brief received the dial pick')
 
-  assert.deepStrictEqual(holds.map(h => h.nodeId), ['hold'])
-  assert.strictEqual(holds[0].input, cd.output, 'the hold is asked about the verdict')
-  assert.ok(!results.some(r => r.nodeId === 'greenlight' || r.nodeId === 'report'), 'nothing after the hold ran')
+  assert.deepStrictEqual(secondHolds.map(h => h.nodeId), ['hold'])
+  assert.strictEqual(secondHolds[0].input, cd.output, 'the hold is asked about the verdict')
+  assert.ok(!secondResults.some(r => r.nodeId === 'greenlight' || r.nodeId === 'report'), 'nothing after second hold ran')
 
-  let layout = buildLayoutModel(chain, results)
+  let layout = buildLayoutModel(chain, secondResults)
   assert.strictEqual(layout.kind, 'columns')
   assert.deepStrictEqual(layout.panels.map(p => p.node), [...PROPOSERS, 'creative-director', 'greenlight'])
   assert.ok(layout.panels.slice(0, -1).every(p => p.state === 'filled'), 'specialists and verdict filled')
@@ -180,9 +195,9 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
     assert.ok(extractSections(p.text).includes('proposed-canon'), `${p.node} panel keeps canon`)
   }
 
-  const { output: answer } = answerHold(holds, holds[0], DIRECTION)
+  const { output: answerDirection } = answerHold(secondHolds, secondHolds[0], DIRECTION)
   const resumed = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
-    noop, { seedPrompt: seed, run: stub as never, replay: [...results, answer], paramValue: dial, context: overrides })
+    noop, { seedPrompt: seed, run: stub as never, replay: [...secondResults, answerDirection], paramValue: dial, context: overrides })
 
   const greenlight = resumed.find(r => r.nodeId === 'greenlight')!
   assert.ok(greenlight.systemPrompt.includes(DIRECTION), 'greenlight reads the whole Direction')
@@ -223,25 +238,31 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   const started = await sse(await run({
     json: async () => ({ chainName: 'creative-director', seedPrompt: 'anime girl with a giant mechanical halo' }),
   } as import('next/server').NextRequest))
-  const waiting = started.at(-1)!
-  assert.strictEqual(waiting.type, 'run_waiting')
-  assert.strictEqual(waiting.nodeId, 'hold')
-  const runId = waiting.runId as string
-  assert.ok(!ran.includes('greenlight'), 'greenlight waits for the hold')
+  const waiting1 = started.at(-1)!
+  assert.strictEqual(waiting1.type, 'run_waiting')
+  assert.strictEqual(waiting1.nodeId, 'hold-idea')
+  const runId = waiting1.runId as string
+  assert.ok(!ran.includes('creative-brief'), 'creative-brief waits for hold-idea')
   ran.length = 0
 
-  const held = JSON.parse(fs.readFileSync(path.join(wp, 'logs', runId, 'meta.json'), 'utf-8')) as RunMeta
-  assert.deepStrictEqual(held.holds?.[0].candidates.map(c => c.heading), CANDIDATES)
-  assert.ok(held.holds![0].candidates.every(c => c.body), 'each candidate has a body')
-
   const { POST: resume } = await import('../app/api/runs/[runId]/resume/route')
-  const resumed = await sse(await resume(
-    { json: async () => ({ chosen: 'Candidate 2', direction: DIRECTION }) } as import('next/server').NextRequest,
+  const resumed1 = await sse(await resume(
+    { json: async () => ({ holdId: 'hold-idea', chosen: 'Candidate 1' }) } as import('next/server').NextRequest,
     { params: Promise.resolve({ runId }) },
   ))
-  assert.strictEqual(resumed.at(-1)!.type, 'run_complete')
-  assert.strictEqual(resumed.at(-1)!.runId, runId)
-  assert.deepStrictEqual(ran, ['greenlight'], 'only what follows the hold executes')
+  const waiting2 = resumed1.at(-1)!
+  assert.strictEqual(waiting2.type, 'run_waiting')
+  assert.strictEqual(waiting2.nodeId, 'hold')
+  assert.ok(!ran.includes('greenlight'), 'greenlight waits for the second hold')
+  ran.length = 0
+
+  const resumed2 = await sse(await resume(
+    { json: async () => ({ holdId: 'hold', chosen: 'Candidate 2', direction: DIRECTION }) } as import('next/server').NextRequest,
+    { params: Promise.resolve({ runId }) },
+  ))
+  assert.strictEqual(resumed2.at(-1)!.type, 'run_complete')
+  assert.strictEqual(resumed2.at(-1)!.runId, runId)
+  assert.deepStrictEqual(ran, ['greenlight'], 'only what follows the second hold executes')
 
   const dir = path.join(wp, 'logs', runId)
   const logs = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort()
@@ -260,6 +281,23 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
 
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8')) as RunMeta
   assert.strictEqual(meta.status, 'complete')
-  assert.strictEqual(meta.holds?.[0].direction, DIRECTION)
-  assert.strictEqual(meta.holds?.[0].chosen, 'Candidate 2')
+  const directionHold = meta.holds?.find(h => h.nodeId === 'hold')
+  assert.strictEqual(directionHold?.direction, DIRECTION)
+  assert.strictEqual(directionHold?.chosen, 'Candidate 2')
+})
+
+test('end to end: blank seed produces idea candidates and halts at first hold', async () => {
+  const wp = copyWorkspace()
+  const { POST: run } = await import('../app/api/run/route')
+  const started = await sse(await run({
+    json: async () => ({ chainName: 'creative-director', seedPrompt: '' }),
+  } as import('next/server').NextRequest))
+  const waiting = started.at(-1)!
+  assert.strictEqual(waiting.type, 'run_waiting')
+  assert.strictEqual(waiting.nodeId, 'hold-idea')
+  const runId = waiting.runId as string
+
+  const held = JSON.parse(fs.readFileSync(path.join(wp, 'logs', runId, 'meta.json'), 'utf-8')) as RunMeta
+  assert.deepStrictEqual(held.holds?.[0].candidates.map(c => c.heading), CANDIDATES)
+  assert.ok(held.holds![0].candidates.every(c => c.body), 'each candidate has a body')
 })

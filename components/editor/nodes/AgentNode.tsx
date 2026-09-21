@@ -50,7 +50,13 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'agent' |
           </button>
         )}
 
-        <Sockets handles={data.sockets} />
+        <Sockets
+          handles={data.sockets}
+          node={node}
+          onChange={data.onChange}
+          readOnly={data.readOnly}
+          wiredSockets={data.wiredSockets}
+        />
       </div>
     </div>
   )

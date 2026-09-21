@@ -5,7 +5,7 @@ import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
 import { resolveNodePrompt, readSocket } from './resolveNode'
 import { SectionWarning, sameSectionWarning } from './sectionWarning'
-import { topoOrder } from './chainGraph'
+import { topoOrder, hasLiteralInput } from './chainGraph'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
@@ -267,7 +267,11 @@ export async function runChainGraph(
     if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
     const slots = usedSlots(node)
-    const available = slots.every(s => liveEdgeForSlot(nodeId, s) !== undefined)
+    const available = slots.every(s => {
+      const isConnected = (incomingByNode.get(nodeId) || []).some(i => chain.edges[i].toSocket === s)
+      if (isConnected) return liveEdgeForSlot(nodeId, s) !== undefined
+      return (node.kind === 'agent' || node.kind === 'decider') && hasLiteralInput(node, s)
+    })
     if (!available) {
       const rec = controlOutput(nodeId, agentSlugOf(node) || node.kind, '', 'skipped')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)

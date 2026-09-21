@@ -3,7 +3,7 @@ name: creative-director
 description: 'A game seed through a brief, four departments and a devil''s advocate, cut by a creative director, held for your Direction, then built into a greenlight pitch'
 view: columns
 purpose: production
-moment: you have a one-line game idea and want a room of departments to fight over it, then direct the pitch
+moment: you have a mood, or nothing
 parameter:
   name: experimental
   options:
@@ -30,72 +30,94 @@ nodes:
       - 0
       - 320
     file: canon-anime-game
+  - id: idea-maker
+    kind: decider
+    pos:
+      - 320
+      - 160
+    agent: idea-maker
+    inputs:
+      instructions: three one-line video game concepts with core mechanics and high tension
+  - id: hold-idea
+    kind: hold
+    pos:
+      - 640
+      - 160
+    prompt: pick an idea or write your own
   - id: creative-brief
     kind: agent
     pos:
-      - 320
+      - 960
       - 160
     agent: creative-brief
   - id: character-director
     kind: agent
     pos:
-      - 660
+      - 1300
       - -160
     agent: character-director
   - id: gameplay-director
     kind: agent
     pos:
-      - 660
+      - 1300
       - 0
     agent: gameplay-director
   - id: world-director
     kind: agent
     pos:
-      - 660
+      - 1300
       - 160
     agent: world-director
   - id: art-director
     kind: agent
     pos:
-      - 660
+      - 1300
       - 320
     agent: art-director
   - id: devils-advocate
     kind: agent
     pos:
-      - 660
+      - 1300
       - 480
     agent: devils-advocate
   - id: join
     kind: join
     pos:
-      - 1000
+      - 1640
       - 160
   - id: creative-director
     kind: decider
     pos:
-      - 1320
+      - 1960
       - 160
     agent: creative-director
   - id: hold
     kind: hold
     pos:
-      - 1640
+      - 2280
       - 160
     prompt: read the columns and the verdict, then write a Direction
   - id: greenlight
     kind: agent
     pos:
-      - 1960
+      - 2600
       - 160
     agent: greenlight
   - id: report
     kind: report
     pos:
-      - 2280
+      - 2920
       - 160
 edges:
   - from: seed
+    to: idea-maker.seed
+  - from: experimental
+    to: idea-maker.experimental
+  - from: canon
+    to: idea-maker.canon
+  - from: idea-maker
+    to: hold-idea.in
+  - from: hold-idea
     to: creative-brief.seed
   - from: experimental
     to: creative-brief.experimental
@@ -188,7 +210,8 @@ outputs:
     role: join
 ---
 
-The run stops at `hold`: read the columns and the verdict, write a Direction, then
-resume the same run (#95) and greenlight builds the pitch. Canon lives in
+The run stops at `hold-idea`: pick an idea from the menu or write your own.
+The run then proceeds to `hold`: read the columns and the verdict, write a Direction,
+then resume and greenlight builds the pitch. Canon lives in
 `context/canon-anime-game.md`; only a human writes it, every proposer ends with
 `## Proposed canon` lines to tick.

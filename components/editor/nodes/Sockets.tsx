@@ -2,6 +2,8 @@
 import React from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { inputHandles, outputHandles, type SocketHandle } from '@/lib/nodeSockets'
+import type { ChainNode } from '@/lib/types'
+import { hasLiteralInput } from '@/lib/chainGraph'
 
 /** Loop nodes wear the zone's amber; `muted` marks a fallback slot, like a branch's default. */
 export type SocketTone = 'default' | 'loop' | 'muted'
@@ -48,19 +50,72 @@ export function SocketDot({ handle, tone = 'default' }: { handle: SocketHandle; 
 }
 
 /** One labelled column of sockets — inputs read `name`, outputs read `.name`. */
-export function SocketList({ handles, tone = 'default' }: { handles: SocketHandle[]; tone?: SocketTone }) {
+export function SocketList({
+  handles,
+  tone = 'default',
+  node,
+  onChange,
+  readOnly,
+  wiredSockets,
+}: {
+  handles: SocketHandle[]
+  tone?: SocketTone
+  node?: ChainNode
+  onChange?: (patch: Partial<ChainNode>) => void
+  readOnly?: boolean
+  wiredSockets?: Set<string>
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
       {handles.map(h => {
         const isInput = h.side === 'input'
         const label = isInput ? h.id : `.${h.id}`
+        const isWired = isInput && (wiredSockets?.has(h.id) ?? false)
+        const isInputNodeKind = node?.kind === 'agent' || node?.kind === 'decider'
+        const showLiteralInput = isInput && !isWired && isInputNodeKind && onChange !== undefined
+        const isSet = isInput && hasLiteralInput(node, h.id)
+        const literalValue = isSet ? (node!.inputs![h.id] ?? '') : ''
+
         return (
           <div
             key={h.id}
-            className={`relative flex items-center h-5 ${isInput ? 'pl-3' : 'pr-3 justify-end text-right'}`}
+            className={`relative flex items-center min-h-[22px] py-0.5 ${isInput ? 'pl-3' : 'pr-3 justify-end text-right'}`}
           >
             {isInput && <SocketDot handle={h} tone={tone} />}
-            <span className="truncate max-w-[100px]" title={isInput ? dotTitle(h) : label}>{label}</span>
+            <span className="truncate max-w-[80px]" title={isInput ? dotTitle(h) : label}>{label}</span>
+            {showLiteralInput && (
+              <div className="ml-1.5 flex items-center gap-1 flex-1 min-w-0">
+                <input
+                  type="text"
+                  value={literalValue}
+                  onChange={e => {
+                    const next = { ...(node?.inputs ?? {}), [h.id]: e.target.value }
+                    onChange({ inputs: next })
+                  }}
+                  disabled={readOnly}
+                  placeholder="unset"
+                  className={`w-full nodrag px-1.5 py-0.5 text-[10px] font-sans rounded border transition-colors ${
+                    isSet
+                      ? 'border-zinc-300 bg-white text-zinc-900 focus:border-zinc-800'
+                      : 'border-zinc-200 border-dashed bg-zinc-50/50 text-zinc-400 placeholder:text-zinc-300'
+                  }`}
+                />
+                {isSet && !readOnly && (
+                  <button
+                    type="button"
+                    title="Unset literal"
+                    onClick={() => {
+                      const next = { ...(node?.inputs ?? {}) }
+                      delete next[h.id]
+                      onChange({ inputs: Object.keys(next).length > 0 ? next : undefined })
+                    }}
+                    className="nodrag text-zinc-400 hover:text-zinc-700 text-[10px] px-0.5 font-sans"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
             {!isInput && <SocketDot handle={h} tone={tone} />}
           </div>
         )
@@ -70,10 +125,31 @@ export function SocketList({ handles, tone = 'default' }: { handles: SocketHandl
 }
 
 /** The default socket block: inputs down the left edge, outputs down the right. */
-export function Sockets({ handles, tone = 'default' }: { handles: SocketHandle[]; tone?: SocketTone }) {
+export function Sockets({
+  handles,
+  tone = 'default',
+  node,
+  onChange,
+  readOnly,
+  wiredSockets,
+}: {
+  handles: SocketHandle[]
+  tone?: SocketTone
+  node?: ChainNode
+  onChange?: (patch: Partial<ChainNode>) => void
+  readOnly?: boolean
+  wiredSockets?: Set<string>
+}) {
   return (
     <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
-      <SocketList handles={inputHandles(handles)} tone={tone} />
+      <SocketList
+        handles={inputHandles(handles)}
+        tone={tone}
+        node={node}
+        onChange={onChange}
+        readOnly={readOnly}
+        wiredSockets={wiredSockets}
+      />
       <SocketList handles={outputHandles(handles)} tone={tone} />
     </div>
   )

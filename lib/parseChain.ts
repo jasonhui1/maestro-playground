@@ -28,6 +28,18 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
           pos: Array.isArray(n.pos) ? [Number(n.pos[0]), Number(n.pos[1])] as [number, number] : undefined,
           zone: n.zone as string | undefined,
         }
+        if (n.inputs !== undefined) {
+          if (typeof n.inputs === 'object' && n.inputs !== null && !Array.isArray(n.inputs)) {
+            const inputs: Record<string, string> = {}
+            for (const [k, v] of Object.entries(n.inputs)) {
+              if (typeof v === 'string') inputs[k] = v
+              else inputs[k] = v as unknown as string
+            }
+            node.inputs = inputs
+          } else {
+            node.inputs = n.inputs as unknown as Record<string, string>
+          }
+        }
         for (const f of allFields) node[f.key] = coerceField(n[f.key], f.codec)
         return node as unknown as ChainNode
       })

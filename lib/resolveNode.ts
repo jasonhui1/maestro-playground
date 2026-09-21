@@ -2,6 +2,7 @@ import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
 import { extractSection, extractSections } from './graph'
 import { promptSlots, fillSlot, socketKey, outputKey, isWholeOutput } from './tokens'
 import type { SectionWarning } from './sectionWarning'
+import { hasLiteralInput } from './chainGraph'
 
 // Pure — reporting the miss is the caller's job (#37).
 export interface SocketRead {
@@ -69,9 +70,7 @@ export function resolveNodePrompt(
   for (const slot of promptSlots(agent.systemPrompt)) {
     const edge = chain.edges.find(e => e.toNode === node.id && e.toSocket === slot)
     let value: string
-    if (!edge) {
-      value = `[${slot}: not wired]`
-    } else {
+    if (edge) {
       const src = chain.nodes.find(n => n.id === edge.fromNode)
       if (!src) {
         value = `[${slot}: source "${edge.fromNode}" missing]`
@@ -84,6 +83,10 @@ export function resolveNodePrompt(
           value = `[${slot}: "${read.emptySection}" section empty]`
         }
       }
+    } else if (hasLiteralInput(node, slot)) {
+      value = node.inputs![slot]
+    } else {
+      value = `[${slot}: not wired]`
     }
     out = fillSlot(out, slot, value).text
   }

@@ -56,9 +56,11 @@ This structure is the whole system. The Next.js app reads it, runs chains agains
 
 ## Slots and wiring
 
-Variable passing is local, explicit, and edge-driven — the heart of the system:
+Variable passing is local, explicit, and dual-mode (edges or literals) — the heart of the system:
 
-- `{slot}` tokens in an agent's prompt are input slots, resolved by following the incoming edge wired to that slot
+- `{slot}` tokens in an agent's prompt are input slots. Every input source is explicit: a saved literal on the node or a visible edge wired to that slot.
+- A wired edge takes strict precedence: if connected, the slot reads the upstream source and reports any upstream failure directly without falling back to a literal.
+- When unwired, an explicitly saved literal (`node.inputs[slot]`) supplies the value (an empty string `""` is a valid literal). Connecting and disconnecting preserves this text.
 - Sockets slice outputs: `output` is the full text, `summary` is just the `## Summary` section, and any markdown header can be sliced by name
 - Context nodes inject files from `context/`; seed nodes inject the run's initial prompt
 

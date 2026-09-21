@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { answerHold, hasAnsweredHold, holdsKeptByFork, openHold, readPick, selectHold } from '../lib/hold'
+import { answerHold, hasAnsweredHold, holdsKeptByFork, openHold, readAnswerRequest, readPick, selectHold } from '../lib/hold'
 import type { HoldRecord, RunMeta } from '../lib/types'
 
 const DECIDER = '## Candidate 1\nA\n\n## Candidate 2\nB'
@@ -111,3 +111,30 @@ test('answerHold: a copied record is still the one replaced', () => {
   const answer = answerHold([open], { ...open }, 'go')
   assert.deepStrictEqual(answer.holds, [answer.record])
 })
+
+test('readAnswerRequest: candidate selection without direction succeeds for pure selection hold', () => {
+  const reqChosen = readAnswerRequest({ chosen: 'Candidate 1' })
+  assert.ok(!('error' in reqChosen))
+  assert.strictEqual(reqChosen.chosen, 'Candidate 1')
+  assert.strictEqual(reqChosen.direction, '')
+
+  const reqCustom = readAnswerRequest({ custom: 'My custom idea' })
+  assert.ok(!('error' in reqCustom))
+  assert.strictEqual(reqCustom.custom, 'My custom idea')
+  assert.strictEqual(reqCustom.direction, '')
+})
+
+test('readAnswerRequest: refusal when both direction and candidate pick are absent', () => {
+  const refusal = readAnswerRequest({})
+  assert.ok('error' in refusal)
+  assert.strictEqual(refusal.status, 400)
+  assert.strictEqual(refusal.error, 'direction or candidate selection is required')
+})
+
+test('answerHold: pure candidate selection with empty direction produces clean output without trailing newlines', () => {
+  const open = hold('gate')
+  const pick = readPick(open, 'Candidate 1') as { candidate: { heading: string; body: string } }
+  const answer = answerHold([open], open, '', pick)
+  assert.strictEqual(answer.output.output, 'PICK: Candidate 1\nA')
+})
+
