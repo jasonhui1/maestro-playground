@@ -5,11 +5,17 @@ import type { ChatCallHooks, WireMessage } from '../../lib/tools/loop'
 import { answer } from './fakeModel'
 import { requestEntry } from './requestWorkspace'
 
+export interface ScenarioContext {
+  setRunId: (id: string) => void
+  setTime: (iso: string) => void
+}
+
 export interface ScenarioResult {
   scenario: string
   files: Record<string, string>
   events: Record<string, unknown>[]
   metadata?: Record<string, unknown>
+  sourceMetadata?: Record<string, unknown>
 }
 
 export function formatJson(val: unknown): string {
@@ -26,19 +32,8 @@ export function formatDescriptor(status = 200, contentType = 'text/event-stream'
   })
 }
 
-export function formatRefusalResponse(status: number, body: unknown): string {
-  return formatJson({
-    status,
-    headers: {
-      'content-type': 'application/json',
-    },
-    body,
-  })
-}
-
 export async function drainSse(res: Response): Promise<{ text: string; events: Record<string, unknown>[] }> {
   const text = await new Response(res.body).text()
-  // Ensure LF line endings for consistency across platforms
   const normalized = text.replace(/\r\n/g, '\n')
   const events = normalized.split('\n\n').flatMap(frame => {
     const line = frame.split('\n').find(l => l.startsWith('data: '))
@@ -197,10 +192,7 @@ export async function runGetLayout(runId: string): Promise<Record<string, unknow
   return res.json()
 }
 
-export async function runFreshScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runFreshScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-fresh'
   setRunId(runId)
   setTime('2026-09-21T10:00:00.000Z')
@@ -227,10 +219,7 @@ export async function runFreshScenario(
   }
 }
 
-export async function runHoldScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runHoldScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-hold'
   setRunId(runId)
   setTime('2026-09-21T10:00:00.000Z')
@@ -257,20 +246,15 @@ export async function runHoldScenario(
   }
 }
 
-export async function runResumeScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runResumeScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-resume'
   setRunId(runId)
   setTime('2026-09-21T10:00:00.000Z')
 
-  // Setup: run to hold
   const { POST: startRun } = await import('../../app/api/run/route')
   const setupRes = await startRun({ json: async () => ({ chainName: 'held-chain', seedPrompt: 'Setup hold' }) } as NextRequest)
   await drainSse(setupRes)
 
-  // Advance time for resume action
   setTime('2026-09-21T10:01:00.000Z')
 
   const requestBody = {
@@ -301,20 +285,15 @@ export async function runResumeScenario(
   }
 }
 
-export async function runPromoteScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runPromoteScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-promote'
   setRunId(runId)
   setTime('2026-09-21T10:00:00.000Z')
 
-  // Setup 1: run to hold
   const { POST: startRun } = await import('../../app/api/run/route')
   const setupRes = await startRun({ json: async () => ({ chainName: 'held-chain', seedPrompt: 'Setup promote' }) } as NextRequest)
   await drainSse(setupRes)
 
-  // Setup 2: chat on node proposer
   setTime('2026-09-21T10:01:00.000Z')
   const { POST: nodeChat } = await import('../../app/api/runs/[runId]/nodes/[nodeId]/chat/route')
   const chatRes = await nodeChat(
@@ -323,7 +302,6 @@ export async function runPromoteScenario(
   )
   await drainSse(chatRes)
 
-  // Primary request: promote turn 1
   setTime('2026-09-21T10:02:00.000Z')
   const requestBody = { turn: 1 }
   const { POST: promoteRoute } = await import('../../app/api/runs/[runId]/nodes/[nodeId]/promote/route')
@@ -350,20 +328,17 @@ export async function runPromoteScenario(
   }
 }
 
-export async function runForkScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runForkScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const sourceId = 'contract-run-source'
   setRunId(sourceId)
   setTime('2026-09-21T10:00:00.000Z')
 
-  // Setup: complete fresh run
   const { POST: startRun } = await import('../../app/api/run/route')
   const setupRes = await startRun({ json: async () => ({ chainName: 'fresh-chain', seedPrompt: 'Setup source run' }) } as NextRequest)
   await drainSse(setupRes)
 
-  // Primary request: fork from second node
+  const sourceMetaBefore = await runGetRun(sourceId)
+
   setTime('2026-09-21T10:01:00.000Z')
   const forkId = 'contract-run-fork'
   setRunId(forkId)
@@ -387,6 +362,7 @@ export async function runForkScenario(
 
   const runMeta = await runGetRun(forkId)
   const layout = await runGetLayout(forkId)
+  const sourceMetaAfter = await runGetRun(sourceId)
 
   return {
     scenario: 'fork',
@@ -399,13 +375,14 @@ export async function runForkScenario(
     },
     events,
     metadata: runMeta,
+    sourceMetadata: {
+      before: sourceMetaBefore,
+      after: sourceMetaAfter,
+    },
   }
 }
 
-export async function runErrorScenario(
-  setRunId: (id: string) => void,
-  setTime: (iso: string) => void,
-): Promise<ScenarioResult> {
+export async function runErrorScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-error'
   setRunId(runId)
   setTime('2026-09-21T10:00:00.000Z')
@@ -433,13 +410,11 @@ export async function runErrorScenario(
   const res = await startRun({ json: async () => requestBody } as NextRequest)
   const { text: streamText, events } = await drainSse(res)
 
-  // Clear interceptor for GET observations
   requestEntry.wrap = undefined
 
   const runMeta = await runGetRun(runId)
   const layout = await runGetLayout(runId)
 
-  // Exercise HTTP refusal on resume endpoint with empty body
   const { POST: resumeRoute } = await import('../../app/api/runs/[runId]/resume/route')
   const refusalReqBody = {}
   const refusalRes = await resumeRoute(
@@ -457,7 +432,7 @@ export async function runErrorScenario(
       'run.json': formatJson(runMeta),
       'layout.json': formatJson(layout),
       'refusal-request.json': formatJson(refusalReqBody),
-      'refusal-response.json': formatRefusalResponse(refusalRes.status, refusalBody),
+      'refusal-response.json': formatJson(refusalBody),
     },
     events,
     metadata: runMeta,
@@ -479,6 +454,7 @@ export function getContractManifest(): Record<string, unknown> {
     scenarios: {
       fresh: {
         description: 'Fresh run over a linear chain completing with a timeline layout',
+        setup: 'Linear chain seed -> first -> second with declared timeline view',
         request: {
           method: 'POST',
           path: '/api/run',
@@ -509,6 +485,7 @@ export function getContractManifest(): Record<string, unknown> {
       },
       hold: {
         description: 'Run reaching a human-in-the-loop hold node with candidate options',
+        setup: 'Held chain seed -> proposer -> decider -> hold -> after',
         request: {
           method: 'POST',
           path: '/api/run',
@@ -539,6 +516,7 @@ export function getContractManifest(): Record<string, unknown> {
       },
       resume: {
         description: 'Resuming a held run with a chosen candidate and user direction',
+        setup: 'Execute held chain until paused at hold node',
         request: {
           method: 'POST',
           path: '/api/runs/:id/resume',
@@ -569,6 +547,7 @@ export function getContractManifest(): Record<string, unknown> {
       },
       promote: {
         description: 'Promoting a node chat reply to replace node output and rerun to the hold',
+        setup: 'Execute held chain to hold, append node chat reply to proposer, promote turn 1',
         request: {
           method: 'POST',
           path: '/api/runs/:id/nodes/:nodeId/promote',
@@ -599,6 +578,7 @@ export function getContractManifest(): Record<string, unknown> {
       },
       fork: {
         description: 'Forking an existing completed run from an upstream node',
+        setup: 'Execute fresh chain to completion, then fork from second node',
         request: {
           method: 'POST',
           path: '/api/runs/:id/fork',
@@ -629,6 +609,7 @@ export function getContractManifest(): Record<string, unknown> {
       },
       error: {
         description: 'Terminal stream failure after persistence fault, plus HTTP refusal',
+        setup: 'Held chain executed with one-shot fault on runs.update persisting status: waiting',
         request: {
           method: 'POST',
           path: '/api/run',
