@@ -5,7 +5,6 @@ import { ModelPicker } from '@/components/ModelPicker'
 import { streamRun, endedRunId } from '@/lib/runStream'
 import { CONTROL } from '@/lib/resultControls'
 
-// #128: Resume form with model switch defaulting to the run's model override.
 export function ResumeForm({
   runId,
   hold,

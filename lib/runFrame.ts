@@ -1,5 +1,6 @@
 import { ChainDef, FieldSource } from './types'
 import { RunStateMap } from './runState'
+import { isModelPriced } from './pricing'
 
 /** Where the run's seed came from — the two shapes the result view offers (#66), plus
  *  `log` for a past run reopened from history, which never recorded which one it was (#72),
@@ -9,8 +10,6 @@ export type SeedSource =
   | { kind: 'file'; name: string }
   | { kind: 'log' }
   | { kind: 'pinned'; files: string[] }
-
-import { isModelPriced } from './pricing'
 
 /**
  * `running` — at least one node is still working, or none has finished.

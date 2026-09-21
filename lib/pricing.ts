@@ -36,10 +36,15 @@ export function calcCost(model: string, tokensIn: number, tokensOut: number): nu
   return p.input * tokensIn + p.output * tokensOut
 }
 
-// #128
 export const PRICED_MODELS: string[] = Object.keys(PRICING)
 
-// #128
+export function parseModelOverride(val: unknown): { valid: true; value?: string | null } | { valid: false; error: string } {
+  if (val === undefined) return { valid: true }
+  if (val === null) return { valid: true, value: null }
+  if (typeof val === 'string' && val.trim()) return { valid: true, value: val.trim() }
+  return { valid: false, error: 'modelOverride must be a non-empty string or null' }
+}
+
 export function knownModelCatalogue(declaredModels: string[] = [], configuredModel?: string): string[] {
   const set = new Set<string>(PRICED_MODELS)
   if (configuredModel?.trim()) set.add(configuredModel.trim())
@@ -49,7 +54,6 @@ export function knownModelCatalogue(declaredModels: string[] = [], configuredMod
   return Array.from(set)
 }
 
-// #128
 export function resolveContinuationModelOverride(
   sourceOverride: string | undefined,
   requestOverride: string | null | undefined,

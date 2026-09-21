@@ -4,7 +4,7 @@ import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspa
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
-import { resolveContinuationModelOverride } from './pricing'
+import { resolveContinuationModelOverride, parseModelOverride } from './pricing'
 
 export interface Fork {
   /** The nodes whose output changes; each one's descendants rerun. The first names the fork. */
@@ -32,18 +32,15 @@ export function readForkRequest({ from, revisions, versions, modelOverride }: Re
   if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
     return badRequest("versions must be 'current' or 'pinned'")
   }
-  if (modelOverride !== undefined && modelOverride !== null) {
-    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
-      return badRequest('modelOverride must be a non-empty string or null')
-    }
-  }
+  const parsedOverride = parseModelOverride(modelOverride)
+  if (!parsedOverride.valid) return badRequest(parsedOverride.error)
   if (from === undefined && !Object.keys(revisions ?? {}).length) return badRequest('from or revisions is required')
   if (from !== undefined && revisions && from in revisions) return badRequest(`Node ${from} cannot both rerun and be revised`)
   return {
     from,
     revisions,
     versions,
-    ...(modelOverride !== undefined ? { modelOverride: modelOverride === null ? null : modelOverride.trim() } : {}),
+    ...(parsedOverride.value !== undefined ? { modelOverride: parsedOverride.value } : {}),
   }
 }
 

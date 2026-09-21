@@ -8,6 +8,7 @@ import { conflict, toResponse } from './refusal'
 import type { Workspace } from './runFolders'
 import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
+import { resolveContinuationModelOverride } from './pricing'
 
 /** What a continuation does to a run: answer a hold (resume), promote a reply, or fork. */
 export type ContinuePlan =
@@ -35,8 +36,6 @@ export function continueRun(
     : fork(ws, workspace, meta, plan.fork, context)
   return 'error' in res ? toResponse(res) : res
 }
-
-import { resolveContinuationModelOverride } from './pricing'
 
 function answer(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta,
@@ -97,6 +96,7 @@ function promote(
     logged: kept, fresh: plan.revision, holds: meta.holds, history,
     metaUpdate: { agentOutputs: [...history, plan.revision] },
     rewriteLog: { step: sourceStep, output: plan.source },
+    modelOverride: meta.modelOverride,
   }, context)
 }
 
@@ -142,7 +142,7 @@ function inPlace(
     seedPrompt: meta.seedPrompt,
     paramValue: meta.parameter?.value ?? '',
     context,
-    modelOverride: stretch.modelOverride ?? meta.modelOverride,
+    modelOverride: stretch.modelOverride,
     replay: { logged: stretch.logged, fresh: [stretch.fresh] },
     firstStep: ws.runs.nextStep(meta.runId),
     holds: stretch.holds,

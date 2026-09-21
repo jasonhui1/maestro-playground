@@ -5,6 +5,8 @@ import path from 'path'
 import os from 'os'
 import { requestEntry } from './helpers/requestWorkspace'
 import { fakeModel } from './helpers/fakeModel'
+import type { NextRequest } from 'next/server'
+import type { RunMeta } from '@/lib/types'
 import {
   initContractWorkspace,
   contractModelResponder,
@@ -17,6 +19,8 @@ import {
   runCapabilitiesScenario,
   getContractManifest,
   formatJson,
+  drainSse,
+  runGetRun,
   type ScenarioContext,
 } from './helpers/contractScenarios'
 
@@ -261,4 +265,28 @@ test('contract: drift comparison catches reordering, deletion, and frame changes
   assert.throws(() => assert.strictEqual(modifiedField, original), /runId/)
   assert.throws(() => assert.strictEqual(reordered, original))
   assert.throws(() => assert.strictEqual(deletedFrame, original))
+})
+
+test('contract: modelOverride preserves stream framing and records in metadata (#128, #136)', async () => {
+  freshWorkspace()
+  const runId = 'contract-run-model-override'
+  setNextRunId(runId)
+  setTime('2026-09-21T10:00:00.000Z')
+
+  const requestBody = { chainName: 'fresh-chain', seedPrompt: 'Run with model override', modelOverride: 'openai/gpt-4o' }
+  const { POST } = await import('../app/api/run/route')
+  const res = await POST({ json: async () => requestBody } as NextRequest)
+  const { events } = await drainSse(res)
+
+  assert.strictEqual(events[0].type, 'run_start')
+  assert.strictEqual(events[0].runId, runId)
+  assert.strictEqual(events.at(-1)!.type, 'run_complete')
+
+  const meta = (await runGetRun(runId)) as unknown as RunMeta
+  assert.strictEqual(meta.status, 'complete')
+  assert.strictEqual(meta.modelOverride, 'openai/gpt-4o')
+  for (const out of meta.agentOutputs) {
+    assert.strictEqual(out.model, 'openai/gpt-4o')
+    assert.strictEqual(out.modelSource, 'run override')
+  }
 })

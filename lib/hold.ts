@@ -1,5 +1,6 @@
 import { listSections } from './graph'
 import { badRequest, conflict, notFound } from './refusal'
+import { parseModelOverride } from './pricing'
 import type { SectionWarning } from './sectionWarning'
 import type { AgentOutput, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -50,17 +51,14 @@ export function readAnswerRequest({ holdId, direction, chosen, custom, modelOver
   if (holdId != null && typeof holdId !== 'string') return badRequest('holdId must be a node id')
   if (chosen != null && typeof chosen !== 'string') return badRequest('chosen must be a candidate heading')
   if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
-  if (modelOverride !== undefined && modelOverride !== null) {
-    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
-      return badRequest('modelOverride must be a non-empty string or null')
-    }
-  }
+  const parsedOverride = parseModelOverride(modelOverride)
+  if (!parsedOverride.valid) return badRequest(parsedOverride.error)
   return {
     direction: dir,
     holdId: holdId ?? undefined,
     chosen: chosen ?? undefined,
     custom: custom ?? undefined,
-    ...(modelOverride !== undefined ? { modelOverride: modelOverride === null ? null : modelOverride.trim() } : {}),
+    ...(parsedOverride.value !== undefined ? { modelOverride: parsedOverride.value } : {}),
   }
 }
 

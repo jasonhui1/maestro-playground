@@ -16,7 +16,6 @@ export interface ModelPickerProps {
   disabled?: boolean
 }
 
-// #128: Shared model dropdown across launch, resume, and fork surfaces.
 export function ModelPicker({
   value,
   onChange,

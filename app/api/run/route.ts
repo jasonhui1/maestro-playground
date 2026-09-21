@@ -4,6 +4,7 @@ import { validateChain } from '@/lib/chainGraph'
 import { resolveRunChain } from '@/lib/resolveRunChain'
 import { startRun } from '@/lib/runSession'
 import { requestWorkspace } from '@/lib/requestWorkspace'
+import { parseModelOverride } from '@/lib/pricing'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -12,12 +13,11 @@ export async function POST(req: NextRequest) {
   if (['branchOutputs', 'branchedFromRunId', 'branchedFromStep'].some(field => body[field] !== undefined)) {
     return Response.json({ error: 'Branch fields are retired; fork through POST /api/runs/:id/fork' }, { status: 400 })
   }
-  if (modelOverride !== undefined && modelOverride !== null) {
-    if (typeof modelOverride !== 'string' || !modelOverride.trim()) {
-      return Response.json({ error: 'modelOverride must be a non-empty string or null' }, { status: 400 })
-    }
+  const parsedOverride = parseModelOverride(modelOverride)
+  if (!parsedOverride.valid) {
+    return Response.json({ error: parsedOverride.error }, { status: 400 })
   }
-  const cleanOverride = typeof modelOverride === 'string' && modelOverride.trim() ? modelOverride.trim() : undefined
+  const cleanOverride = parsedOverride.value ?? undefined
 
   const ws = requestWorkspace()
   const workspace = ws.definitions()

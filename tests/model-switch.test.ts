@@ -354,6 +354,43 @@ test('continuation inheritance: resume inherits source override when omitted, re
   assert.strictEqual(meta.modelOverride, 'openai/gpt-4o')
 })
 
+test('continuation inheritance: in-place resume with modelOverride: null clears override on subsequent nodes and logs (#128)', async () => {
+  const tmp = createTempDir()
+  setupWorkspace(tmp)
+  const { POST: runPOST } = await import('../app/api/run/route')
+  const { POST: resumePOST } = await import('../app/api/runs/[runId]/resume/route')
+
+  // Launch held run with modelOverride
+  const events = await sse(await runPOST({
+    json: async () => ({ chainName: 'held', seedPrompt: 'go', modelOverride: 'openai/gpt-4o' }),
+  } as Req))
+  const runId = events.at(-1)!.runId as string
+
+  // Resume with modelOverride: null -> clears override
+  ranAgents.length = 0
+  await sse(await resumePOST({
+    json: async () => ({ direction: 'proceed', modelOverride: null }),
+  } as Req, { params: Promise.resolve({ runId }) }))
+
+  // The downstream node 'after' ran with its declared file model
+  const afterRun = ranAgents.find(a => a.slug === 'after')
+  assert.ok(afterRun)
+  assert.strictEqual(afterRun.model, 'anthropic/claude-3-haiku')
+  assert.strictEqual(afterRun.modelSource, 'file')
+
+  const metaPath = path.join(tmp, 'logs', runId, 'meta.json')
+  const meta: RunMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
+  assert.strictEqual(meta.modelOverride, undefined)
+
+  // Step log for 'after' records declared model and model_source: file
+  const logFiles = fs.readdirSync(path.join(tmp, 'logs', runId))
+  const afterLogFile = logFiles.find(f => f.endsWith('-after.md'))
+  assert.ok(afterLogFile, 'step log for after exists')
+  const parsedLog = matter(fs.readFileSync(path.join(tmp, 'logs', runId, afterLogFile), 'utf8'))
+  assert.strictEqual(parsedLog.data.model, 'anthropic/claude-3-haiku')
+  assert.strictEqual(parsedLog.data.model_source, 'file')
+})
+
 test('continuation inheritance: fork with null clears override; fork with new model replaces (#128)', async () => {
   const tmp = createTempDir()
   setupWorkspace(tmp)
