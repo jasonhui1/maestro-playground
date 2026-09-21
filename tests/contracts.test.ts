@@ -1,4 +1,4 @@
-import { test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { test, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -18,7 +18,6 @@ import {
   getContractManifest,
   formatJson,
   type ScenarioContext,
-  type ScenarioResult,
 } from './helpers/contractScenarios'
 
 // #136: Mock request workspace, logger ID generation, and model chatCall
@@ -125,7 +124,7 @@ test('contract: promote run updates proposal and re-evaluates decider (#136)', a
   assert.ok(meta.holds?.[0].candidates[0].body.includes('Revised Alpha Option'))
 })
 
-test('contract: fork run forks from second node preserving first output (#136)', async () => {
+test('contract: fork run forks from second node, preserving first output and leaving source run unchanged (#136)', async () => {
   freshWorkspace()
   const result = await runForkScenario(context)
 
@@ -144,7 +143,6 @@ test('contract: fork run forks from second node preserving first output (#136)',
   assert.strictEqual(meta.branchedFromNode, 'second')
   assert.ok(meta.agentOutputs.some(o => o.nodeId === 'first'))
 
-  // Verify source run was unchanged after fork
   assert.ok(result.sourceMetadata)
   assert.deepStrictEqual(result.sourceMetadata.after, result.sourceMetadata.before)
 })
@@ -246,7 +244,6 @@ test('contract: fixtures check and update harness (#136)', async () => {
       assert.strictEqual(diskContent, expectedContent, `Drift detected in ${relPath}. Run "npm run contracts:update" if intentional.`)
     }
 
-    // Fixture inventory assertion: fail on obsolete or unexpected files in contracts/
     const diskFiles = listFilesRecursive(contractsDir).filter(f => f !== 'README.md')
     const expectedFileSet = new Set(generatedFiles.keys())
     for (const f of diskFiles) {

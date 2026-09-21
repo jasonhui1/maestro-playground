@@ -15,31 +15,32 @@ export interface ScenarioResult {
   files: Record<string, string>
   events: Record<string, unknown>[]
   metadata?: Record<string, unknown>
-  sourceMetadata?: Record<string, unknown>
+  sourceMetadata?: { before: Record<string, unknown>; after: Record<string, unknown> }
 }
 
 export function formatJson(val: unknown): string {
   return JSON.stringify(val, null, 2) + '\n'
 }
 
-export function formatDescriptor(status = 200, contentType = 'text/event-stream', bodyFile = 'stream.sse'): string {
+export function responseDescriptor(res: Response, bodyFile = 'stream.sse'): string {
+  const headers: Record<string, string> = {}
+  const contentType = res.headers.get('content-type')
+  if (contentType) headers['content-type'] = contentType
   return formatJson({
-    status,
-    headers: {
-      'content-type': contentType,
-    },
+    status: res.status,
+    headers,
     bodyFile,
   })
 }
 
-export async function drainSse(res: Response): Promise<{ text: string; events: Record<string, unknown>[] }> {
-  const text = await new Response(res.body).text()
-  const normalized = text.replace(/\r\n/g, '\n')
-  const events = normalized.split('\n\n').flatMap(frame => {
+export async function drainSse(res: Response): Promise<{ raw: string; events: Record<string, unknown>[] }> {
+  const raw = await new Response(res.body).text()
+  const forParsing = raw.replace(/\r\n/g, '\n')
+  const events = forParsing.split('\n\n').flatMap(frame => {
     const line = frame.split('\n').find(l => l.startsWith('data: '))
     return line ? [JSON.parse(line.slice(6))] : []
   })
-  return { text: normalized, events }
+  return { raw, events }
 }
 
 export function initContractWorkspace(root: string): void {
@@ -130,10 +131,10 @@ export function setForkMode(val: boolean): void {
   isForkMode = val
 }
 
-export function contractModelResponder({ last, messages, model, agentSlug, hooks }: {
-  last: WireMessage
+export function contractModelResponder({ messages, agentSlug, hooks }: {
+  _last?: WireMessage
   messages: WireMessage[]
-  model: string
+  _model?: string
   agentSlug?: string
   hooks?: ChatCallHooks
 }) {
@@ -192,6 +193,42 @@ export async function runGetLayout(runId: string): Promise<Record<string, unknow
   return res.json()
 }
 
+export async function recordScenarioRun({
+  scenario,
+  runId,
+  requestBody,
+  response,
+  extraFiles = {},
+  sourceMetadata,
+}: {
+  scenario: string
+  runId: string
+  requestBody: unknown
+  response: Response
+  extraFiles?: Record<string, string>
+  sourceMetadata?: { before: Record<string, unknown>; after: Record<string, unknown> }
+}): Promise<ScenarioResult> {
+  const { raw: streamText, events } = await drainSse(response)
+  const descriptor = responseDescriptor(response, 'stream.sse')
+  const runMeta = await runGetRun(runId)
+  const layout = await runGetLayout(runId)
+
+  return {
+    scenario,
+    files: {
+      'request.json': formatJson(requestBody),
+      'response.json': descriptor,
+      'stream.sse': streamText,
+      'run.json': formatJson(runMeta),
+      'layout.json': formatJson(layout),
+      ...extraFiles,
+    },
+    events,
+    metadata: runMeta,
+    sourceMetadata,
+  }
+}
+
 export async function runFreshScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-fresh'
   setRunId(runId)
@@ -200,23 +237,8 @@ export async function runFreshScenario({ setRunId, setTime }: ScenarioContext): 
   const requestBody = { chainName: 'fresh-chain', seedPrompt: 'Start fresh run' }
   const { POST } = await import('../../app/api/run/route')
   const res = await POST({ json: async () => requestBody } as NextRequest)
-  const { text: streamText, events } = await drainSse(res)
 
-  const runMeta = await runGetRun(runId)
-  const layout = await runGetLayout(runId)
-
-  return {
-    scenario: 'fresh',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
-    },
-    events,
-    metadata: runMeta,
-  }
+  return recordScenarioRun({ scenario: 'fresh', runId, requestBody, response: res })
 }
 
 export async function runHoldScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
@@ -227,23 +249,8 @@ export async function runHoldScenario({ setRunId, setTime }: ScenarioContext): P
   const requestBody = { chainName: 'held-chain', seedPrompt: 'Start hold run' }
   const { POST } = await import('../../app/api/run/route')
   const res = await POST({ json: async () => requestBody } as NextRequest)
-  const { text: streamText, events } = await drainSse(res)
 
-  const runMeta = await runGetRun(runId)
-  const layout = await runGetLayout(runId)
-
-  return {
-    scenario: 'hold',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
-    },
-    events,
-    metadata: runMeta,
-  }
+  return recordScenarioRun({ scenario: 'hold', runId, requestBody, response: res })
 }
 
 export async function runResumeScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
@@ -266,23 +273,8 @@ export async function runResumeScenario({ setRunId, setTime }: ScenarioContext):
     { json: async () => requestBody } as NextRequest,
     { params: Promise.resolve({ runId }) },
   )
-  const { text: streamText, events } = await drainSse(res)
 
-  const runMeta = await runGetRun(runId)
-  const layout = await runGetLayout(runId)
-
-  return {
-    scenario: 'resume',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
-    },
-    events,
-    metadata: runMeta,
-  }
+  return recordScenarioRun({ scenario: 'resume', runId, requestBody, response: res })
 }
 
 export async function runPromoteScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
@@ -309,23 +301,8 @@ export async function runPromoteScenario({ setRunId, setTime }: ScenarioContext)
     { json: async () => requestBody } as NextRequest,
     { params: Promise.resolve({ runId, nodeId: 'proposer' }) },
   )
-  const { text: streamText, events } = await drainSse(res)
 
-  const runMeta = await runGetRun(runId)
-  const layout = await runGetLayout(runId)
-
-  return {
-    scenario: 'promote',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
-    },
-    events,
-    metadata: runMeta,
-  }
+  return recordScenarioRun({ scenario: 'promote', runId, requestBody, response: res })
 }
 
 export async function runForkScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
@@ -345,40 +322,25 @@ export async function runForkScenario({ setRunId, setTime }: ScenarioContext): P
 
   const requestBody = { from: 'second' }
   const { POST: forkRoute } = await import('../../app/api/runs/[runId]/fork/route')
-  let streamText = ''
-  let events: Record<string, unknown>[] = []
   setForkMode(true)
   try {
     const res = await forkRoute(
       { json: async () => requestBody } as NextRequest,
       { params: Promise.resolve({ runId: sourceId }) },
     )
-    const drained = await drainSse(res)
-    streamText = drained.text
-    events = drained.events
+    const result = await recordScenarioRun({
+      scenario: 'fork',
+      runId: forkId,
+      requestBody,
+      response: res,
+    })
+    const sourceMetaAfter = await runGetRun(sourceId)
+    return {
+      ...result,
+      sourceMetadata: { before: sourceMetaBefore, after: sourceMetaAfter },
+    }
   } finally {
     setForkMode(false)
-  }
-
-  const runMeta = await runGetRun(forkId)
-  const layout = await runGetLayout(forkId)
-  const sourceMetaAfter = await runGetRun(sourceId)
-
-  return {
-    scenario: 'fork',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
-    },
-    events,
-    metadata: runMeta,
-    sourceMetadata: {
-      before: sourceMetaBefore,
-      after: sourceMetaAfter,
-    },
   }
 }
 
@@ -408,12 +370,8 @@ export async function runErrorScenario({ setRunId, setTime }: ScenarioContext): 
   const requestBody = { chainName: 'held-chain', seedPrompt: 'Trigger error run' }
   const { POST: startRun } = await import('../../app/api/run/route')
   const res = await startRun({ json: async () => requestBody } as NextRequest)
-  const { text: streamText, events } = await drainSse(res)
 
   requestEntry.wrap = undefined
-
-  const runMeta = await runGetRun(runId)
-  const layout = await runGetLayout(runId)
 
   const { POST: resumeRoute } = await import('../../app/api/runs/[runId]/resume/route')
   const refusalReqBody = {}
@@ -423,20 +381,16 @@ export async function runErrorScenario({ setRunId, setTime }: ScenarioContext): 
   )
   const refusalBody = await refusalRes.json()
 
-  return {
+  return recordScenarioRun({
     scenario: 'error',
-    files: {
-      'request.json': formatJson(requestBody),
-      'response.json': formatDescriptor(200, 'text/event-stream', 'stream.sse'),
-      'stream.sse': streamText,
-      'run.json': formatJson(runMeta),
-      'layout.json': formatJson(layout),
+    runId,
+    requestBody,
+    response: res,
+    extraFiles: {
       'refusal-request.json': formatJson(refusalReqBody),
       'refusal-response.json': formatJson(refusalBody),
     },
-    events,
-    metadata: runMeta,
-  }
+  })
 }
 
 export async function runCapabilitiesScenario(): Promise<Record<string, unknown>> {

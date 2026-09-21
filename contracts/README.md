@@ -73,7 +73,7 @@ Because successful run and continuation routes stream SSE over `Content-Type: te
   "bodyFile": "stream.sse"
 }
 ```
-For non-streaming endpoints (such as the HTTP 400 Bad Request recorded in `error/refusal-response.json`), the descriptor contains the actual JSON wire payload under its `"body"` key.
+For non-streaming endpoints (such as the HTTP 400 Bad Request recorded in `error/refusal-response.json`), the file contains the exact JSON response body returned over the wire (e.g. `{"error": "..."}`). Its HTTP status (400) and headers are cataloged in `manifest.json`.
 
 ## How a Plugin Consumes Contracts
 
