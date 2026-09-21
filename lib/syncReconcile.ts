@@ -1,3 +1,4 @@
+// The edit session is the only caller: reconciling is not something a view decides (#121).
 export type Reconciliation = 'ignore-echo' | 'adopt' | 'conflict'
 
 // Decide what to do when the entity file changes on disk while the editor is open.

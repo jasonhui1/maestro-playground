@@ -1,8 +1,9 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAutoSave } from '@/hooks/useAutoSave'
+import { useEditedFile } from '@/hooks/useEditedFile'
 import { FileEditor } from '@/components/workspace/FileEditor'
+import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner'
 import { X, ExternalLink } from 'lucide-react'
 import { AGENT_FIELDS, type AgentDef, type AgentField, type FieldSource, type SkillDef } from '@/lib/types'
 import { forbiddenAgentFieldMessage } from '@/lib/fs/validate'
@@ -15,7 +16,8 @@ export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved 
   onClose: () => void
   onSaved?: () => void
 }) {
-  const [loaded, setLoaded] = useState<{ slug: string; initial: string; resolved: AgentDef } | null>(null)
+  // Only the resolved block is fetched here; the file's own text belongs to useEditedFile.
+  const [loaded, setLoaded] = useState<{ slug: string; resolved: AgentDef } | null>(null)
   const [reloads, setReloads] = useState(0)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -27,11 +29,7 @@ export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved 
       .catch(() => ({ raw: '' }))
       .then(d => {
         if (!active) return
-        // A reload after a save refreshes the resolved block only — replacing `initial`
-        // would reset the editor under the typist's cursor.
-        setLoaded(prev => prev?.slug === slug
-          ? { ...prev, resolved: d as AgentDef }
-          : { slug, initial: d.raw ?? '', resolved: d as AgentDef })
+        setLoaded({ slug, resolved: d as AgentDef })
       })
     return () => { active = false }
   }, [slug, reloads])
@@ -80,7 +78,6 @@ export default function AgentDrawer({ slug, agentName, skills, onClose, onSaved 
             <AgentDrawerEditor
               key={slug}
               slug={slug}
-              initial={ready.initial}
               defaults={ready.resolved.resolution?.sources?.model === 'defaults' ? { model: ready.resolved.model } : {}}
               onSaved={handleSaved}
             />
@@ -170,19 +167,23 @@ function ResolvedAgent({ agent, skills }: { agent: AgentDef; skills?: SkillDef[]
   )
 }
 
-function AgentDrawerEditor({ slug, initial, defaults, onSaved }: {
+function AgentDrawerEditor({ slug, defaults, onSaved }: {
   slug: string
-  initial: string
   defaults?: Record<string, unknown>
   onSaved?: () => void
 }) {
-  const { content, setContent, status, error } = useAutoSave('agent', slug, initial)
+  const { content, setContent, status, error, conflict, resolve } = useEditedFile('agent', slug)
   const prev = useRef(status)
   useEffect(() => {
     if (prev.current !== 'saved' && status === 'saved') onSaved?.()
     prev.current = status
   }, [status, onSaved])
   return (
-    <FileEditor content={content} onChange={setContent} status={status} error={error} type="agent" language="markdown" defaults={defaults ?? {}} />
+    <div className="h-full flex flex-col">
+      <ExternalChangeBanner conflict={conflict} resolve={resolve} />
+      <div className="flex-1 min-h-0">
+        <FileEditor content={content} onChange={setContent} status={status} error={error} type="agent" language="markdown" defaults={defaults ?? {}} />
+      </div>
+    </div>
   )
 }

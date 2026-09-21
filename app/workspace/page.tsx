@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import { FileEditor } from '@/components/workspace/FileEditor';
-import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave';
+import { useEditedFile } from '@/hooks/useEditedFile';
 import { TabController } from '@/components/workspace/TabController';
 import { WorkspaceSkeleton } from '@/components/workspace/WorkspaceSkeleton';
 import { Play, Network, FileCode, PanelBottom } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore';
 import DockPanel from '@/components/workspace/DockPanel';
 import DockSplit from '@/components/workspace/DockSplit';
 import SeedField from '@/components/workspace/SeedField';
+import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner';
 
 // A context file is bare prose with no frontmatter; every other type is frontmatter + body.
 function editorLanguage(type: string) {
@@ -29,11 +30,10 @@ function WorkspaceContent() {
   const slug = searchParams.get('slug');
   const seedParam = searchParams.get('seed') ?? undefined;
 
-  const [initialContent, setInitialContent] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  
   const [chainView, setChainView] = useState<'graph' | 'yaml'>('graph');
+
+  const { content, setContent, status, error: saveError, conflict, resolve, onDisk, externalRevision, loading, loadError } =
+    useEditedFile(type, slug);
 
   // Every view reads the same list from the store, so a file created while a tool or a
   // skill is open is visible there too — not only in the chain editor (#120).
@@ -43,29 +43,27 @@ function WorkspaceContent() {
   const editorTools = useWorkspaceStore(s => s.files.tools);
   const editorSkills = useWorkspaceStore(s => s.files.skills);
   const defaults = useWorkspaceStore(s => s.files.defaults);
-  // Bumped when a restore rewrote the open file underneath the editor.
-  const revision = useWorkspaceStore(s => s.revision);
 
   useEffect(() => {
     useWorkspaceStore.getState().load()
   }, [])
 
+  // The graph is built from the file, not from the live buffer: it would otherwise re-parse
+  // itself on every drag frame, and it is the graph that writes that buffer (#121).
   const parsedChain = useMemo<ChainDef | null>(() => {
-    if (type !== 'chain' || !slug || !initialContent) return null;
+    if (type !== 'chain' || !slug || !onDisk) return null;
     try {
-      return { ...parseChainContent(initialContent, slug), filePath: '' };
+      return { ...parseChainContent(onDisk, slug), filePath: '' };
     } catch {
       return null;
     }
-  }, [type, slug, initialContent]);
+  }, [type, slug, onDisk]);
 
   const currentFileKey = `${type}:${slug}`;
 
   const view: 'graph' | 'yaml' | 'agent' | 'none' =
     type === 'chain' ? (chainView === 'graph' && parsedChain ? 'graph' : 'yaml')
     : type === 'agent' ? 'agent' : 'none';
-
-  const { content, setContent, status, error: saveError } = useAutoSave(type, slug, initialContent);
 
   // Each view validates its own live buffer: the graph editor publishes its issues up;
   // the YAML view's buffer is this page's autosave content.
@@ -80,11 +78,6 @@ function WorkspaceContent() {
     }
   }, [view, slug, content, editorAgents, editorChains, editorTools, editorSkills])
   const dockIssues = view === 'graph' ? graphIssues : yamlIssues
-
-  // Graph view's real autosave runs inside ChainEditor; mirror its status up so the
-  // header reflects graph edits (the page-level useAutoSave above is inert there).
-  const [graphSaveStatus, setGraphSaveStatus] = useState<SaveStatus>('idle');
-  const headerStatus = view === 'graph' ? graphSaveStatus : status;
 
   // Canonical per-file run-store key for every view (matches ChainEditor's `chain:${slug}`).
   const running = useRunStore(state => state.byFile[currentFileKey]?.running ?? false);
@@ -127,32 +120,6 @@ function WorkspaceContent() {
     }
   }, [currentFileKey, seedParam, type, slug, setSeed]);
 
-  useEffect(() => {
-    if (!type || !slug) {
-      setInitialContent('');
-      return;
-    }
-
-    async function fetchContent() {
-      setLoading(true);
-      setFetchError(null);
-      try {
-        const response = await fetch(`/api/workspace/${type}/${slug}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch file content');
-        }
-        const data = await response.json();
-        setInitialContent(data.raw || '');
-      } catch (err: unknown) {
-        setFetchError(err instanceof Error ? err.message : 'An unknown error occurred');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchContent();
-  }, [type, slug, chainView, revision]);
-
   if (!type || !slug) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-zinc-500">
@@ -162,11 +129,11 @@ function WorkspaceContent() {
     );
   }
 
-  if (fetchError) {
+  if (loadError) {
     return (
       <div className="p-8 text-red-500">
         <h2 className="text-xl font-bold mb-2">Error</h2>
-        <p>{fetchError}</p>
+        <p>{loadError}</p>
       </div>
     );
   }
@@ -201,7 +168,7 @@ function WorkspaceContent() {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">
               <Play size={12} className="fill-current" />{running ? 'Running…' : 'Run'}
             </button>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{headerStatus}</span>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{status}</span>
           </>
         )}
         <button onClick={() => useWorkspaceUiStore.getState().togglePanel()} className="ml-auto p-1.5 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50" aria-label="Toggle panel">
@@ -209,6 +176,8 @@ function WorkspaceContent() {
         </button>
       </header>
       
+      {view !== 'graph' && <ExternalChangeBanner conflict={conflict} resolve={resolve} />}
+
       <div className="flex-1 min-h-0">
         {loading ? (
           <div className="h-full overflow-hidden">
@@ -221,7 +190,7 @@ function WorkspaceContent() {
             main={
               type === 'chain' && chainView === 'graph' && parsedChain ? (
                 <ChainEditor
-                  key={slug}
+                  key={`${slug}:${externalRevision}`}
                   slug={slug}
                   initialChain={parsedChain}
                   agents={editorAgents}
@@ -230,7 +199,6 @@ function WorkspaceContent() {
                   chains={editorChains}
                   tools={editorTools}
                   skills={editorSkills}
-                  onSaveStatus={setGraphSaveStatus}
                   onValidation={setGraphIssues}
                 />
               ) : (

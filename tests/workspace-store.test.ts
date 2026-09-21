@@ -37,7 +37,7 @@ function stubFetch(routes: Record<string, () => { status?: number; body?: unknow
 const toasts = () => useToastStore.getState().toasts.map(t => `${t.type}:${t.message}`)
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ files: EMPTY_FILES, root: undefined, emptyFolders: {}, loaded: false, error: null, revision: 0 })
+  useWorkspaceStore.setState({ files: EMPTY_FILES, root: undefined, emptyFolders: {}, loaded: false, error: null })
   useToastStore.setState({ toasts: [] })
 })
 
@@ -181,15 +181,6 @@ test('workspace-store — a rename plan that names a taken slug stays in the dia
   const out = await useWorkspaceStore.getState().planRename({ type: 'agent', slug: 'one' }, 'two')
   assert.strictEqual(!out.ok && out.inline, 'taken')
   assert.deepStrictEqual(toasts(), [])
-})
-
-test('workspace-store — restoring a version invalidates the open file without a page reload', async () => {
-  stubFetch({ 'GET /api/workspace': () => ({ body: list() }) })
-  await useWorkspaceStore.getState().load()
-
-  const before = useWorkspaceStore.getState().revision
-  useWorkspaceStore.getState().invalidateFile()
-  assert.strictEqual(useWorkspaceStore.getState().revision, before + 1)
 })
 
 test('workspace-store — a workspace that will not load reports the error once', async () => {

@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import matter from 'gray-matter';
 import { diff_match_patch } from 'diff-match-patch';
-import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore';
 
 
 interface Props {
@@ -148,11 +147,8 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
         throw new Error('Failed to save restored content');
       }
 
+      // The buffer catches up through the file watch, like any other change on disk (#121).
       setRestoreStatus({ version, success: true });
-
-      // The file on disk no longer matches the editor's buffer; the store's invalidation
-      // is what re-reads it, in place of reloading the page (#120).
-      useWorkspaceStore.getState().invalidateFile();
     } catch (err) {
       console.error(err);
       setRestoreStatus({ version, success: false });

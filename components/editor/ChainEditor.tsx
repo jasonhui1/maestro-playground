@@ -1,7 +1,7 @@
 'use client'
-import React, { useCallback, useEffect, useMemo, useState, useReducer } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useReducer } from 'react'
 import dagre from 'dagre'
-import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave'
+import { useEditedFile } from '@/hooks/useEditedFile'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain, issuesByNode } from '@/lib/chainGraph'
 import { socketHandles } from '@/lib/nodeSockets'
@@ -18,9 +18,7 @@ import AgentDrawer from './AgentDrawer'
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore'
 import { useSelectionStore } from '@/hooks/store/useSelectionStore'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
-import { parseChainContent } from '@/lib/parseChain'
-import { reconcileExternalEdit } from '@/lib/syncReconcile'
-import { useFileWatch } from '@/hooks/useFileWatch'
+import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner'
 import { Play } from 'lucide-react'
 import InterfacePopover from './InterfacePopover'
 import { Group, Panel, Separator } from 'react-resizable-panels'
@@ -42,7 +40,7 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, initialSeedPrompt, chains, tools, skills, onSaveStatus, onValidation }: {
+export default function ChainEditor({ slug, initialChain, agents, contextFiles, initialSeedPrompt, chains, tools, skills, onValidation }: {
   slug: string
   initialChain: ChainDef
   agents: AgentDef[]
@@ -51,7 +49,6 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   chains: ChainDef[]
   tools?: ToolDef[]
   skills?: SkillDef[]
-  onSaveStatus?: (status: SaveStatus) => void
   onValidation?: (issues: ValidationIssue[]) => void
 }) {
   const historied = useMemo(() => withHistory(applyOp, (op: EditorOp) => !NON_HISTORIC.has(op.type)), [])
@@ -76,33 +73,16 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
   }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
-  const initialMarkdown = useMemo(() => serializeChain(initialChain, seedPositions(initialChain.nodes, initialChain.edges), initialChain.edges), [initialChain])
-  const { setContent, status, content, getLastSaved } = useAutoSave('chain', slug, initialMarkdown)
-
-  // Mirror graph-view autosave status up so the page header can show it (page's own
-  // useAutoSave is inert in graph view because FileEditor isn't mounted).
-  useEffect(() => { onSaveStatus?.(status) }, [status, onSaveStatus])
+  const { setContent, conflict, resolve } = useEditedFile('chain', slug)
 
   const [iface, setIface] = useState<{ inputs: ChainPort[]; outputs: ChainPort[] }>(() => ({
     inputs: initialChain.inputs ?? [],
     outputs: initialChain.outputs ?? [],
   }))
 
-  const incoming = useFileWatch('chain', slug)
-  const [conflict, setConflict] = useState<string | null>(null)
-
-  const adopt = useCallback((raw: string) => {
-    const parsed = parseChainContent(raw, slug)
-    dispatch(editorOps.setGraph(seedPositions(parsed.nodes, parsed.edges), parsed.edges))
-    setIface({ inputs: parsed.inputs ?? [], outputs: parsed.outputs ?? [] })
-  }, [slug])
-
-  useEffect(() => {
-    if (incoming == null) return
-    const decision = reconcileExternalEdit({ local: content, lastSaved: getLastSaved(), incoming })
-    if (decision === 'adopt') adopt(incoming)
-    else if (decision === 'conflict') setConflict(incoming)
-  }, [incoming]) // eslint-disable-line react-hooks/exhaustive-deps
+  // False until the graph has rendered what it is about to write, so opening a
+  // hand-written file does not immediately save the graph's own serialisation (#121).
+  const hasRendered = useRef(false)
 
   const runState = useRunStore(state => {
     const f = state.byFile[fileKey]
@@ -125,6 +105,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   }), [initialChain, iface, nodes, edges])
 
   useEffect(() => {
+    if (!hasRendered.current) { hasRendered.current = true; return }
     setContent(serializeChain(chain))
   }, [chain, setContent])
 
@@ -239,13 +220,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   return (
     <div className="h-full flex flex-col">
-      {conflict && (
-        <div className="px-4 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
-          <span>This chain changed on disk.</span>
-          <button className="font-bold underline" onClick={() => { adopt(conflict); setConflict(null) }}>Reload from disk</button>
-          <button className="font-bold underline" onClick={() => setConflict(null)}>Keep my version</button>
-        </div>
-      )}
+      <ExternalChangeBanner conflict={conflict} resolve={resolve} />
 
       <div className="px-4 py-1 border-b border-zinc-100 flex items-center justify-end bg-white">
         <InterfacePopover nodes={nodes} inputs={iface.inputs} outputs={iface.outputs} onChange={setIface} />

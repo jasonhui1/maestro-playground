@@ -64,13 +64,10 @@ interface WorkspaceStore {
   emptyFolders: Partial<Record<EntityType, string[]>>
   loaded: boolean
   error: string | null
-  /** Bumped when an open file's *content* changed underneath the editor (a restore). */
-  revision: number
 
   /** `fresh` skips the shared request in flight, which a write's refetch must do. */
   load: (opts?: { fresh?: boolean }) => Promise<void>
   loadFolders: (type: EntityType) => Promise<void>
-  invalidateFile: () => void
 
   create: (req: { type: EntityType; name: string; fromTemplate?: string; folder?: string }) =>
     Promise<Outcome<{ slug: string; seedPrompt?: string }>>
@@ -153,7 +150,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     emptyFolders: {},
     loaded: false,
     error: null,
-    revision: 0,
 
     load: async (opts) => {
       const request = opts?.fresh || !inflight ? (inflight = fetchFiles(set)) : inflight
@@ -176,8 +172,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         // best-effort: an empty folder just won't show up until the next successful fetch
       }
     },
-
-    invalidateFile: () => set(s => ({ revision: s.revision + 1 })),
 
     create: async ({ type, name, fromTemplate, folder }) => {
       const out = await write('/api/workspace', {

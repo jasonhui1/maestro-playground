@@ -143,7 +143,11 @@ The word sequence every ticked panel carries, in order — compare's second mode
 
 ## Workspace files
 
-The client's copy of every file the workspace declares — agents, skills, chains, templates, context, tools and the defaults — held once in `useWorkspaceStore` alongside the **workspace root** recovered from those paths and the **empty folders** that discovery cannot see. Every view reads this one list rather than fetching its own, and every write goes through the store's mutations, which refetch it. Invalidation is two-part: a mutation changes the *list*; `invalidateFile()` bumps a revision to say an open file's *content* changed underneath the editor, which is what a version restore does instead of reloading the page (#120). _Avoid_: workspace (the server's `Workspace { root, runs, definitions() }` is a different thing); workspace data, file list.
+The client's copy of every file the workspace declares — agents, skills, chains, templates, context, tools and the defaults — held once in `useWorkspaceStore` alongside the **workspace root** recovered from those paths and the **empty folders** that discovery cannot see. Every view reads this one list rather than fetching its own, and every write goes through the store's mutations, which refetch it. It owns the *list* only: an open file's own text belongs to its **edit session**, which hears about a change to it from the watch (#121). _Avoid_: workspace (the server's `Workspace { root, runs, definitions() }` is a different thing); workspace data, file list.
+
+## Edit session
+
+Everything editing one entity file involves, held once per `type:slug` and reached through `useEditedFile(type, slug)`: the buffer, the debounce, the PUT, the watch on the file, and the decision the watch forces. There is one session per file, not one per view, so the page header, the YAML editor and the graph editor agree on the status and see the same conflict rather than carrying separate channels (#121). A change on disk is an **echo** when it is what we last wrote, an **adopt** when the buffer is clean, and a **conflict** when it is not — the three-way rule in `reconcileExternalEdit`, now applied to every entity type rather than to chains alone. _Avoid_: autosave, buffer, file watch (each is one part of the session, not the whole).
 
 ## Surface
 
