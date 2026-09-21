@@ -18,6 +18,7 @@ import AgentDrawer from './AgentDrawer'
 import { useRunStore, setRunTarget, clearRunTarget } from '@/hooks/store/useRunStore'
 import { useSelectionStore } from '@/hooks/store/useSelectionStore'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
+import { parseChainContent } from '@/lib/parseChain'
 import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner'
 import { Play } from 'lucide-react'
 import InterfacePopover from './InterfacePopover'
@@ -73,7 +74,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     useSelectionStore.getState().setSelected(fileKey, ids[0] ?? null)
   }, [fileKey])
   const [drawerSlug, setDrawerSlug] = useState<string | null>(null)
-  const { setContent, conflict, resolve } = useEditedFile('chain', slug)
+  const { content, setContent, conflict, resolve, externalRevision } = useEditedFile('chain', slug)
 
   const [iface, setIface] = useState<{ inputs: ChainPort[]; outputs: ChainPort[] }>(() => ({
     inputs: initialChain.inputs ?? [],
@@ -83,6 +84,22 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
   // False until the graph has rendered what it is about to write, so opening a
   // hand-written file does not immediately save the graph's own serialisation (#121).
   const hasRendered = useRef(false)
+
+  // A change adopted from disk re-seeds the graph in place rather than remounting it, so
+  // the undo stack and the viewport survive it — `setGraph` is NON_HISTORIC, so the seed
+  // replaces the present without landing on the stack. Adjusting state during render is
+  // React's own answer to "an input changed"; an effect here would re-render twice (#121).
+  const [seededAt, setSeededAt] = useState(externalRevision)
+  if (seededAt !== externalRevision) {
+    setSeededAt(externalRevision)
+    try {
+      const parsed = parseChainContent(content, slug)
+      dispatch(editorOps.setGraph(seedPositions(parsed.nodes, parsed.edges), parsed.edges))
+      setIface({ inputs: parsed.inputs ?? [], outputs: parsed.outputs ?? [] })
+    } catch {
+      // an unparseable file on disk leaves the graph as it is; the YAML view shows why
+    }
+  }
 
   const runState = useRunStore(state => {
     const f = state.byFile[fileKey]

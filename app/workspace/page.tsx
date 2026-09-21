@@ -32,7 +32,7 @@ function WorkspaceContent() {
 
   const [chainView, setChainView] = useState<'graph' | 'yaml'>('graph');
 
-  const { content, setContent, status, error: saveError, conflict, resolve, onDisk, externalRevision, loading, loadError } =
+  const { content, setContent, status, error: saveError, conflict, resolve, onDisk, loading, loadError } =
     useEditedFile(type, slug);
 
   // Every view reads the same list from the store, so a file created while a tool or a
@@ -190,7 +190,7 @@ function WorkspaceContent() {
             main={
               type === 'chain' && chainView === 'graph' && parsedChain ? (
                 <ChainEditor
-                  key={`${slug}:${externalRevision}`}
+                  key={slug}
                   slug={slug}
                   initialChain={parsedChain}
                   agents={editorAgents}
