@@ -16,6 +16,14 @@ export interface BranchCase {
   condition: string
 }
 
+export interface ZoneStateConfig {
+  name: string
+  accumulate?: boolean
+  separator?: string
+}
+
+export type ZoneStateEntry = string | ZoneStateConfig
+
 // Fields shared by every node kind. `zone` (loop membership) and `pos` live here —
 // not on the per-kind variants — because any kind can be a loop-body member, and the
 // serializer already writes them alongside id/kind, above the registry-field codec loop.
@@ -37,7 +45,7 @@ export type ChainNode =
   | (ChainNodeBase & { kind: 'decider'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'gate'; condition?: string })
   | (ChainNodeBase & { kind: 'branch'; cases?: BranchCase[]; default?: string })
-  | (ChainNodeBase & { kind: 'loop-start'; state?: string[] })
+  | (ChainNodeBase & { kind: 'loop-start'; state?: ZoneStateEntry[] })
   | (ChainNodeBase & { kind: 'loop-end'; until?: string; maxIterations?: number })
   | (ChainNodeBase & { kind: 'subchain'; subchain?: string })
   | (ChainNodeBase & { kind: 'report' })

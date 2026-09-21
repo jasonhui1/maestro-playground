@@ -20,7 +20,7 @@ export function socketHandles(node: ChainNode, workspace: WorkspaceLookup): Sock
       id: s.name,
       side: 'input',
       ...(s.optional ? { optional: true as const } : {}),
-      ...(descriptor.multiInput ? { multi: true as const } : {}),
+      ...(s.multi || descriptor.multiInput ? { multi: true as const } : {}),
     })),
     ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output' })),
   ]

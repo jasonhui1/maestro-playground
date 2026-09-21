@@ -89,6 +89,7 @@ test('node-kinds', () => {
     string: 'sample',
     number: 3,
     stringList: ['a', 'b'],
+    stateList: ['plain', { name: 'growing', accumulate: true, separator: '\n---\n' }],
     cases: [{ label: 'l1', condition: 'c1' }],
   }
   const COMMON_KEYS = new Set(['id', 'kind', 'pos', 'zone'])

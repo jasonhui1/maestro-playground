@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { validateChain } from '../lib/chainGraph'
-import { ChainDef, AgentDef } from '../lib/types'
+import { ChainDef, AgentDef, ZoneStateEntry } from '../lib/types'
 
 test('validate-loop', () => {
   function agent(slug: string, prompt: string): AgentDef {
@@ -45,4 +45,32 @@ test('validate-loop', () => {
   // boundary-crossing edge (outside node -> body node, not via loop-start)
   const cross = chain(good.nodes, [...good.edges, { fromNode: 'seed', fromSocket: 'output', toNode: 'review', toSocket: 'draft' }])
   assert.ok(validateChain(cross, agents).errors.some(e => /zone boundary/i.test(e)))
+})
+
+test('only accumulating loop-end state accepts several incoming edges', () => {
+  const speaker: AgentDef = {
+    slug: 'speaker', name: 'speaker', model: 'm', description: '', skills: [], context: [],
+    input_from: 'user', output_format: 'markdown', outputs: [{ name: 'output' }], inputs: [],
+    systemPrompt: '{transcript}', filePath: '',
+  }
+  const makeChain = (state: ZoneStateEntry): ChainDef => ({
+    slug: 'conversation', name: 'conversation', description: '', filePath: '',
+    nodes: [
+      { id: 'seed', kind: 'seed' },
+      { id: 'ls', kind: 'loop-start', zone: 'scene', state: [state] },
+      { id: 'a', kind: 'agent', agent: 'speaker', zone: 'scene' },
+      { id: 'b', kind: 'agent', agent: 'speaker', zone: 'scene' },
+      { id: 'le', kind: 'loop-end', zone: 'scene', until: 'NEVER', maxIterations: 3 },
+    ],
+    edges: [
+      { fromNode: 'seed', fromSocket: 'output', toNode: 'ls', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'a', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'b', toSocket: 'transcript' },
+      { fromNode: 'a', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+      { fromNode: 'b', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+    ],
+  })
+
+  assert.strictEqual(validateChain(makeChain({ name: 'transcript', accumulate: true }), [speaker]).valid, true)
+  assert.ok(validateChain(makeChain('transcript'), [speaker]).errors.some(error => /only one allowed/i.test(error)))
 })

@@ -1,6 +1,6 @@
 import { ChainDef, ChainNode, ChainEdge, AgentDef, ToolDef, SkillDef, ValidationIssue, ValidationResult } from './types'
 import { slugify } from './graph'
-import { kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
+import { inputAcceptsMany, kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 import { scanTokens, endpointOf } from './tokens'
@@ -185,7 +185,7 @@ export function validateChain(chain: ChainDef, agents: AgentDef[], chains: Chain
       }
     }
     if (acceptsInputs(dst) && !kindOf(dst.kind).inputs(dst, workspace).map(s => s.name).includes(e.toSocket)) add(`Edge "${e.toNode}.${e.toSocket}": no such input slot`, { edge: e })
-    if (!kindOf(dst.kind).multiInput) {
+    if (!inputAcceptsMany(dst, e.toSocket, workspace)) {
       const key = `${e.toNode}.${e.toSocket}`
       incoming.set(key, (incoming.get(key) || 0) + 1)
     }

@@ -1,6 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { parseChainContent } from '../lib/fs/parseChain'
+import { serializeChain } from '../lib/serializeChain'
 import type { ChainNode } from '../lib/types'
 
 test('parse-loop', () => {
@@ -23,4 +24,31 @@ edges:
   assert.strictEqual(le.until, '{p.output} contains "DONE"')
   assert.strictEqual(le.maxIterations, 4)
   assert.strictEqual(c.nodes.find(n => n.id === 'p')!.zone, 'refine')
+})
+
+test('accumulating loop state survives the registry codec round trip', () => {
+  const raw = `---
+name: conversation
+nodes:
+  - id: ls
+    kind: loop-start
+    zone: scene
+    state:
+      - transcript
+      - name: dialogue
+        accumulate: true
+        separator: "\\n---\\n"
+  - { id: le, kind: loop-end, zone: scene, until: NEVER, maxIterations: 3 }
+---
+`
+
+  const parsed = parseChainContent(raw, 'conversation')
+  const roundTripped = parseChainContent(serializeChain(parsed), 'conversation')
+  const start = roundTripped.nodes.find(n => n.id === 'ls')
+
+  assert.strictEqual(start?.kind, 'loop-start')
+  assert.deepStrictEqual(start.state, [
+    'transcript',
+    { name: 'dialogue', accumulate: true, separator: '\n---\n' },
+  ])
 })

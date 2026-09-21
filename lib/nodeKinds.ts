@@ -1,4 +1,4 @@
-import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef } from './types'
+import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ZoneStateEntry } from './types'
 import { promptSlots } from './tokens'
 import { slugify } from './graph'
 import { ENTITY_DIRS } from './entityDirs'
@@ -12,9 +12,11 @@ export interface WorkspaceLookup {
 export interface InputSocket {
   name: string
   optional?: boolean
+  /** This socket accepts N incoming edges instead of one. */
+  multi?: boolean
 }
 
-export type FieldCodec = 'string' | 'number' | 'stringList' | 'cases'
+export type FieldCodec = 'string' | 'number' | 'stringList' | 'stateList' | 'cases'
 
 export interface FieldDescriptor {
   key: string
@@ -32,7 +34,7 @@ export interface NodeKindDescriptor {
   kind: ChainNodeKind
   /** Whether this kind can ever expose input sockets, independent of any one node's current data. */
   acceptsInputs: boolean
-  /** Whether this kind's input sockets each accept N incoming edges (join only; every other slot takes one). */
+  /** Whether every input socket on this kind accepts N incoming edges (`join`). */
   multiInput?: boolean
   inputs(node: ChainNode, workspace: WorkspaceLookup): InputSocket[]
   outputs(node: ChainNode, workspace: WorkspaceLookup): string[]
@@ -40,10 +42,21 @@ export interface NodeKindDescriptor {
   palette?: PaletteEntry
 }
 
-function zoneStateOf(node: ChainNode, chain: ChainDef): string[] {
+export function zoneStateOf(node: ChainNode, chain: ChainDef): ZoneStateEntry[] {
   if (!node.zone) return []
   const start = chain.nodes.find(n => n.kind === 'loop-start' && n.zone === node.zone)
   return (start?.kind === 'loop-start' ? start.state : undefined) ?? []
+}
+
+export function zoneStateName(state: ZoneStateEntry): string {
+  return typeof state === 'string' ? state : state.name
+}
+
+function accumulatingStateSocket(state: ZoneStateEntry): InputSocket {
+  return {
+    name: zoneStateName(state),
+    ...(typeof state !== 'string' && state.accumulate ? { multi: true } : {}),
+  }
 }
 
 // agent + decider both carry the `agent` slug; other kinds don't.
@@ -154,15 +167,15 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   'loop-start': {
     kind: 'loop-start',
     acceptsInputs: true,
-    inputs: (node, { chain }) => zoneStateOf(node, chain).map(name => ({ name })),
-    outputs: (node, { chain }) => zoneStateOf(node, chain),
-    fields: [{ key: 'state', codec: 'stringList' }],
+    inputs: (node, { chain }) => zoneStateOf(node, chain).map(state => ({ name: zoneStateName(state) })),
+    outputs: (node, { chain }) => zoneStateOf(node, chain).map(zoneStateName),
+    fields: [{ key: 'state', codec: 'stateList' }],
   },
   'loop-end': {
     kind: 'loop-end',
     acceptsInputs: true,
-    inputs: (node, { chain }) => zoneStateOf(node, chain).map(name => ({ name })),
-    outputs: (node, { chain }) => zoneStateOf(node, chain),
+    inputs: (node, { chain }) => zoneStateOf(node, chain).map(accumulatingStateSocket),
+    outputs: (node, { chain }) => zoneStateOf(node, chain).map(zoneStateName),
     fields: [
       { key: 'until', codec: 'string' },
       { key: 'maxIterations', codec: 'number' },
@@ -214,6 +227,11 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
 
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
+}
+
+export function inputAcceptsMany(node: ChainNode, socket: string, workspace: WorkspaceLookup): boolean {
+  const descriptor = kindOf(node.kind)
+  return descriptor.multiInput === true || descriptor.inputs(node, workspace).some(input => input.name === socket && input.multi)
 }
 
 export const allKinds: ChainNodeKind[] = Object.keys(registry) as ChainNodeKind[]

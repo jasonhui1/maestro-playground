@@ -11,6 +11,18 @@ function coerceField(raw: unknown, codec: FieldCodec): unknown {
       return typeof raw === 'number' ? raw : undefined
     case 'stringList':
       return Array.isArray(raw) ? (raw as unknown[]).map(String) : undefined
+    case 'stateList':
+      return Array.isArray(raw)
+        ? raw.map(entry => {
+            if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return String(entry)
+            const state = entry as Record<string, unknown>
+            return {
+              name: String(state.name),
+              ...(typeof state.accumulate === 'boolean' ? { accumulate: state.accumulate } : {}),
+              ...(typeof state.separator === 'string' ? { separator: state.separator } : {}),
+            }
+          })
+        : undefined
     case 'cases':
       return Array.isArray(raw)
         ? (raw as Record<string, unknown>[]).map(c => ({ label: String(c.label), condition: String(c.condition) }))

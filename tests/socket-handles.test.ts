@@ -105,6 +105,17 @@ test('optional and multi-input facts survive the trip to the handle', () => {
   assert.deepStrictEqual(join.filter(h => h.side === 'input').map(h => [h.id, h.multi === true]), [['in', true]])
   assert.strictEqual(join.every(h => !h.optional), true)
 
+  const accumulatingStart: ChainNode = {
+    id: 'ls', kind: 'loop-start', zone: 'z1',
+    state: ['draft', { name: 'transcript', accumulate: true }],
+  }
+  const accumulatingWorkspace = {
+    ...workspace,
+    chain: { ...chain, nodes: Object.values({ ...nodes, 'loop-start': accumulatingStart }) },
+  }
+  const loopEnd = socketHandles(nodes['loop-end'], accumulatingWorkspace).filter(h => h.side === 'input')
+  assert.deepStrictEqual(loopEnd.map(h => [h.id, h.multi === true]), [['draft', false], ['transcript', true]])
+
   // every other kind's inputs are required and single
   assert.strictEqual(
     socketHandles(nodes.agent, workspace).every(h => !h.optional && !h.multi),

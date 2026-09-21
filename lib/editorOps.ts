@@ -1,5 +1,5 @@
-import { ChainNode, ChainEdge } from './types'
-import { kindOf } from './nodeKinds'
+import { ChainNode, ChainEdge, ChainDef } from './types'
+import { inputAcceptsMany } from './nodeKinds'
 import { edgeShapeError } from './chainGraph'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
@@ -21,7 +21,8 @@ export function reservedIds(nodes: ChainNode[]): string[] {
 
 export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
   const dst = nodes.find(n => n.id === edge.toNode)
-  const isMulti = dst ? kindOf(dst.kind).multiInput === true : false
+  const chain: ChainDef = { slug: '', name: '', description: '', filePath: '', nodes, edges }
+  const isMulti = dst ? inputAcceptsMany(dst, edge.toSocket, { chain, agents: [], chains: [] }) : false
   if (isMulti) {
     const dup = edges.some(e =>
       e.fromNode === edge.fromNode && e.fromSocket === edge.fromSocket &&

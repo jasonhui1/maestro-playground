@@ -2,6 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
+import { buildLayoutModel } from '../lib/layoutModel'
 
 function agent(slug: string, prompt: string): AgentDef {
   return { slug, name: slug, model: 'm', description: '', skills: [], context: [],
@@ -106,4 +107,80 @@ async function main() {
 
 }
 
-test('executor-loop', main)
+test('plain loop state keeps replacement semantics and replay behavior', main)
+
+test('accumulating state appends two speakers in edge order and keeps every sidebar round', async () => {
+  const speakers = [agent('a', 'TRANSCRIPT={transcript}'), agent('b', 'TRANSCRIPT={transcript}')]
+  const calls = new Map<string, number>()
+  const speak = (async (a: AgentDef, sp: string) => {
+    const round = (calls.get(a.slug) ?? 0) + 1
+    calls.set(a.slug, round)
+    return {
+      agentName: a.name, systemPrompt: sp, input: '', output: `${a.slug.toUpperCase()}${round}`,
+      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
+    } as AgentOutput
+  }) as never
+  const conversation: ChainDef = {
+    slug: 'conversation', name: 'conversation', description: '', filePath: '', view: 'sidebar',
+    outputs: [{ name: 'A', node: 'a' }, { name: 'B', node: 'b' }],
+    nodes: [
+      { id: 'seed', kind: 'seed' },
+      { id: 'ls', kind: 'loop-start', zone: 'scene', state: [{ name: 'transcript', accumulate: true }] },
+      { id: 'a', kind: 'agent', agent: 'a', zone: 'scene' },
+      { id: 'b', kind: 'agent', agent: 'b', zone: 'scene' },
+      { id: 'le', kind: 'loop-end', zone: 'scene', until: 'NEVER', maxIterations: 3 },
+      { id: 'report', kind: 'report' },
+    ],
+    edges: [
+      { fromNode: 'seed', fromSocket: 'output', toNode: 'ls', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'a', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'b', toSocket: 'transcript' },
+      { fromNode: 'a', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+      { fromNode: 'b', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+      { fromNode: 'le', fromSocket: 'transcript', toNode: 'report', toSocket: 'in' },
+    ],
+  }
+
+  const results = await runChainGraph(conversation, { agents: speakers, root: '/ws' }, noop, { seedPrompt: 'Opening', run: speak })
+  const report = results.find(output => output.nodeId === 'report')
+  assert.strictEqual(report?.output, 'Opening\n\nA1\n\nB1\n\nA2\n\nB2\n\nA3\n\nB3')
+
+  const sidebar = buildLayoutModel(conversation, results)
+  assert.strictEqual(sidebar.kind, 'sidebar')
+  assert.deepStrictEqual(sidebar.panels.map(panel => panel.round), [0, 1, 2, 0, 1, 2])
+})
+
+test('an accumulating state omits a speaker whose required input is not live', async () => {
+  const speakers = [agent('a', '{transcript}'), agent('silent', '{transcript} {cue}')]
+  let round = 0
+  const speak = (async (a: AgentDef, sp: string) => ({
+    agentName: a.name, systemPrompt: sp, input: '', output: a.slug === 'a' ? `A${++round}` : 'SHOULD NOT RUN',
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
+  } as AgentOutput)) as never
+  const conversation: ChainDef = {
+    slug: 'conversation', name: 'conversation', description: '', filePath: '',
+    nodes: [
+      { id: 'seed', kind: 'seed' },
+      { id: 'ls', kind: 'loop-start', zone: 'scene', state: [{ name: 'transcript', accumulate: true, separator: '\n' }] },
+      { id: 'a', kind: 'agent', agent: 'a', zone: 'scene' },
+      { id: 'silent', kind: 'agent', agent: 'silent', zone: 'scene' },
+      { id: 'le', kind: 'loop-end', zone: 'scene', until: 'NEVER', maxIterations: 3 },
+      { id: 'report', kind: 'report' },
+    ],
+    edges: [
+      { fromNode: 'seed', fromSocket: 'output', toNode: 'ls', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'a', toSocket: 'transcript' },
+      { fromNode: 'ls', fromSocket: 'transcript', toNode: 'silent', toSocket: 'transcript' },
+      { fromNode: 'a', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+      { fromNode: 'silent', fromSocket: 'output', toNode: 'le', toSocket: 'transcript' },
+      { fromNode: 'le', fromSocket: 'transcript', toNode: 'report', toSocket: 'in' },
+    ],
+  }
+
+  const results = await runChainGraph(conversation, { agents: speakers, root: '/ws' }, noop, { seedPrompt: 'Opening', run: speak })
+  assert.strictEqual(results.find(output => output.nodeId === 'report')?.output, 'Opening\nA1\nA2\nA3')
+  assert.deepStrictEqual(
+    results.filter(output => output.nodeId === 'silent').map(output => [output.round, output.status]),
+    [[0, 'skipped'], [1, 'skipped'], [2, 'skipped']],
+  )
+})

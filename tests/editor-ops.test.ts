@@ -152,6 +152,20 @@ test('join/multi-input rule asserted against real nodes', () => {
   const dedupedJoinEdges = connectEdge(nodes, joinEdges, e('a', 'j', 'input'))
   assert.strictEqual(dedupedJoinEdges.length, 2)
 
+  const accumulatingZone: ChainNode[] = [
+    ...nodes.slice(0, 2),
+    { id: 'ls', kind: 'loop-start', zone: 'z', state: [{ name: 'transcript', accumulate: true }] },
+    { id: 'le', kind: 'loop-end', zone: 'z', until: 'NEVER', maxIterations: 2 },
+  ]
+  const firstLine = e('a', 'le', 'transcript')
+  const secondLine = e('b', 'le', 'transcript')
+  assert.strictEqual(connectEdge(accumulatingZone, [firstLine], secondLine).length, 2)
+
+  const plainZone = accumulatingZone.map(node => node.id === 'ls'
+    ? { ...node, state: ['transcript'] } as ChainNode
+    : node)
+  assert.deepStrictEqual(connectEdge(plainZone, [firstLine], secondLine), [secondLine])
+
   // Via editorOps.connect
   const g: EditorGraph = { nodes, edges: [e('a', 'j', 'input')], selectedIds: [], clipboard: null }
   const afterConnect = applyOp(g, editorOps.connect(e('b', 'j', 'input')))

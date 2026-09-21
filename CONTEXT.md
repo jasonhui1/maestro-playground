@@ -54,7 +54,7 @@ A `subchain` node carries warnings on behalf of the nodes inside it (issue #40),
 
 ## Multi-input
 
-An input socket that accepts N incoming edges instead of one. Per-kind fact (`multiInput` on the descriptor), not per-input — unlike an optional input. Only `join` sets it; every other slot in the graph keeps the one-edge rule, which is what keeps lineage readable.
+An input socket that accepts N incoming edges instead of one. `join.in` is multi-input as a per-kind descriptor fact. An accumulating zone state makes only its matching `loop-end` input multi-input as a per-input fact; the matching `loop-start` input remains single because it supplies one initial value. Every other socket keeps the one-edge rule, which is what keeps lineage readable.
 
 ## Labelled concat
 
@@ -88,7 +88,7 @@ A **continuation** is one of resume, promote or fork handed to `continueRun` as 
 
 ## Zone
 
-A loop-start/loop-end pair and the body nodes between them; iterates until the `until` condition or `maxIterations`. The canvas draws it as a `zoneFrame` bounding box — which is a visual, not a node kind.
+A loop-start/loop-end pair and the body nodes between them; iterates until the `until` condition or `maxIterations`. A `loop-start.state` entry is either a bare name with replace semantics or `{ name, accumulate: true, separator? }`. An accumulating state takes every live value entering the matching `loop-end` socket in edge order each round and appends it to the carried value; skipped producers contribute nothing, and `separator` defaults to a blank line. The canvas draws the zone as a `zoneFrame` bounding box — which is a visual, not a node kind.
 
 ## Call site
 

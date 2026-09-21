@@ -9,7 +9,7 @@ import { topoOrder, hasLiteralInput } from './chainGraph'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
-import { kindOf, agentSlugOf, resolveNodeSkills, type WorkspaceLookup } from './nodeKinds'
+import { kindOf, agentSlugOf, resolveNodeSkills, zoneStateName, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
 export interface RunCallbacks {
@@ -160,7 +160,8 @@ export async function runChainGraph(
   }
 
   // --- zones ---
-  interface Zone { id: string; startId: string; endId: string; bodyIds: string[]; stateNames: string[]; until: string; maxIterations: number }
+  interface ZoneState { name: string; accumulate: boolean; separator: string }
+  interface Zone { id: string; startId: string; endId: string; bodyIds: string[]; states: ZoneState[]; until: string; maxIterations: number }
   const zonesByStart = new Map<string, Zone>()
   {
     const byZone = new Map<string, ChainNode[]>()
@@ -172,7 +173,12 @@ export async function runChainGraph(
       zonesByStart.set(start.id, {
         id: zid, startId: start.id, endId: end.id,
         bodyIds: members.filter(n => n.kind !== 'loop-start' && n.kind !== 'loop-end').map(n => n.id),
-        stateNames: start.state || [], until: end.until || '', maxIterations: end.maxIterations || 1,
+        states: (start.state || []).map(state => ({
+          name: zoneStateName(state),
+          accumulate: typeof state !== 'string' && state.accumulate === true,
+          separator: typeof state !== 'string' ? (state.separator ?? '\n\n') : '\n\n',
+        })),
+        until: end.until || '', maxIterations: end.maxIterations || 1,
       })
     }
   }
@@ -197,34 +203,60 @@ export async function runChainGraph(
 
   const runZone = async (zone: Zone) => {
     const incoming = (id: string) => incomingByNode.get(id) || []
+    const roundProducers = new Set([zone.startId, ...zone.bodyIds])
+    const roundEdges = chain.edges.flatMap((edge, index) => roundProducers.has(edge.fromNode) ? [index] : [])
     // initial state
     const state = new Map<string, string>()
-    for (const name of zone.stateNames) {
-      const idx = incoming(zone.startId).find(i => chain.edges[i].toSocket === name)
-      state.set(name, idx !== undefined ? edgeValue(chain.edges[idx]) : '')
+    for (const stateDef of zone.states) {
+      const idx = incoming(zone.startId).find(i => chain.edges[i].toSocket === stateDef.name)
+      state.set(stateDef.name, idx !== undefined ? edgeValue(chain.edges[idx]) : '')
     }
     const order = bodyOrder(zone)
     let finalState = state
     for (let round = 0; round < zone.maxIterations; round++) {
+      for (const index of roundEdges) live.delete(index)
       setStateSockets(zone.startId, state, zone.startId)
+      markOut(zone.startId, () => true)
       for (const id of order) {
         const bn = nodeById.get(id)!
         if (bn.kind === 'agent' || bn.kind === 'decider') {
+          const slots = usedSlots(bn)
+          const available = slots.every(slot => {
+            const connected = incoming(bn.id).some(index => chain.edges[index].toSocket === slot)
+            return connected ? liveEdgeForSlot(bn.id, slot) !== undefined : hasLiteralInput(bn, slot)
+          })
+          if (!available) {
+            const skipped = controlOutput(bn.id, agentSlugOf(bn) || bn.kind, '', 'skipped')
+            skipped.round = round
+            nodeOutputs.set(bn.id, skipped); emit(zone.startId, skipped); callbacks.onDone(bn.id, skipped)
+            continue
+          }
           const a = bn.agent ? agentBySlug.get(bn.agent) : undefined
           if (a) {
             const replayed = startOutputs.find(o => o.nodeId === bn.id && o.round === round)
             if (replayed) {
               nodeOutputs.set(bn.id, replayed)
+              if (replayed.status !== 'skipped') markOut(bn.id, () => true)
             } else {
               await runAgentNode(bn, a, round, zone.startId)
+              markOut(bn.id, () => true)
             }
           }
         }
       }
       const newState = new Map<string, string>()
-      for (const name of zone.stateNames) {
-        const idx = incoming(zone.endId).find(i => chain.edges[i].toSocket === name)
-        newState.set(name, idx !== undefined ? edgeValue(chain.edges[idx]) : (state.get(name) || ''))
+      for (const stateDef of zone.states) {
+        const incomingState = incoming(zone.endId).filter(i => chain.edges[i].toSocket === stateDef.name && live.has(i))
+        if (stateDef.accumulate) {
+          const additions = incomingState.map(i => edgeValue(chain.edges[i]))
+          const previous = state.get(stateDef.name) ?? ''
+          newState.set(stateDef.name, additions.length === 0
+            ? previous
+            : [previous, ...additions].filter((value, index) => index > 0 || value !== '').join(stateDef.separator))
+        } else {
+          const idx = incomingState[0]
+          newState.set(stateDef.name, idx !== undefined ? edgeValue(chain.edges[idx]) : (state.get(stateDef.name) || ''))
+        }
       }
       finalState = newState
       if (evalCondition(zone.until, nodeOutputs)) break
