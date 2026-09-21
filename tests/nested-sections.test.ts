@@ -6,7 +6,7 @@ import { evalCondition } from '../lib/condition'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { validateChain } from '../lib/chainGraph'
 import { readSocket, resolveNodePrompt } from '../lib/resolveNode'
-import { sectionWarningText, sameSectionWarning, type SectionWarning } from '../lib/sectionWarning'
+import { sectionWarningText, sameSectionWarning, emitSectionWarnings, type SectionWarning } from '../lib/sectionWarning'
 import { runChainGraph } from '../lib/executor'
 import { socketHandles } from '../lib/nodeSockets'
 import type { AgentDef, AgentOutput, ChainDef, ChainNode } from '../lib/types'
@@ -25,7 +25,6 @@ test('parseSectionPath splits on / and normalizes segments', () => {
   assert.deepStrictEqual(parseSectionPath('act-2/scene-3'), ['act-2', 'scene-3'])
   assert.deepStrictEqual(parseSectionPath('Act 2 / Scene 3'), ['act-2', 'scene-3'])
   assert.deepStrictEqual(parseSectionPath('/act-2//scene-3/'), ['act-2', 'scene-3'])
-  assert.deepStrictEqual(parseSectionPath(['Act 2', 'Scene 3']), ['act-2', 'scene-3'])
   assert.deepStrictEqual(parseSectionPath(''), [])
   assert.deepStrictEqual(parseSectionPath('///'), [])
 })
@@ -117,7 +116,13 @@ Scene in second`
 
   const r = extractSectionPath(md, 'act-2/scene-1')
   assert.strictEqual(r.status, 'ambiguous')
+  assert.strictEqual(r.ambiguousSegment, 'act-2')
   assert.strictEqual(r.text, 'Scene in first')
+
+  const rMissing = extractSectionPath(md, 'act-2/missing-scene')
+  assert.strictEqual(rMissing.status, 'missing')
+  assert.strictEqual(rMissing.missingSegment, 'missing-scene')
+  assert.strictEqual(rMissing.ambiguousSegment, 'act-2')
 })
 
 test('extractSectionPath distinguishes missing from empty leaf', () => {
@@ -317,6 +322,51 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const emptyPrompt = resolveNodePrompt(consumerNode, chain, readerAgent, emptyOutputs, '', readCtx)
   assert.strictEqual(emptyPrompt.prompt, 'Read: [scene: "act-2/scene-3" section empty]')
   assert.deepStrictEqual(emptyPrompt.warnings, [])
+
+  // 5. Ancestor ambiguous with missing child segment preserves ambiguity
+  const ambigAncestorOutputs = new Map<string, AgentOutput>([
+    ['w', makeOutput('w', '## Act 2\n### Scene 1\nFirst Act 2\n## Act 2\n### Scene 2\nSecond Act 2')],
+  ])
+  const ambigAncestorRead = readSocket(agentNode, 'act-2/missing-scene', ambigAncestorOutputs, '', readCtx)
+  assert.deepStrictEqual(ambigAncestorRead, {
+    value: '',
+    missingSection: 'act-2/missing-scene',
+    ambiguousSection: 'act-2/missing-scene',
+  })
+  const ambigAncestorPrompt = resolveNodePrompt(
+    { ...consumerNode, id: 'r2' },
+    {
+      slug: 'c2', name: 'c2', description: '', filePath: '',
+      nodes: [agentNode, { id: 'r2', kind: 'agent', agent: 'reader' }],
+      edges: [{ fromNode: 'w', fromSocket: 'act-2/missing-scene', toNode: 'r2', toSocket: 'scene' }],
+    },
+    readerAgent,
+    ambigAncestorOutputs,
+    '',
+    readCtx,
+  )
+  assert.strictEqual(ambigAncestorPrompt.prompt, 'Read: ')
+  assert.deepStrictEqual(ambigAncestorPrompt.warnings, [
+    { fromNode: 'w', section: 'act-2/missing-scene', toNode: 'r2', toSocket: 'scene' },
+    { fromNode: 'w', section: 'act-2/missing-scene', toNode: 'r2', toSocket: 'scene', reason: 'ambiguous' },
+  ])
+})
+
+test('emitSectionWarnings dispatches missing and ambiguous warnings to callback', () => {
+  const warnings: SectionWarning[] = []
+  emitSectionWarnings(
+    { missingSection: 'act-2/missing', ambiguousSection: 'act-2/missing' },
+    'w', 'r', 'scene',
+    w => warnings.push(w),
+    'via',
+  )
+  assert.strictEqual(warnings.length, 2)
+  assert.deepStrictEqual(warnings[0], {
+    fromNode: 'w', section: 'act-2/missing', toNode: 'r', toSocket: 'scene', viaNode: 'via',
+  })
+  assert.deepStrictEqual(warnings[1], {
+    fromNode: 'w', section: 'act-2/missing', toNode: 'r', toSocket: 'scene', reason: 'ambiguous', viaNode: 'via',
+  })
 })
 
 test('sectionWarningText formats missing and ambiguous warnings correctly', () => {

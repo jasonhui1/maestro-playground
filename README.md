@@ -87,6 +87,7 @@ Variable passing in Maestro is local, explicit, and edge-driven:
   * `output`: Resolves to the full raw output of the connected node.
   * `summary`: Extracts and resolves only the `## Summary` section of the upstream agent's output (highly token-efficient!).
   * Custom headers: Slicing by a socket name matching any markdown header section (e.g. `### Characters`) automatically extracts that section.
+  * Nested sections: Slicing with `/` as a hierarchy delimiter (e.g. `{writer.act-2/scene-3}` or socket `act-2/scene-3`) extracts a subsection within a parent section.
 * **Inputs & Context**: Sockets connected to a `seed` node resolve to the initial run prompt. Sockets connected to a `context` node inject the associated file's content.
 
 ---

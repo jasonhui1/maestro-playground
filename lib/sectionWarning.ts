@@ -10,6 +10,28 @@ export interface SectionWarning {
   reason?: SectionWarningReason // backward-compatible reason discriminator (#129)
 }
 
+export interface WarningSource {
+  missingSection?: string
+  ambiguousSection?: string
+}
+
+// Dispatches missing and ambiguous section warnings to the collector (#129).
+export function emitSectionWarnings(
+  read: WarningSource,
+  fromNode: string,
+  toNode: string,
+  toSocket: string,
+  report: (w: SectionWarning) => void,
+  viaNode?: string,
+): void {
+  if (read.missingSection) {
+    report({ fromNode, section: read.missingSection, toNode, toSocket, ...(viaNode ? { viaNode } : {}) })
+  }
+  if (read.ambiguousSection) {
+    report({ fromNode, section: read.ambiguousSection, toNode, toSocket, reason: 'ambiguous', ...(viaNode ? { viaNode } : {}) })
+  }
+}
+
 export function sameSectionWarning(a: SectionWarning, b: SectionWarning): boolean {
   return a.fromNode === b.fromNode && a.section === b.section
     && a.toNode === b.toNode && a.toSocket === b.toSocket && a.viaNode === b.viaNode

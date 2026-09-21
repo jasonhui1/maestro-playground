@@ -62,8 +62,7 @@ export interface SectionPathResult {
   missingSegment?: string
 }
 
-export function parseSectionPath(path: string | string[]): string[] {
-  if (Array.isArray(path)) return path.map(slugify).filter(Boolean)
+export function parseSectionPath(path: string): string[] {
   return path.split('/').map(slugify).filter(Boolean)
 }
 
@@ -78,7 +77,7 @@ function descendantIndices(headings: ScannedHeading[], parentIndex: number): num
 }
 
 // Scans headings along a slash path, resolving duplicates to the first match (#129).
-export function extractSectionPath(markdown: string, path: string | string[]): SectionPathResult {
+export function extractSectionPath(markdown: string, path: string): SectionPathResult {
   const segments = parseSectionPath(path)
   if (segments.length === 0) return { text: '', status: 'missing' }
 
@@ -94,7 +93,12 @@ export function extractSectionPath(markdown: string, path: string | string[]): S
     const seg = segments[s]
     const matches = candidates.filter(i => slugify(headings[i].heading) === seg)
     if (matches.length === 0) {
-      return { text: '', status: 'missing', missingSegment: seg }
+      return {
+        text: '',
+        status: 'missing',
+        missingSegment: seg,
+        ...(ambiguousSegment ? { ambiguousSegment } : {}),
+      }
     }
     if (matches.length > 1) {
       ambiguous = true
@@ -119,7 +123,6 @@ export function extractSectionPath(markdown: string, path: string | string[]): S
   return { text: body, status: 'found', empty: false }
 }
 
-// Returns the body of the markdown section whose heading slug-matches `name` or path (#129).
 export function extractSection(markdown: string, name: string): string {
   return extractSectionPath(markdown, name).text
 }

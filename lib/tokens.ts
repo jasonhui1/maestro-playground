@@ -1,4 +1,4 @@
-import { slugify } from './graph'
+import { parseSectionPath } from './graph'
 
 // The `{token}` grammar — see "Token" in CONTEXT.md (#110).
 export type Token =
@@ -94,11 +94,7 @@ export function endpointOf(t: Token): Endpoint {
 
 // Normalizes each segment on '/' to preserve section-path identity (#129).
 export function socketKey(socket: string): string {
-  return socket
-    .split('/')
-    .map(slugify)
-    .filter(Boolean)
-    .join('/')
+  return parseSectionPath(socket).join('/')
 }
 
 /** The run-state key of one named output socket on a node with several. */

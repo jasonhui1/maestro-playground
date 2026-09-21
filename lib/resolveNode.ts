@@ -1,7 +1,7 @@
 import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
 import { extractSectionPath } from './graph'
 import { promptSlots, fillSlot, outputKey, isWholeOutput } from './tokens'
-import type { SectionWarning } from './sectionWarning'
+import { emitSectionWarnings, type SectionWarning } from './sectionWarning'
 import { hasLiteralInput } from './chainGraph'
 
 // Pure — reporting the miss is the caller's job (#37).
@@ -47,7 +47,11 @@ export function readSocket(
   if (isWholeOutput(socket)) return { value: o.output }
   const res = extractSectionPath(o.output, socket)
   if (res.status === 'missing') {
-    return { value: '', missingSection: socket }
+    return {
+      value: '',
+      missingSection: socket,
+      ...(res.ambiguousSegment ? { ambiguousSection: socket } : {}),
+    }
   }
   if (res.status === 'ambiguous') {
     return {
@@ -88,11 +92,7 @@ export function resolveNodePrompt(
       } else {
         const read = readSocket(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
         value = read.value
-        if (read.missingSection) {
-          warnings.push({ fromNode: edge.fromNode, section: read.missingSection, toNode: node.id, toSocket: slot })
-        } else if (read.ambiguousSection) {
-          warnings.push({ fromNode: edge.fromNode, section: read.ambiguousSection, toNode: node.id, toSocket: slot, reason: 'ambiguous' })
-        }
+        emitSectionWarnings(read, edge.fromNode, node.id, slot, w => warnings.push(w))
         if (read.emptySection) {
           value = `[${slot}: "${read.emptySection}" section empty]`
         }

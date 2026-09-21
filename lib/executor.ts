@@ -4,7 +4,7 @@ import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
 import { injectSkills } from './prompt'
 import { resolveNodePrompt, readSocket } from './resolveNode'
-import { SectionWarning, sameSectionWarning } from './sectionWarning'
+import { SectionWarning, sameSectionWarning, emitSectionWarnings } from './sectionWarning'
 import { topoOrder, hasLiteralInput } from './chainGraph'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
@@ -126,11 +126,7 @@ export async function runChainGraph(
     const src = nodeById.get(e.fromNode)
     if (!src) return ''
     const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
-    if (read.missingSection) {
-      reportWarning({ fromNode: e.fromNode, section: read.missingSection, toNode: e.toNode, toSocket: e.toSocket })
-    } else if (read.ambiguousSection) {
-      reportWarning({ fromNode: e.fromNode, section: read.ambiguousSection, toNode: e.toNode, toSocket: e.toSocket, reason: 'ambiguous' })
-    }
+    emitSectionWarnings(read, e.fromNode, e.toNode, e.toSocket, reportWarning)
     return read.value
   }
 
@@ -382,10 +378,8 @@ export async function runChainGraph(
           const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext, paramValue)
           // A skipped inner node produced no answer, so its missing heading is not a
           // convention violation — only a real answer can violate one (#40).
-          if (read.missingSection && byNode.get(p.node)?.status === 'success') {
-            deferredWarnings.push({ fromNode: nodeId, viaNode: p.node, section: read.missingSection, toNode: nodeId, toSocket: p.name })
-          } else if (read.ambiguousSection && byNode.get(p.node)?.status === 'success') {
-            deferredWarnings.push({ fromNode: nodeId, viaNode: p.node, section: read.ambiguousSection, toNode: nodeId, toSocket: p.name, reason: 'ambiguous' })
+          if (byNode.get(p.node)?.status === 'success') {
+            emitSectionWarnings(read, nodeId, nodeId, p.name, w => deferredWarnings.push(w), p.node)
           }
           outMap.set(p.name, read.value)
         }
