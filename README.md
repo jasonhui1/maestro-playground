@@ -186,6 +186,24 @@ can consume without reimplementing Maestro's chain/run logic.
 
 ---
 
+## 📦 Engine ↔ Plugin Contracts
+
+Integration between Maestro and client plugins (such as [`obsidian-chain-runner`](https://github.com/jasonhui1/obsidian-chain-runner)) is anchored on recorded byte-level contract fixtures committed under `contracts/`.
+
+- **Coverage**: Six core scenarios (`fresh`, `hold`, `resume`, `promote`, `fork`, `error`) capturing exact SSE event stream transcripts (`stream.sse`), request bodies (`request.json`), transport descriptors (`response.json`), post-run inspection models (`run.json`, `layout.json`), and engine capability flags (`capabilities.json`).
+- **Drift Prevention**: Vitest generates the stream and JSON fixtures from real routes with a stubbed model. Normal test runs verify zero drift; intentional changes require deliberate regeneration.
+- **Consumption Guide**: See [`contracts/README.md`](contracts/README.md) for details on fixture format, plugin replay workflows, and transport descriptors.
+
+```bash
+# Verify committed contracts have not drifted
+npm run contracts:check
+
+# Regenerate contracts after intentional behavior changes
+npm run contracts:update
+```
+
+---
+
 ## 🧪 Testing Suite
 
 Maestro includes a comprehensive suite of unit, integration, and synchronization tests.

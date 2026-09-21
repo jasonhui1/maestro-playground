@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:file": "vitest run"
+    "test:file": "vitest run",
+    "contracts:check": "vitest run tests/contracts.test.ts",
+    "contracts:update": "node scripts/update-contracts.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

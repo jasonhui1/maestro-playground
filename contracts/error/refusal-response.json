@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "error": "direction or candidate selection is required"
+  }
+}
