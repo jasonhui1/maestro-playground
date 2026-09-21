@@ -262,6 +262,8 @@ export interface RunMeta {
   forkAnchors?: string[]
   /** Node IDs replayed from source without re-executing (#130). */
   replayedNodeIds?: string[]
+  /** Record-level slots (nodeId|round) replayed from source (#130). */
+  replayedSlots?: string[]
   /** Baseline snapshot of source outputs at fork creation (#130). */
   sourceOutputs?: AgentOutput[]
   /** Scalar pin of the entry point; the only pin old logs carry (ADR-0011). */

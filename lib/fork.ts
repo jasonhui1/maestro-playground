@@ -1,4 +1,4 @@
-import { runLog } from './partialRun'
+import { runLog, recordKey } from './partialRun'
 import { badRequest, notFound, unprocessable } from './refusal'
 import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace } from './runSession'
 import type { Workspace } from './runFolders'
@@ -79,8 +79,9 @@ export function forkRun(
   if ('error' in continuation) return continuation
   const kept = runLog(source).replayFor(fork.anchors)
   const { chain, workspace: defs, versionNumber, versions, pinnedContext } = continuation
-  // #130: Record complete anchors, replayed node IDs, and snapshot baseline source outputs.
+  // #130: Record complete anchors, replayed node IDs & slots, and snapshot baseline source outputs.
   const replayedNodeIds = [...new Set(kept.replay.map(o => o.nodeId).filter((id): id is string => Boolean(id)))]
+  const replayedSlots = kept.replay.map(o => recordKey(o)).filter(Boolean)
   const sourceOutputs = runLog(source).current()
   return startRun(ws, {
     chain,
@@ -98,6 +99,7 @@ export function forkRun(
     forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },
     forkAnchors: fork.anchors,
     replayedNodeIds,
+    replayedSlots,
     sourceOutputs,
   })
 }

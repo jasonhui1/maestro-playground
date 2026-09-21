@@ -185,6 +185,7 @@ export function startRun(ws: Workspace, run: {
   forkedFrom?: { runId: string; nodeId: string }
   forkAnchors?: string[]
   replayedNodeIds?: string[]
+  replayedSlots?: string[]
   sourceOutputs?: AgentOutput[]
   modelOverride?: string
 }): Response {
@@ -203,6 +204,7 @@ export function startRun(ws: Workspace, run: {
     ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
     ...(run.forkAnchors ? { forkAnchors: run.forkAnchors } : {}),
     ...(run.replayedNodeIds ? { replayedNodeIds: run.replayedNodeIds } : {}),
+    ...(run.replayedSlots ? { replayedSlots: run.replayedSlots } : {}),
     ...(run.sourceOutputs ? { sourceOutputs: run.sourceOutputs } : {}),
     versionNumber: versionNumber > 0 ? versionNumber : undefined,
     versions: run.versions,

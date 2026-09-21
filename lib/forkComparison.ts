@@ -20,23 +20,35 @@ export interface ForkComparison {
   sourceRunId: string
   forkRunId: string
   forkAnchors?: string[]
+  lineage?: 'available' | 'unavailable'
+  warning?: string
   nodes: ForkComparisonNode[]
 }
 
 /**
  * Builds a node-by-node comparison projection between a forked run and its source baseline (#130).
  * Replaced records collapse via runLog(...).current(), provenance distinguishes reuse from
- * unchanged regenerated text, and missing/error/skipped states are preserved.
+ * unchanged regenerated text at the slot level (nodeId|round), and missing/error/skipped states are preserved.
  */
 export function buildForkComparison(
   forkMeta: RunMeta,
   sourceMeta?: RunMeta | null,
 ): ForkComparison {
-  const sourceBaseline = forkMeta.sourceOutputs ?? sourceMeta?.agentOutputs ?? []
-  const graph = forkMeta.graph ?? sourceMeta?.graph
+  const sourceBaseline = forkMeta.sourceOutputs ?? sourceMeta?.agentOutputs
+  if (!sourceBaseline && !sourceMeta) {
+    return {
+      sourceRunId: forkMeta.branchedFromRunId ?? '',
+      forkRunId: forkMeta.runId,
+      ...(forkMeta.forkAnchors ? { forkAnchors: forkMeta.forkAnchors } : {}),
+      lineage: 'unavailable',
+      warning: 'Source run baseline is unavailable',
+      nodes: [],
+    }
+  }
 
+  const graph = forkMeta.graph ?? sourceMeta?.graph
   const currentSource = runLog({
-    agentOutputs: sourceBaseline,
+    agentOutputs: sourceBaseline ?? [],
     graph,
     holds: sourceMeta?.holds ?? [],
   }).current()
@@ -53,19 +65,27 @@ export function buildForkComparison(
     if (o.nodeId) forkMap.set(recordKey(o), o)
   }
 
-  // #130: Provenance records what was replayed; fallback to replay calculation for legacy runs.
-  let replayedSet: Set<string>
-  if (forkMeta.replayedNodeIds) {
-    replayedSet = new Set(forkMeta.replayedNodeIds)
-  } else if (sourceMeta) {
+  // #130: Provenance records what was replayed at slot level (nodeId|round).
+  const hasLegacyAnchors = Boolean(forkMeta.forkAnchors?.length || forkMeta.branchedFromNode)
+  const hasProvenance = Boolean(forkMeta.replayedSlots || forkMeta.replayedNodeIds || hasLegacyAnchors)
+
+  let isReplayed: (slotKey: string, nodeId: string) => boolean
+  if (forkMeta.replayedSlots) {
+    const slotSet = new Set(forkMeta.replayedSlots)
+    isReplayed = slotKey => slotSet.has(slotKey)
+  } else if (forkMeta.replayedNodeIds) {
+    const nodeSet = new Set(forkMeta.replayedNodeIds)
+    isReplayed = (_slotKey, nodeId) => nodeSet.has(nodeId)
+  } else if (sourceMeta && hasLegacyAnchors) {
     const anchors = forkMeta.forkAnchors ?? (forkMeta.branchedFromNode ? [forkMeta.branchedFromNode] : [])
     const kept = runLog(sourceMeta).replayFor(anchors)
-    replayedSet = new Set(kept.replay.map(o => o.nodeId).filter((id): id is string => Boolean(id)))
+    const slotSet = new Set(kept.replay.map(o => recordKey(o)).filter(Boolean))
+    isReplayed = slotKey => slotSet.has(slotKey)
   } else {
-    replayedSet = new Set()
+    isReplayed = () => false
   }
 
-  // Preserve graph topological / declared order where available.
+  // Preserve graph topological / declared order where available (#130).
   const graphIndex = new Map<string, number>()
   if (graph?.nodes) {
     graph.nodes.forEach((n, i) => graphIndex.set(n.id, i))
@@ -101,7 +121,7 @@ export function buildForkComparison(
 
     let status: ForkNodeStatus
     if (sourceRec && forkRec) {
-      status = replayedSet.has(nodeId) ? 'reused' : 'regenerated'
+      status = isReplayed(key, nodeId) ? 'reused' : 'regenerated'
     } else if (sourceRec && !forkRec) {
       status = 'removed'
     } else {
@@ -131,6 +151,8 @@ export function buildForkComparison(
     sourceRunId: forkMeta.branchedFromRunId ?? sourceMeta?.runId ?? '',
     forkRunId: forkMeta.runId,
     ...(forkMeta.forkAnchors ? { forkAnchors: forkMeta.forkAnchors } : {}),
+    lineage: hasProvenance ? 'available' : 'unavailable',
+    ...(hasProvenance ? {} : { warning: 'Lineage provenance unavailable for legacy fork' }),
     nodes,
   }
 }

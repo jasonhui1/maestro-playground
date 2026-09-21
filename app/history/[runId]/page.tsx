@@ -5,7 +5,7 @@ import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Download, GitCompare } from 'lucide-react'
+import { ChevronLeft, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { socketHandles } from '@/lib/nodeSockets'
@@ -183,15 +183,6 @@ function RunDetail({ run }: { run: RunMeta }) {
           &ldquo;{run.seedPrompt}&rdquo;
         </button>
 
-        {run.branchedFromRunId && (
-          <button
-            type="button"
-            onClick={() => setComparingSource(true)}
-            className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-700 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0"
-          >
-            <GitCompare size={12} />Compare with source
-          </button>
-        )}
         <a href={`/api/runs/${run.runId}/export?format=markdown`}
           className="px-2 py-1 rounded-md text-[10px] font-bold border bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 flex items-center gap-1 shrink-0">
           <Download size={12} />MD

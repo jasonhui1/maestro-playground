@@ -5,11 +5,22 @@ import path from 'path'
 import os from 'os'
 import type { NextRequest } from 'next/server'
 import { buildForkComparison } from '../lib/forkComparison'
-import { diskWorkspace } from '../lib/runFolders'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import { diskWorkspace, memoryWorkspace } from '../lib/runFolders'
+import type { AgentDef, AgentOutput, RunMeta } from '../lib/types'
+import { continueRun } from '../lib/continueRun'
+import { parseChainContent } from '../lib/parseChain'
+import type { LiveWorkspace } from '../lib/runSession'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
+vi.mock('@/lib/fs/versions', () => ({ snapshotVersion: () => 1 }))
+vi.mock('@/lib/runner', () => ({
+  runAgent: async (agent: any, systemPrompt: string, input: string): Promise<AgentOutput> => ({
+    agentName: agent.name, systemPrompt, input,
+    output: agent.slug === 'decider' ? '## Candidate 1\nan idea' : `from ${agent.slug}`,
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
+  }),
+}))
 
 function makeOutput(nodeId: string, output: string, opts: Partial<AgentOutput> = {}): AgentOutput {
   return {
@@ -26,6 +37,8 @@ function makeOutput(nodeId: string, output: string, opts: Partial<AgentOutput> =
     status: opts.status ?? 'success',
     round: opts.round,
     error: opts.error,
+    conversation: opts.conversation,
+    ...opts,
   }
 }
 
@@ -379,6 +392,65 @@ describe('buildForkComparison (pure builder) (#130)', () => {
     assert.strictEqual(comp.nodes.find(n => n.nodeId === 'b')?.status, 'regenerated')
     assert.strictEqual(comp.nodes.find(n => n.nodeId === 'c')?.status, 'regenerated')
   })
+
+  test('record-level provenance via replayedSlots handles loop nodes accurately (#130)', () => {
+    const loopGraph = {
+      nodes: [
+        { id: 'loopNode', kind: 'agent' as const, agent: 'Loop Agent' },
+      ],
+      edges: [],
+    }
+    const sourceMeta: RunMeta = {
+      runId: 'source-loop',
+      chainName: 'loop-chain',
+      seedPrompt: 'loop',
+      startedAt: '2026-09-21T10:00:00Z',
+      status: 'complete',
+      graph: loopGraph,
+      agentOutputs: [
+        makeOutput('loopNode', 'Round 0 initial', { round: 0 }),
+        makeOutput('loopNode', 'Round 1 initial', { round: 1 }),
+      ],
+    }
+    const forkMeta: RunMeta = {
+      runId: 'fork-loop',
+      chainName: 'loop-chain',
+      seedPrompt: 'loop',
+      startedAt: '2026-09-21T10:01:00Z',
+      status: 'complete',
+      graph: loopGraph,
+      branchedFromRunId: 'source-loop',
+      forkAnchors: ['loopNode'],
+      replayedNodeIds: ['loopNode'],
+      replayedSlots: ['loopNode|0'],
+      sourceOutputs: sourceMeta.agentOutputs,
+      agentOutputs: [
+        makeOutput('loopNode', 'Round 0 initial', { round: 0 }),
+        makeOutput('loopNode', 'Round 1 regenerated', { round: 1 }),
+      ],
+    }
+    const comp = buildForkComparison(forkMeta, sourceMeta)
+    const r0 = comp.nodes.find(n => n.nodeId === 'loopNode' && n.round === 0)
+    const r1 = comp.nodes.find(n => n.nodeId === 'loopNode' && n.round === 1)
+    assert.strictEqual(r0?.status, 'reused')
+    assert.strictEqual(r1?.status, 'regenerated')
+  })
+
+  test('lineage unavailable when source run baseline is missing (#130)', () => {
+    const orphanFork: RunMeta = {
+      runId: 'orphan-fork',
+      chainName: 'chain',
+      seedPrompt: 'p',
+      startedAt: '2026-09-21T10:00:00Z',
+      status: 'complete',
+      branchedFromRunId: 'missing-source',
+      agentOutputs: [makeOutput('n1', 'N1')],
+    }
+    const comp = buildForkComparison(orphanFork, null)
+    assert.strictEqual(comp.lineage, 'unavailable')
+    assert.strictEqual(comp.nodes.length, 0)
+    assert.ok(comp.warning)
+  })
 })
 
 describe('baseline stability when source later changes (#130)', () => {
@@ -567,5 +639,148 @@ describe('route GET /api/runs/[runId]/comparison (#130)', () => {
     const body = await res.json()
     assert.strictEqual(body.sourceRunId, 'deleted-source')
     assert.strictEqual(body.nodes.length, 2)
+  })
+})
+
+describe('integration with continueRun (resume-fork and promote-fork) (#130)', () => {
+  const chainContent = `---
+name: held
+nodes:
+  - id: seed
+    kind: seed
+  - id: prop
+    kind: agent
+    agent: prop
+  - id: dec
+    kind: decider
+    agent: decider
+  - id: hold
+    kind: hold
+  - id: after
+    kind: agent
+    agent: after
+edges:
+  - from: seed
+    to: prop.input
+  - from: prop
+    to: dec.input
+  - from: dec
+    to: hold.in
+  - from: hold
+    to: after.direction
+---
+`
+  const chain = parseChainContent(chainContent, 'held')
+  const agentDef = (slug: string, inputs: string[]): AgentDef => ({
+    slug, name: slug, model: 'm', description: '', skills: [], context: [], input_from: 'user',
+    output_format: 'markdown', outputs: [], inputs: inputs.map(name => ({ name })),
+    systemPrompt: `{${inputs[0]}}`, filePath: '',
+  })
+  const defs = {
+    agents: [agentDef('prop', ['input']), agentDef('decider', ['input']), agentDef('after', ['direction'])],
+    skills: [], chains: [chain], tools: [], templates: [], context: [], defaults: {},
+  } as unknown as LiveWorkspace
+
+  test('answering an already-answered hold creates a fork with provenance & source baseline (#130)', async () => {
+    const ws = memoryWorkspace(defs)
+    const sourceMeta: RunMeta = {
+      runId: 'source-held',
+      chainName: 'held',
+      seedPrompt: 'go',
+      startedAt: '2026-09-21T10:00:00Z',
+      status: 'complete',
+      agentOutputs: [
+        makeOutput('prop', 'Prop output'),
+        makeOutput('dec', '## Candidate 1\nDecider output'),
+        makeOutput('hold', 'First direction'),
+        makeOutput('after', 'After original'),
+      ],
+      holds: [
+        {
+          nodeId: 'hold',
+          input: '## Candidate 1\nDecider output',
+          candidates: [],
+          reachedAt: '2026-09-21T10:00:01Z',
+          resolvedAt: '2026-09-21T10:00:02Z',
+          direction: 'First direction',
+        },
+      ],
+      graph: { nodes: chain.nodes, edges: chain.edges },
+    }
+    ws.runs.create(sourceMeta)
+
+    const res = continueRun(ws, 'source-held', { answer: { direction: 'Second fork direction' } })
+    assert.strictEqual(res.status, 200)
+    await res.text()
+
+    const runs = ws.runs.list()
+    const forkSummary = runs.find(r => r.branchedFromRunId === 'source-held')
+    assert.ok(forkSummary, 'Expected a forked run to be created')
+    const forkMeta = ws.runs.read(forkSummary.runId)
+
+    assert.deepStrictEqual(forkMeta.forkAnchors, ['hold'])
+    assert.ok(forkMeta.replayedNodeIds?.includes('prop'))
+    assert.ok(forkMeta.replayedNodeIds?.includes('dec'))
+    assert.ok(forkMeta.replayedSlots?.includes('prop|'))
+    assert.ok(forkMeta.replayedSlots?.includes('dec|'))
+    assert.strictEqual(forkMeta.sourceOutputs?.length, 4)
+
+    const comparison = buildForkComparison(forkMeta, sourceMeta)
+    assert.strictEqual(comparison.sourceRunId, 'source-held')
+    assert.strictEqual(comparison.forkRunId, forkMeta.runId)
+    assert.strictEqual(comparison.lineage, 'available')
+
+    const propNode = comparison.nodes.find(n => n.nodeId === 'prop')
+    const decNode = comparison.nodes.find(n => n.nodeId === 'dec')
+    const holdNode = comparison.nodes.find(n => n.nodeId === 'hold')
+    assert.strictEqual(propNode?.status, 'reused')
+    assert.strictEqual(decNode?.status, 'reused')
+    assert.strictEqual(holdNode?.status, 'regenerated')
+  })
+
+  test('promoting a node conversation turn creates a fork with provenance & source baseline (#130)', async () => {
+    const ws = memoryWorkspace(defs)
+    const sourceMeta: RunMeta = {
+      runId: 'source-promote',
+      chainName: 'held',
+      seedPrompt: 'go',
+      startedAt: '2026-09-21T10:00:00Z',
+      status: 'complete',
+      agentOutputs: [
+        makeOutput('prop', 'Initial prop output', {
+          conversation: [
+            { role: 'user', content: 'can you improve it?' },
+            { role: 'assistant', content: 'Promoted prop revision' },
+          ],
+        }),
+        makeOutput('dec', '## Candidate 1\nDecider output'),
+      ],
+      graph: { nodes: chain.nodes, edges: chain.edges },
+    }
+    ws.runs.create(sourceMeta)
+    ws.runs.writeStep('source-promote', 0, sourceMeta.agentOutputs[0])
+    ws.runs.writeStep('source-promote', 1, sourceMeta.agentOutputs[1])
+
+    const res = continueRun(ws, 'source-promote', { promote: { nodeId: 'prop' } })
+    assert.strictEqual(res.status, 200)
+    await res.text()
+
+    const runs = ws.runs.list()
+    const forkSummary = runs.find(r => r.branchedFromRunId === 'source-promote')
+    assert.ok(forkSummary, 'Expected a forked run to be created')
+    const forkMeta = ws.runs.read(forkSummary.runId)
+
+    assert.deepStrictEqual(forkMeta.forkAnchors, ['prop'])
+    assert.strictEqual(forkMeta.sourceOutputs?.length, 2)
+    assert.strictEqual(forkMeta.sourceOutputs[0].output, 'Initial prop output')
+
+    const comparison = buildForkComparison(forkMeta, sourceMeta)
+    assert.strictEqual(comparison.sourceRunId, 'source-promote')
+    assert.strictEqual(comparison.forkRunId, forkMeta.runId)
+    assert.strictEqual(comparison.lineage, 'available')
+
+    const propNode = comparison.nodes.find(n => n.nodeId === 'prop')
+    assert.strictEqual(propNode?.status, 'regenerated')
+    assert.strictEqual(propNode?.sourceOutput, 'Initial prop output')
   })
 })

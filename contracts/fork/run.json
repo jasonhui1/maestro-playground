@@ -85,6 +85,9 @@
   "replayedNodeIds": [
     "first"
   ],
+  "replayedSlots": [
+    "first|"
+  ],
   "sourceOutputs": [
     {
       "agentName": "First",

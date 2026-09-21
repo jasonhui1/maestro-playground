@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
-import { X, GitCompare, RefreshCw, CheckCircle2, PlusCircle, MinusCircle } from 'lucide-react'
+import { X, GitCompare, RefreshCw, CheckCircle2, PlusCircle, MinusCircle, AlertTriangle } from 'lucide-react'
 import { buildCompareModel, type SpanKind } from '@/lib/compareModel'
 import type { ForkComparison, ForkComparisonNode, ForkNodeStatus } from '@/lib/forkComparison'
 
@@ -21,9 +21,54 @@ function nodeKey(node: ForkComparisonNode): string {
   return `${node.nodeId}|${node.round ?? ''}`
 }
 
+function DiffColumn({
+  title,
+  badge,
+  badgeTone = 'text-zinc-400',
+  error,
+  emptyMessage,
+  monoTextClass = 'text-zinc-800',
+  children,
+}: {
+  title?: string
+  badge?: string
+  badgeTone?: string
+  error?: string
+  emptyMessage?: string
+  monoTextClass?: string
+  children?: React.ReactNode
+}) {
+  if (emptyMessage) {
+    return (
+      <div className="flex flex-col flex-1 border border-dashed border-zinc-200 rounded-xl overflow-hidden bg-zinc-50/30 items-center justify-center text-zinc-400 text-xs italic">
+        {emptyMessage}
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-white">
+      <div className="flex items-baseline justify-between gap-2 px-4 py-2 border-b border-zinc-200 bg-zinc-50">
+        <span className="text-xs font-semibold text-zinc-700 truncate">{title}</span>
+        {badge && (
+          <span className={`text-[10px] uppercase tracking-widest font-semibold ${badgeTone}`}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {error && (
+        <div className="p-3 bg-red-50 border-b border-red-200 text-xs text-red-700">
+          Error: {error}
+        </div>
+      )}
+      <pre className={`flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono ${monoTextClass}`}>
+        {children}
+      </pre>
+    </div>
+  )
+}
+
 /**
  * Overlay comparing a forked run with its source node by node (#130).
- * Replayed nodes are greyed out; regenerated nodes display a side-by-side diff.
  */
 export function ForkCompareOverlay({
   runId,
@@ -89,14 +134,22 @@ export function ForkCompareOverlay({
 
   const diffModel = useMemo(() => {
     if (!selectedNode || !highlightDiff) return null
-    if (selectedNode.status === 'reused' || selectedNode.status === 'added' || selectedNode.status === 'removed') return null
-    const sourceText = selectedNode.sourceOutput ?? ''
-    const forkText = selectedNode.forkOutput ?? ''
+    if (selectedNode.status !== 'regenerated') return null
     return buildCompareModel([
-      { name: 'source', text: sourceText },
-      { name: 'fork', text: forkText },
+      { name: 'source', text: selectedNode.sourceOutput ?? '' },
+      { name: 'fork', text: selectedNode.forkOutput ?? '' },
     ])
   }, [selectedNode, highlightDiff])
+
+  const { sourceSpans, forkSpans } = useMemo(() => {
+    if (!diffModel?.columns[0]) return { sourceSpans: null, forkSpans: null }
+    // #130: columns[0] diffs fork against source; cut spans are deletions from source, added are insertions into fork.
+    const spans = diffModel.columns[0].spans
+    return {
+      sourceSpans: spans.filter(s => s.kind !== 'added'),
+      forkSpans: spans.filter(s => s.kind !== 'cut'),
+    }
+  }, [diffModel])
 
   return (
     <div
@@ -105,7 +158,6 @@ export function ForkCompareOverlay({
       aria-label="compare with source"
       className="fixed inset-0 z-50 bg-white flex flex-col"
     >
-      {/* Top bar: title, run lineage, options, and close */}
       <div className="flex flex-col gap-3 border-b border-zinc-200 px-6 py-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -118,6 +170,11 @@ export function ForkCompareOverlay({
                 <span className="text-zinc-600 font-medium">{data.sourceRunId.slice(0, 12)}</span>
                 {' ─► '}
                 <span className="text-zinc-900 font-medium">{data.forkRunId.slice(0, 12)}</span>
+              </span>
+            )}
+            {data?.warning && (
+              <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                {data.warning}
               </span>
             )}
           </div>
@@ -143,7 +200,6 @@ export function ForkCompareOverlay({
           </div>
         </div>
 
-        {/* Node selector strip: replayed nodes greyed out, diff nodes accented (#130) */}
         {nodes.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
             {nodes.map(n => {
@@ -185,7 +241,6 @@ export function ForkCompareOverlay({
         )}
       </div>
 
-      {/* Main content body */}
       <div className="flex-1 overflow-auto p-6">
         {loading && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 gap-2">
@@ -201,9 +256,18 @@ export function ForkCompareOverlay({
           </div>
         )}
 
+        {!loading && !error && data?.lineage === 'unavailable' && nodes.length === 0 && (
+          <div className="max-w-md mx-auto p-6 text-center border border-amber-200 bg-amber-50 rounded-xl">
+            <div className="flex items-center justify-center gap-1.5 text-amber-900 font-semibold mb-1">
+              <AlertTriangle size={16} />
+              <h3 className="text-sm">Lineage unavailable</h3>
+            </div>
+            <p className="text-xs text-amber-700">{data.warning ?? 'Source run baseline is unavailable'}</p>
+          </div>
+        )}
+
         {!loading && !error && selectedNode && (
           <div className="flex flex-col h-full gap-4">
-            {/* Context bar for the selected node */}
             <div className="flex items-center justify-between text-xs text-zinc-500 border-b border-zinc-100 pb-2">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-zinc-800">{selectedNode.nodeName}</span>
@@ -217,101 +281,65 @@ export function ForkCompareOverlay({
               )}
             </div>
 
-            {/* Reused: greyed out text view */}
             {selectedNode.status === 'reused' && (
-              <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50/40">
-                <div className="px-4 py-2 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between text-xs">
-                  <span className="font-semibold text-zinc-500">Output (identical to source)</span>
-                  <span className="text-[10px] uppercase tracking-wider text-zinc-400">replayed</span>
-                </div>
-                <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-400">
-                  {selectedNode.forkOutput ?? selectedNode.sourceOutput ?? ''}
-                </pre>
-              </div>
+              <DiffColumn
+                title="Output (identical to source)"
+                badge="replayed"
+                monoTextClass="text-zinc-400"
+              >
+                {selectedNode.forkOutput ?? selectedNode.sourceOutput ?? ''}
+              </DiffColumn>
             )}
 
-            {/* Regenerated: side-by-side diff */}
             {selectedNode.status === 'regenerated' && (
               <div className="flex gap-4 items-stretch flex-1 min-h-[30rem]">
-                {/* Source column */}
-                <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-white">
-                  <div className="flex items-baseline justify-between gap-2 px-4 py-2 border-b border-zinc-200 bg-zinc-50">
-                    <span className="text-xs font-semibold text-zinc-700 truncate">Source run</span>
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-400">baseline</span>
-                  </div>
-                  {selectedNode.sourceError && (
-                    <div className="p-3 bg-red-50 border-b border-red-200 text-xs text-red-700">
-                      Error: {selectedNode.sourceError}
-                    </div>
+                <DiffColumn title="Source run" badge="baseline" error={selectedNode.sourceError}>
+                  {sourceSpans ? (
+                    sourceSpans.map((span, i) => (
+                      <span key={i} className={SPAN_CLASS[span.kind]}>{span.text}</span>
+                    ))
+                  ) : (
+                    selectedNode.sourceOutput ?? ''
                   )}
-                  <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-800">
-                    {diffModel ? (
-                      diffModel.base.spans.map((span, i) => (
-                        <span key={i} className={SPAN_CLASS[span.kind]}>{span.text}</span>
-                      ))
-                    ) : (
-                      selectedNode.sourceOutput ?? ''
-                    )}
-                  </pre>
-                </div>
+                </DiffColumn>
 
-                {/* Fork column */}
-                <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-white">
-                  <div className="flex items-baseline justify-between gap-2 px-4 py-2 border-b border-zinc-200 bg-zinc-50">
-                    <span className="text-xs font-semibold text-zinc-700 truncate">Forked run</span>
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-400">regenerated</span>
-                  </div>
-                  {selectedNode.forkError && (
-                    <div className="p-3 bg-red-50 border-b border-red-200 text-xs text-red-700">
-                      Error: {selectedNode.forkError}
-                    </div>
+                <DiffColumn title="Forked run" badge="regenerated" error={selectedNode.forkError}>
+                  {forkSpans ? (
+                    forkSpans.map((span, i) => (
+                      <span key={i} className={SPAN_CLASS[span.kind]}>{span.text}</span>
+                    ))
+                  ) : (
+                    selectedNode.forkOutput ?? ''
                   )}
-                  <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-800">
-                    {diffModel?.columns[0] ? (
-                      diffModel.columns[0].spans.map((span, i) => (
-                        <span key={i} className={SPAN_CLASS[span.kind]}>{span.text}</span>
-                      ))
-                    ) : (
-                      selectedNode.forkOutput ?? ''
-                    )}
-                  </pre>
-                </div>
+                </DiffColumn>
               </div>
             )}
 
-            {/* Added: present only in fork */}
             {selectedNode.status === 'added' && (
               <div className="flex gap-4 items-stretch flex-1 min-h-[30rem]">
-                <div className="flex flex-col flex-1 border border-dashed border-zinc-200 rounded-xl overflow-hidden bg-zinc-50/30 items-center justify-center text-zinc-400 text-xs italic">
-                  Not executed in source run
-                </div>
-                <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-white">
-                  <div className="flex items-baseline justify-between gap-2 px-4 py-2 border-b border-zinc-200 bg-zinc-50">
-                    <span className="text-xs font-semibold text-zinc-700 truncate">Forked run</span>
-                    <span className="text-[10px] uppercase tracking-widest text-emerald-600">added</span>
-                  </div>
-                  <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-800">
-                    {selectedNode.forkOutput ?? ''}
-                  </pre>
-                </div>
+                <DiffColumn emptyMessage="Not executed in source run" />
+                <DiffColumn
+                  title="Forked run"
+                  badge="added"
+                  badgeTone="text-emerald-600"
+                  error={selectedNode.forkError}
+                >
+                  {selectedNode.forkOutput ?? ''}
+                </DiffColumn>
               </div>
             )}
 
-            {/* Removed: present only in source */}
             {selectedNode.status === 'removed' && (
               <div className="flex gap-4 items-stretch flex-1 min-h-[30rem]">
-                <div className="flex flex-col flex-1 border border-zinc-200 rounded-xl overflow-hidden bg-white">
-                  <div className="flex items-baseline justify-between gap-2 px-4 py-2 border-b border-zinc-200 bg-zinc-50">
-                    <span className="text-xs font-semibold text-zinc-700 truncate">Source run</span>
-                    <span className="text-[10px] uppercase tracking-widest text-rose-600">removed</span>
-                  </div>
-                  <pre className="flex-1 overflow-auto p-4 text-[13px] leading-[1.7] whitespace-pre-wrap font-mono text-zinc-800">
-                    {selectedNode.sourceOutput ?? ''}
-                  </pre>
-                </div>
-                <div className="flex flex-col flex-1 border border-dashed border-zinc-200 rounded-xl overflow-hidden bg-zinc-50/30 items-center justify-center text-zinc-400 text-xs italic">
-                  Not executed in forked run
-                </div>
+                <DiffColumn
+                  title="Source run"
+                  badge="removed"
+                  badgeTone="text-rose-600"
+                  error={selectedNode.sourceError}
+                >
+                  {selectedNode.sourceOutput ?? ''}
+                </DiffColumn>
+                <DiffColumn emptyMessage="Not executed in forked run" />
               </div>
             )}
           </div>
