@@ -82,5 +82,10 @@
     "agent/first": 1,
     "agent/second": 1
   },
+  "chainSlug": "fresh-chain",
+  "entrypoint": {
+    "kind": "chain",
+    "slug": "fresh-chain"
+  },
   "completedAt": "2026-09-21T10:00:00.000Z"
 }

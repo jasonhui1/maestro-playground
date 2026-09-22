@@ -35,7 +35,6 @@ export interface ChangedSinceResult {
   continuationCaveat?: boolean
 }
 
-/** Line-level additions and deletions count between two text revisions (#131). */
 export function countLineDiff(prevContent: string, currContent: string): { added: number; deleted: number } {
   if (prevContent === currContent) return { added: 0, deleted: 0 }
   const dmp = new diff_match_patch()
@@ -55,7 +54,6 @@ export function countLineDiff(prevContent: string, currContent: string): { added
   return { added, deleted }
 }
 
-/** Detects recognizable frontmatter or body shifts across versions (#131). */
 export function detectFieldChanges(type: TouchedFile['type'], prevContent: string, currContent: string): string[] {
   const changes: string[] = []
   try {
@@ -80,12 +78,11 @@ export function detectFieldChanges(type: TouchedFile['type'], prevContent: strin
       }
     }
   } catch {
-    // Plain text or unparseable markdown frontmatter (#131)
+    // Plain text or unparseable markdown frontmatter
   }
   return changes
 }
 
-/** Deterministic one-line change description helper (#131). */
 export function formatChangeSummary(
   prevVer: number,
   currVer: number,
@@ -107,8 +104,6 @@ export function formatChangeSummary(
       lineText = `+${added} ${added === 1 ? 'line' : 'lines'}`
     } else if (deleted > 0 && added === 0) {
       lineText = `-${deleted} ${deleted === 1 ? 'line' : 'lines'}`
-    } else if (added === 1 && deleted === 1 && fieldChanges.length > 0) {
-      lineText = undefined
     } else if (added > 0 && deleted > 0) {
       lineText = `+${added}, -${deleted} lines`
     }
@@ -121,9 +116,6 @@ export function formatChangeSummary(
   return `v${prevVer} → v${currVer}`
 }
 
-/**
- * Evaluates the union of version keys between previous and current run (#131).
- */
 export function changedSince(
   previous: RunMeta | null | undefined,
   current: RunMeta,
@@ -131,7 +123,12 @@ export function changedSince(
     getContent?: (key: string, version: number) => string | null
   },
 ): ChangedSinceResult {
-  const continuationCaveat = Boolean(current.holds?.some(h => h.resolvedAt))
+  const continuationCaveat = Boolean(
+    current.holds?.some(h => h.resolvedAt) ||
+    current.agentOutputs?.some(
+      o => (o.priorTranscript && o.priorTranscript.length > 0) || o.conversation?.some(m => m.promoted),
+    ),
+  )
 
   if (!previous) {
     return {
@@ -279,33 +276,24 @@ export function changedSince(
   }
 }
 
-/**
- * Selects the most recent earlier run of the same chain (#131).
- */
+export function isInlineRun(meta: RunMeta): boolean {
+  return (
+    meta.entrypoint?.kind === 'inline' ||
+    meta.chainSlug === 'inline' ||
+    meta.chainName === 'Inline chain' ||
+    meta.chainName.toLowerCase().startsWith('inline ')
+  )
+}
+
 export function findPreviousRun(runs: RunMeta[], currentRun: RunMeta): RunMeta | undefined {
-  // #131: Inline graphs lack reliable predecessors
-  if (
-    currentRun.entrypoint?.kind === 'inline' ||
-    currentRun.chainSlug === 'inline' ||
-    currentRun.chainName === 'Inline chain' ||
-    currentRun.chainName.toLowerCase().startsWith('inline ')
-  ) {
-    return undefined
-  }
+  if (isInlineRun(currentRun)) return undefined
 
   const currentStartedTime = new Date(currentRun.startedAt).getTime() || 0
   const currentSlug = currentRun.chainSlug ?? currentRun.entrypoint?.slug
 
   const candidates = runs.filter(r => {
     if (r.runId === currentRun.runId) return false
-    if (
-      r.entrypoint?.kind === 'inline' ||
-      r.chainSlug === 'inline' ||
-      r.chainName === 'Inline chain' ||
-      r.chainName.toLowerCase().startsWith('inline ')
-    ) {
-      return false
-    }
+    if (isInlineRun(r)) return false
 
     const rStartedTime = new Date(r.startedAt).getTime() || 0
     if (rStartedTime > currentStartedTime) return false

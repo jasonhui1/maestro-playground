@@ -110,15 +110,16 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
 
           {changeData && changeData.status !== 'unavailable' && (
             <div className="flex flex-col gap-1.5 border-t border-zinc-100 pt-3">
+              <span className={TYPE.label}>pinned files (run start)</span>
               {changeData.status === 'changed' && changeData.predecessor && (
                 <>
                   <div className="text-zinc-500 font-medium text-[11px] leading-tight">
                     Since run{' '}
                     <Link
                       href={`/history/${changeData.predecessor.runId}`}
-                      className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black"
+                      className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black break-all"
                     >
-                      {changeData.predecessor.runId.slice(-6)}
+                      {changeData.predecessor.runId}
                     </Link>
                     :
                   </div>
@@ -147,9 +148,9 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
                   same source-file versions as run{' '}
                   <Link
                     href={`/history/${changeData.predecessor.runId}`}
-                    className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black"
+                    className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black break-all"
                   >
-                    {changeData.predecessor.runId.slice(-6)}
+                    {changeData.predecessor.runId}
                   </Link>
                 </div>
               )}

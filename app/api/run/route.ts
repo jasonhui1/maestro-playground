@@ -39,7 +39,11 @@ export async function POST(req: NextRequest) {
   // for an agent run — so a step log keeps the one number it has always carried.
   const currentVersion = versions[kind === 'agent' ? versionKey('agent', chain.slug) : versionKey('chain', chain.slug)] ?? 0
 
-  const explicitSlug = typeof body.chainSlug === 'string' ? body.chainSlug : typeof body.slug === 'string' ? body.slug : undefined
+  const resolvedSlug = typeof body.chainSlug === 'string'
+    ? body.chainSlug
+    : typeof body.slug === 'string'
+      ? body.slug
+      : (kind !== 'inline' ? chain.slug : undefined)
 
   return startRun(ws, {
     chain, workspace, title: runTitle, seedPrompt,
@@ -47,7 +51,7 @@ export async function POST(req: NextRequest) {
       ? { name: chain.parameter.name, value: paramValue } : undefined,
     context, versions, versionNumber: currentVersion,
     modelOverride: cleanOverride,
-    chainSlug: explicitSlug,
-    entrypoint: explicitSlug ? { kind, slug: explicitSlug } : (kind === 'inline' ? { kind: 'inline' } : undefined),
+    chainSlug: resolvedSlug,
+    entrypoint: resolvedSlug ? { kind, slug: resolvedSlug } : (kind === 'inline' ? { kind: 'inline' } : undefined),
   })
 }

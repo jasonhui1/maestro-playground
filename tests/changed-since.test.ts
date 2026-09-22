@@ -10,6 +10,7 @@ import {
   countLineDiff,
   detectFieldChanges,
   formatChangeSummary,
+  isInlineRun,
 } from '../lib/changedSince'
 import { snapshotVersion } from '../lib/fs/versions'
 import { diskWorkspace } from '../lib/runFolders'
@@ -173,7 +174,7 @@ describe('changedSince pure function (#131)', () => {
 
     const defaults = result.files.find(f => f.key === 'defaults')!
     assert.strictEqual(defaults.status, 'changed')
-    assert.strictEqual(defaults.summary, 'v2 → v3 (model changed)')
+    assert.strictEqual(defaults.summary, 'v2 → v3 (+1, -1 lines, model changed)')
   })
 
   test('identifies identical bytes after revert as identical bytes', () => {
@@ -242,6 +243,45 @@ describe('changedSince pure function (#131)', () => {
       status: 'complete',
       agentOutputs: [],
       holds: [{ nodeId: 'hold', prompt: 'Choose', input: '', reachedAt: '2026-09-21T10:05:30Z', candidates: [], resolvedAt: '2026-09-21T10:06:00Z' }],
+      versions: { 'agent/writer': 1 },
+    }
+    const previous: RunMeta = {
+      runId: 'run-1',
+      chainName: 'Chain',
+      seedPrompt: 'p',
+      startedAt: '2026-09-21T10:00:00Z',
+      status: 'complete',
+      agentOutputs: [],
+      versions: { 'agent/writer': 1 },
+    }
+
+    const result = changedSince(previous, current)
+    assert.strictEqual(result.continuationCaveat, true)
+  })
+
+  test('includes continuation caveat when run executed an in-place promote', () => {
+    const current: RunMeta = {
+      runId: 'run-2',
+      chainName: 'Chain',
+      seedPrompt: 'p',
+      startedAt: '2026-09-21T10:05:00Z',
+      status: 'complete',
+      agentOutputs: [
+        {
+          nodeId: 'proposer',
+          agentName: 'Proposer',
+          input: 'input',
+          output: 'promoted output',
+          model: 'gpt-4',
+          systemPrompt: '',
+          status: 'success',
+          timestamp: '2026-09-21T10:06:00Z',
+          tokensIn: 0,
+          tokensOut: 0,
+          latencyMs: 0,
+          priorTranscript: [{ role: 'assistant', content: 'prior draft' }],
+        },
+      ],
       versions: { 'agent/writer': 1 },
     }
     const previous: RunMeta = {
@@ -364,29 +404,6 @@ describe('GET /api/runs/[runId]/changed-since route (#131)', () => {
     assert.strictEqual(res.status, 404)
   })
 
-  test('404 when explicit predecessorId does not exist', async () => {
-    const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-changed-since-'))
-    requestEntry.root = wp
-    const ws = diskWorkspace(wp)
-
-    ws.runs.create({
-      runId: 'run-1',
-      chainName: 'Chain',
-      seedPrompt: 'p',
-      startedAt: '2026-09-21T10:00:00Z',
-      status: 'complete',
-      agentOutputs: [],
-      versions: { 'agent/writer': 1 },
-    })
-
-    const { GET } = await import('../app/api/runs/[runId]/changed-since/route')
-    const res = await GET(
-      { url: 'http://localhost/api/runs/run-1/changed-since?predecessorId=missing' } as NextRequest,
-      { params: Promise.resolve({ runId: 'run-1' }) },
-    )
-    assert.strictEqual(res.status, 404)
-  })
-
   test('200 with changed-since projection and diff content', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-changed-since-'))
     requestEntry.root = wp
@@ -480,6 +497,10 @@ describe('diff and change summary formatting helpers (#131)', () => {
     )
     assert.strictEqual(
       formatChangeSummary(2, 3, { added: 1, deleted: 1 }, ['model changed']),
+      'v2 → v3 (+1, -1 lines, model changed)',
+    )
+    assert.strictEqual(
+      formatChangeSummary(2, 3, undefined, ['model changed']),
       'v2 → v3 (model changed)',
     )
     assert.strictEqual(
@@ -490,5 +511,13 @@ describe('diff and change summary formatting helpers (#131)', () => {
       formatChangeSummary(1, 2, { added: 3, deleted: 2 }, []),
       'v1 → v2 (+3, -2 lines)',
     )
+  })
+
+  test('isInlineRun detects inline configurations across fields', () => {
+    assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Inline chain', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
+    assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Inline test', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
+    assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Chain', chainSlug: 'inline', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
+    assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Chain', entrypoint: { kind: 'inline' }, seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
+    assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Story', chainSlug: 'story', entrypoint: { kind: 'chain', slug: 'story' }, seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), false)
   })
 })

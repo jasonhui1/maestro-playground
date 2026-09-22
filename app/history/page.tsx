@@ -8,7 +8,7 @@ import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
 
 export default function HistoryPage() {
-  const [runs, setRuns] = useState<RunMeta[]>([])
+  const [allRuns, setAllRuns] = useState<RunMeta[]>([])
   const [loading, setLoading] = useState(true)
   
   const [filterChain, setFilterChain] = useState('')
@@ -20,33 +20,41 @@ export default function HistoryPage() {
   useEffect(() => { useWorkspaceStore.getState().load() }, [])
 
   useEffect(() => {
-    const params = new URLSearchParams()
-    if (filterChain) params.set('chainName', filterChain)
-    if (filterStatus) params.set('status', filterStatus)
-    if (filterKeyword) params.set('keyword', filterKeyword)
+    fetch('/api/runs')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setAllRuns(data)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
-    const fetchRuns = async () => {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/runs?${params.toString()}`)
-        const data = await res.json()
-        setRuns(data)
-      } finally {
-        setLoading(false)
-      }
+  const runs = useMemo(() => {
+    let list = allRuns
+    if (filterChain) {
+      list = list.filter(r => r.chainName === filterChain)
     }
-
-    fetchRuns()
-  }, [filterChain, filterStatus, filterKeyword])
+    if (filterStatus) {
+      list = list.filter(r => r.status === filterStatus)
+    }
+    if (filterKeyword) {
+      const kw = filterKeyword.toLowerCase()
+      list = list.filter(r =>
+        r.seedPrompt.toLowerCase().includes(kw) ||
+        r.runId.toLowerCase().includes(kw)
+      )
+    }
+    return list
+  }, [allRuns, filterChain, filterStatus, filterKeyword])
 
   const previousRunsMap = useMemo(() => {
     const map = new Map<string, ChangedSinceResult>()
-    for (const r of runs) {
-      const pred = findPreviousRun(runs, r)
+    for (const r of allRuns) {
+      const pred = findPreviousRun(allRuns, r)
       map.set(r.runId, changedSince(pred, r))
     }
     return map
-  }, [runs])
+  }, [allRuns])
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 flex flex-col gap-8">

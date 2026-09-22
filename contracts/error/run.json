@@ -64,5 +64,10 @@
     "agent/proposer": 1,
     "agent/decider": 1,
     "agent/after": 1
+  },
+  "chainSlug": "held-chain",
+  "entrypoint": {
+    "kind": "chain",
+    "slug": "held-chain"
   }
 }
