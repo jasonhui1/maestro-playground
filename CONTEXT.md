@@ -46,6 +46,10 @@ The `{ chain, agents, chains }` bundle of already-loaded workspace files passed 
 
 The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions() }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
 
+## Variance group and spread
+
+A **variance group** is 2–10 ordinary **run folders** launched from one resolved chain, seed, parameter, model selection and version-pin set. Each run's `meta.json` carries `variance: { groupId, index, size }`; the group owns no separate source-of-truth file. **Spread** is one node's mean pairwise distance across the group's successful outputs, using the same line-first, character-refined diff as the compare overlay and ranging from `0` (identical) to `1` (fully different). The group summary is a projection over run folders, so deleting it would delete nothing and changing a run changes the next summary read (#133). _Avoid_: parallel run (describes scheduling, not the analytical unit), batch (suggests one combined run), score (does not say what is measured).
+
 ## Section warning
 
 A runtime notice that an edge wired to a named output section found no such heading in the producing node's output, so the downstream input resolved to empty (issue #37). Attaches to the **producing** node — its run panel entry and its log — and never fails the run. Distinct from a validation issue: a validation issue is knowable before a run, from files; a section warning is only knowable from a model's actual answer.

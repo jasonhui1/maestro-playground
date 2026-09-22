@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { ChainSelector } from '@/components/ChainSelector'
 import { TemplateSelector } from '@/components/TemplateSelector'
 import { RunTrace } from '@/components/RunTrace'
@@ -8,6 +9,7 @@ import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { streamRun, runErrorMessage, endedRunId } from '@/lib/runStream'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
 import { ModelPicker } from '@/components/ModelPicker'
+import type { VarianceRunEvent } from '@/lib/variance'
 
 export default function RunPage() {
   const chains = useWorkspaceStore(s => s.files.chains)
@@ -21,6 +23,7 @@ export default function RunPage() {
   const [isRunning, setIsRunning] = useState(false)
   const [endedRuns, setEndedRuns] = useState<string[]>([])
   const [runError, setRunError] = useState<string | null>(null)
+  const [varianceGroupId, setVarianceGroupId] = useState<string | null>(null)
 
   useEffect(() => { useWorkspaceStore.getState().load() }, [])
 
@@ -57,9 +60,53 @@ export default function RunPage() {
     await streamRun(reader, e => {
       if (e.type === 'error') { setRunError(e.error); return }
       const ended = endedRunId(e)
-      if (ended) { setEndedRuns(prev => [...prev, ended]); return }
+      if (ended) {
+        setEndedRuns(prev => {
+          const next = [...prev]
+          next[runIndex] = ended
+          return next
+        })
+        return
+      }
       setRunState(prev => applyInstanceEvent(prev, runIndex, e))
       setRunOrder(prev => applyInstanceOrder(prev, runIndex, e))
+    })
+  }
+
+  async function runVarianceGroup() {
+    const override = modelOverride.trim() || undefined
+    const res = await fetch('/api/variance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chainName: selectedChain,
+        seedPrompt,
+        count: parallelCount,
+        ...(override ? { modelOverride: override } : {}),
+      }),
+    })
+    if (!res.ok) { setRunError(await runErrorMessage(res)); return }
+    const reader = res.body?.getReader()
+    if (!reader) return
+
+    await streamRun<VarianceRunEvent>(reader, event => {
+      if (event.type === 'variance_complete') {
+        setVarianceGroupId(event.groupId)
+        setEndedRuns(event.runIds)
+        return
+      }
+      if (event.type === 'error') { setRunError(event.error); return }
+      const ended = endedRunId(event)
+      if (ended) {
+        setEndedRuns(prev => {
+          const next = [...prev]
+          next[event.instance] = ended
+          return next
+        })
+        return
+      }
+      setRunState(prev => applyInstanceEvent(prev, event.instance, event))
+      setRunOrder(prev => applyInstanceOrder(prev, event.instance, event))
     })
   }
 
@@ -67,15 +114,15 @@ export default function RunPage() {
     setRunState({})
     setRunOrder({})
     setEndedRuns([])
+    setVarianceGroupId(null)
     setRunError(null)
     setIsRunning(true)
 
     try {
-      await Promise.all(
-        Array.from({ length: parallelCount }).map((_, i) => runSingleInstance(i))
-      )
+      if (parallelCount > 1) await runVarianceGroup()
+      else await runSingleInstance(0)
     } catch (err) {
-      console.error('Parallel run failed:', err)
+      console.error('Run failed:', err)
     } finally {
       setIsRunning(false)
     }
@@ -126,14 +173,14 @@ export default function RunPage() {
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
-                Parallel Runs
+                Run N times
               </label>
               <input
                 type="number"
                 min={1}
                 max={10}
                 value={parallelCount}
-                onChange={e => setParallelCount(parseInt(e.target.value) || 1)}
+                onChange={e => setParallelCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
                 className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
               />
             </div>
@@ -144,7 +191,7 @@ export default function RunPage() {
               className="mt-5 self-start rounded-lg bg-zinc-900 text-white px-8 py-2 text-sm font-medium
                 disabled:opacity-40 hover:bg-zinc-700 transition-all active:scale-95 shadow-sm"
             >
-              {isRunning ? 'Running...' : `Run ${parallelCount > 1 ? parallelCount + ' instances' : 'chain'}`}
+              {isRunning ? 'Running...' : parallelCount > 1 ? `Run ×${parallelCount}` : 'Run chain'}
             </button>
           </div>
         </div>
@@ -152,7 +199,7 @@ export default function RunPage() {
         <div className="bg-zinc-50 rounded-2xl p-6 border border-zinc-100">
           <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-4">Run Status</h2>
           <div className="flex flex-col gap-2">
-            {isRunning && <div className="text-sm text-blue-600 animate-pulse font-medium">Executing parallel runs...</div>}
+            {isRunning && <div className="text-sm text-blue-600 animate-pulse font-medium">Executing identical-input runs...</div>}
             {runError && (
               <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">{runError}</div>
             )}
@@ -163,6 +210,14 @@ export default function RunPage() {
                   <code key={id} className="bg-white px-2 py-1 rounded border border-zinc-200">{id}</code>
                 ))}
               </div>
+            )}
+            {varianceGroupId && (
+              <Link
+                href={`/variance/${encodeURIComponent(varianceGroupId)}`}
+                className="mt-2 self-start rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                View variance summary
+              </Link>
             )}
             {!isRunning && endedRuns.length === 0 && (
               <div className="text-sm text-zinc-400 italic">No active runs. Configure and click Run.</div>

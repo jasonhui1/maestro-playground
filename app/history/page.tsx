@@ -6,6 +6,8 @@ import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/ch
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
+import { buildVarianceGroup } from '@/lib/variance'
+import { VarianceRunCard } from '@/components/VarianceRunCard'
 
 export default function HistoryPage() {
   const [allRuns, setAllRuns] = useState<RunMeta[]>([])
@@ -55,6 +57,36 @@ export default function HistoryPage() {
     }
     return map
   }, [allRuns])
+
+  const historyItems = useMemo<Array<
+    | { kind: 'run'; run: RunMeta }
+    | { kind: 'variance'; group: ReturnType<typeof buildVarianceGroup> }
+  >>(() => {
+    const seenGroups = new Set<string>()
+    const runsByGroup = new Map<string, RunMeta[]>()
+    for (const candidate of allRuns) {
+      const groupId = candidate.variance?.groupId
+      if (!groupId) continue
+      const members = runsByGroup.get(groupId) ?? []
+      members.push(candidate)
+      runsByGroup.set(groupId, members)
+    }
+    const items: Array<
+      | { kind: 'run'; run: RunMeta }
+      | { kind: 'variance'; group: ReturnType<typeof buildVarianceGroup> }
+    > = []
+    for (const run of runs) {
+      const groupId = run.variance?.groupId
+      if (!groupId) {
+        items.push({ kind: 'run', run })
+        continue
+      }
+      if (seenGroups.has(groupId)) continue
+      seenGroups.add(groupId)
+      items.push({ kind: 'variance', group: buildVarianceGroup(runsByGroup.get(groupId) ?? []) })
+    }
+    return items
+  }, [runs, allRuns])
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 flex flex-col gap-8">
@@ -119,9 +151,9 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {runs.map(run => (
-            <RunCard key={run.runId} run={run} changedSince={previousRunsMap.get(run.runId)} />
-          ))}
+          {historyItems.map(item => item.kind === 'variance'
+            ? <VarianceRunCard key={item.group.groupId} group={item.group} />
+            : <RunCard key={item.run.runId} run={item.run} changedSince={previousRunsMap.get(item.run.runId)} />)}
         </div>
       )}
     </div>

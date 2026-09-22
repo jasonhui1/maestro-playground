@@ -16,6 +16,8 @@ export const CAPABILITIES = {
   /** `POST /api/runs/:id/fork` takes `{ from?, revisions?, versions? }` and streams the new run;
    *  `/api/run` no longer takes `branchOutputs` (#103). */
   runFork: true,
+  /** Grouped launches and summaries are exposed by `/api/variance` (#133). */
+  varianceGroups: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

@@ -168,7 +168,7 @@ export function streamChainRun(s: RunSession): Response {
 }
 
 /** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
-export function startRun(ws: Workspace, run: {
+export interface StartRunInput {
   chain: ChainDef
   workspace: RunSession['workspace']
   title: string
@@ -190,7 +190,10 @@ export function startRun(ws: Workspace, run: {
   modelOverride?: string
   chainSlug?: string
   entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
-}): Response {
+  variance?: RunMeta['variance']
+}
+
+export function startRun(ws: Workspace, run: StartRunInput): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
   ws.runs.create({
@@ -213,6 +216,7 @@ export function startRun(ws: Workspace, run: {
     ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),
     ...(run.chainSlug ? { chainSlug: run.chainSlug } : {}),
     ...(run.entrypoint ? { entrypoint: run.entrypoint } : {}),
+    ...(run.variance ? { variance: run.variance } : {}),
   })
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,

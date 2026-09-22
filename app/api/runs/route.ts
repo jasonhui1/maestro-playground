@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const entityType = searchParams.get('entityType')
     const slug = searchParams.get('slug')
     const branchedFromRunId = searchParams.get('branchedFromRunId')
+    const varianceGroupId = searchParams.get('varianceGroupId')
 
     let runs = requestWorkspace().runs.list()
 
@@ -34,6 +35,10 @@ export async function GET(req: NextRequest) {
 
     if (branchedFromRunId) {
       runs = runs.filter(r => r.branchedFromRunId === branchedFromRunId)
+    }
+
+    if (varianceGroupId) {
+      runs = runs.filter(r => r.variance?.groupId === varianceGroupId)
     }
 
     if (keyword) {

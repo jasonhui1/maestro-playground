@@ -276,6 +276,8 @@ export interface RunMeta {
   chainSlug?: string
   /** The entrypoint identity (kind + slug) (#131). */
   entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
+  /** One ordinary run's place in a repeated, same-input launch (#133). */
+  variance?: { groupId: string; index: number; size: number }
 }
 
 export interface TemplateDef {

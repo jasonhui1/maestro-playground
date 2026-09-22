@@ -90,6 +90,7 @@ For non-streaming endpoints (such as the HTTP 400 Bad Request recorded in `error
    Use `run.json` and `layout.json` to verify how the plugin rehydrates notes and reopened run views.
 5. **Feature Detection**:
    Use `capabilities.json` to verify client feature-detection branches without hardcoding engine version numbers.
+   `varianceGroups` advertises `POST /api/variance`, `GET /api/variance/:groupId`, and the `varianceGroupId` run-list filter.
 
 ## Checking & Updating Contracts
 

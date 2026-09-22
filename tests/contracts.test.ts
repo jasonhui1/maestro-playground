@@ -174,6 +174,7 @@ test('contract: capabilities object matches workspace flags (#136)', async () =>
   assert.strictEqual(caps.runStartEvent, true)
   assert.strictEqual(caps.runFailureFrame, true)
   assert.strictEqual(caps.runFork, true)
+  assert.strictEqual(caps.varianceGroups, true)
 })
 
 function listFilesRecursive(dir: string, base = ''): string[] {
