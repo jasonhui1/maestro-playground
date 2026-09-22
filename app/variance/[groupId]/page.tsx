@@ -136,6 +136,7 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-zinc-800">{node.nodeName}</div>
               <div className="font-mono text-[10px] text-zinc-400">{node.nodeId}{node.round !== undefined ? ` · round ${node.round + 1}` : ''}</div>
+              <div className="text-[10px] text-zinc-400">{node.successfulSampleCount}/{node.expectedSampleCount} successful outputs</div>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
@@ -145,7 +146,7 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
               </div>
               <span
                 className="w-9 text-right font-mono text-xs text-zinc-700"
-                title={node.spread === undefined ? 'Needs at least two successful outputs' : undefined}
+                title={node.spread === undefined ? 'Needs a successful output from every run' : undefined}
               >
                 {node.spread === undefined ? 'n/a' : node.spread.toFixed(2)}
               </span>

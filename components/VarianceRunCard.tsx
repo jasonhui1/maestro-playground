@@ -2,7 +2,8 @@ import Link from 'next/link'
 import type { VarianceGroup } from '@/lib/variance'
 
 export function VarianceRunCard({ group }: { group: VarianceGroup }) {
-  const widest = group.nodes.reduce((max, node) => Math.max(max, node.spread ?? 0), 0)
+  const spreads = group.nodes.flatMap(node => node.spread === undefined ? [] : [node.spread])
+  const widest = spreads.length > 0 ? Math.max(...spreads).toFixed(2) : 'n/a'
   return (
     <Link
       href={`/variance/${encodeURIComponent(group.groupId)}`}
@@ -18,7 +19,7 @@ export function VarianceRunCard({ group }: { group: VarianceGroup }) {
           </div>
           <span className="font-mono text-[10px] uppercase tracking-tight text-zinc-400">{group.groupId}</span>
         </div>
-        <span className="font-mono text-xs text-zinc-700">widest {widest.toFixed(2)}</span>
+        <span className="font-mono text-xs text-zinc-700">widest {widest}</span>
       </div>
       <p className="mb-5 line-clamp-2 text-sm italic leading-relaxed text-zinc-600">&quot;{group.seedPrompt}&quot;</p>
       <div className="flex items-center justify-between border-t border-zinc-200 pt-4 text-[11px] text-zinc-500">

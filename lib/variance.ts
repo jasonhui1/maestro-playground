@@ -21,8 +21,10 @@ export interface VarianceNode {
   nodeId: string
   nodeName: string
   round?: number
-  /** Absent until at least two runs produced successful output for this slot. */
+  /** Absent until every expected run produced successful output for this slot. */
   spread?: number
+  successfulSampleCount: number
+  expectedSampleCount: number
   samples: VarianceSample[]
 }
 
@@ -87,6 +89,7 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     (a.variance?.index ?? Number.MAX_SAFE_INTEGER) - (b.variance?.index ?? Number.MAX_SAFE_INTEGER)
       || a.startedAt.localeCompare(b.startedAt))
   const first = runs[0]
+  const expectedRunCount = first?.variance?.size ?? runs.length
   const bySlot = new Map<string, { output: AgentOutput; samples: VarianceSample[] }>()
 
   for (const run of runs) {
@@ -131,7 +134,7 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     groupId: first?.variance?.groupId ?? '',
     chainName: first?.chainName ?? '',
     seedPrompt: first?.seedPrompt ?? '',
-    expectedRunCount: first?.variance?.size ?? runs.length,
+    expectedRunCount,
     completedRunCount: runs.filter(run => run.status === 'complete').length,
     ...(hasUnpriced ? { costWarning: 'one or more runs contain unpriced output' } : { costUsd: totalCost }),
     runs,
@@ -141,7 +144,9 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
         nodeId: entry.output.nodeId!,
         nodeName: entry.output.agentName,
         ...(entry.output.round !== undefined ? { round: entry.output.round } : {}),
-        ...(successful.length >= 2 ? { spread: spreads[index] } : {}),
+        ...(expectedRunCount >= 2 && successful.length === expectedRunCount ? { spread: spreads[index] } : {}),
+        successfulSampleCount: successful.length,
+        expectedSampleCount: expectedRunCount,
         samples: entry.samples,
       }
     }),
