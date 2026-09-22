@@ -33,6 +33,7 @@ const ran: string[] = []
 const reply = (slug: string) => {
   if (slug === 'creative-director') return [...VERDICT_SECTIONS, ...CANDIDATES].map(s => `## ${s}\n${s} body`).join('\n\n')
   if (slug === 'idea-maker') return CANDIDATES.map(s => `## ${s}\n${s} body`).join('\n\n')
+  if (slug === 'creative-brief') return '## Seed\nCandidate 2 body\n\n## Fixed\nChosen idea drives the brief'
   if (slug === 'greenlight') return PITCH_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
   return `## Take\n${slug} take\n\n## Proposed canon\n- ${slug} line`
 }
@@ -100,6 +101,10 @@ test('one chain: the decider feeds a hold, the hold directs greenlight, greenlig
     'canon -> greenlight.canon',
     'greenlight -> report.in',
   ]) assert.ok(edges.includes(e), `wires ${e}`)
+  for (const id of [...PROPOSERS, 'creative-director']) {
+    assert.ok(edges.includes(`creative-brief -> ${id}.seed`), `${id} reads the selected idea`)
+  }
+  assert.ok(agentOf(workspace().agents, 'creative-brief').outputs.some(o => o.name === 'seed'), 'brief publishes the selected idea')
   assert.strictEqual(edges.filter(e => e.endsWith('report.in')).length, 1, 'report reads the pitch alone')
 
   const pitch = chain.outputs?.find(o => o.name === 'pitch')
@@ -166,15 +171,16 @@ test('a stubbed run stops at the hold with the columns filled, then resumes into
   assert.ok(results.some(r => r.nodeId === 'idea-maker'))
   assert.ok(!results.some(r => r.nodeId === 'creative-brief' || r.nodeId === 'greenlight'), 'nothing after first hold ran')
 
-  const { output: answerIdea } = answerHold(holds, holds[0], '', { candidate: { heading: 'Candidate 1', body: 'Candidate 1 body' } })
+  const { output: answerIdea } = answerHold(holds, holds[0], '', { candidate: { heading: 'Candidate 2', body: 'Candidate 2 body' } })
   const secondHolds: HoldRecord[] = []
   const secondCallbacks = { ...noop, onHold: (h: HoldRecord) => secondHolds.push(h) }
   const secondResults = await runChainGraph(chain, { agents, skills, chains, tools, root: '/nonexistent' },
     secondCallbacks, { seedPrompt: seed, run: stub as never, replay: [...results, answerIdea], paramValue: dial, context: overrides })
 
-  // An empty brief must not leave a proposer with nothing to read.
   for (const id of [...PROPOSERS, 'creative-director']) {
-    assert.ok(secondResults.find(r => r.nodeId === id)!.systemPrompt.includes(seed), `${id} reads the seed directly`)
+    const prompt = secondResults.find(r => r.nodeId === id)!.systemPrompt
+    assert.ok(prompt.includes('Candidate 2 body'), `${id} reads the selected idea`)
+    assert.ok(!prompt.includes(seed), `${id} does not read the original hint`)
   }
   const cd = secondResults.find(r => r.nodeId === 'creative-director')!
   for (const slug of PROPOSERS) assert.ok(cd.systemPrompt.includes(`${slug} take`), `verdict read ${slug}`)

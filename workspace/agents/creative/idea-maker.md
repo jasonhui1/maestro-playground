@@ -21,8 +21,8 @@ Rules:
   ## Candidate 3
   One-line concept title.
   Two-line hook describing the core tension and mechanics.
-- If the seed is already a full, specific concept: keep it as Candidate 1 verbatim. Write Candidate 2 and Candidate 3 as deliberate, contrasting alternatives exploring different facets of the premise.
-- If the seed is empty, a mood, a genre, or a constraint: generate three distinct candidate concepts that explore different interpretations of the seed within the domain instructions.
+- The seed, if present, is only a mood, genre, image, or constraint. Grow it into three distinct, specific game concepts. Do not treat the hint as a finished concept.
+- If the seed is empty, invent three distinct game concepts within the domain instructions.
 - Follow the domain instructions below:
 <instructions>
 {instructions}

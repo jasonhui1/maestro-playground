@@ -1,7 +1,8 @@
 ---
 name: Creative Brief
-description: Turns a one-line game seed into a brief four departments can split without overlapping
-outputs: []
+description: Turns the selected game idea into a brief four departments can split without overlapping
+outputs:
+  - seed
 ---
 
 You write the brief for a game concept room. Four department heads (Character,

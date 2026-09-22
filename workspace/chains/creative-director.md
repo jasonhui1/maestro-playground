@@ -123,7 +123,7 @@ edges:
     to: creative-brief.experimental
   - from: canon
     to: creative-brief.canon
-  - from: seed
+  - from: creative-brief.seed
     to: character-director.seed
   - from: creative-brief
     to: character-director.brief
@@ -131,7 +131,7 @@ edges:
     to: character-director.experimental
   - from: canon
     to: character-director.canon
-  - from: seed
+  - from: creative-brief.seed
     to: gameplay-director.seed
   - from: creative-brief
     to: gameplay-director.brief
@@ -139,7 +139,7 @@ edges:
     to: gameplay-director.experimental
   - from: canon
     to: gameplay-director.canon
-  - from: seed
+  - from: creative-brief.seed
     to: world-director.seed
   - from: creative-brief
     to: world-director.brief
@@ -147,7 +147,7 @@ edges:
     to: world-director.experimental
   - from: canon
     to: world-director.canon
-  - from: seed
+  - from: creative-brief.seed
     to: art-director.seed
   - from: creative-brief
     to: art-director.brief
@@ -155,7 +155,7 @@ edges:
     to: art-director.experimental
   - from: canon
     to: art-director.canon
-  - from: seed
+  - from: creative-brief.seed
     to: devils-advocate.seed
   - from: creative-brief
     to: devils-advocate.brief
@@ -173,7 +173,7 @@ edges:
     to: join.in
   - from: devils-advocate
     to: join.in
-  - from: seed
+  - from: creative-brief.seed
     to: creative-director.seed
   - from: creative-brief
     to: creative-director.brief
