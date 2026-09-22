@@ -149,9 +149,12 @@ export function streamChainRun(s: RunSession): Response {
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
       const agentOutputs = keepConversations(stretch, runs.read(runId).agentOutputs)
       if (reached.length > 0) {
-        runs.update(runId, { status: 'waiting', agentOutputs, holds: mergeHolds(s.holds ?? [], reached) })
+        const holds = mergeHolds(s.holds ?? [], reached)
+        runs.update(runId, { status: 'waiting', agentOutputs, holds })
         // Wave-mate holds pause together, so each is announced (#93).
-        for (const hold of reached) send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold })
+        for (const { nodeId } of reached) {
+          send({ type: 'run_waiting', runId, nodeId, hold: holds.findLast(h => h.nodeId === nodeId)! })
+        }
       } else {
         runs.update(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs })
         send({ type: 'run_complete', runId })

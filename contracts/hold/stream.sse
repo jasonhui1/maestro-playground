@@ -20,5 +20,5 @@ data: {"type":"agent_done","agentName":"Decider","nodeId":"decider","step":1,"ou
 
 data: {"type":"layout","model":{"kind":"timeline","panels":[{"name":"proposal","node":"proposer","text":"Draft proposal summary","lines":1,"state":"filled"},{"name":"verdict","node":"decider","text":"","lines":0,"state":"empty"},{"name":"after","node":"after","text":"","lines":0,"state":"pending","emphasis":"last"}]}}
 
-data: {"type":"run_waiting","runId":"contract-run-hold","nodeId":"hold","hold":{"nodeId":"hold","input":"## Candidate 1\nAlpha Option\n\n## Candidate 2\nBeta Option","candidates":[{"heading":"Candidate 1","body":"Alpha Option"},{"heading":"Candidate 2","body":"Beta Option"}],"reachedAt":"2026-09-21T10:00:00.000Z"}}
+data: {"type":"run_waiting","runId":"contract-run-hold","nodeId":"hold","hold":{"nodeId":"hold","input":"## Candidate 1\nAlpha Option\n\n## Candidate 2\nBeta Option","candidates":[{"heading":"Candidate 1","body":"Alpha Option"},{"heading":"Candidate 2","body":"Beta Option"}],"reachedAt":"2026-09-21T10:00:00.000Z","revision":1}}
 

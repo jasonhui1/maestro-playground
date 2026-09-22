@@ -131,6 +131,8 @@ export function setForkMode(val: boolean): void {
   isForkMode = val
 }
 
+let rerollFails = false
+
 export function contractModelResponder({ messages, agentSlug, hooks }: {
   _last?: WireMessage
   messages: WireMessage[]
@@ -161,6 +163,12 @@ export function contractModelResponder({ messages, agentSlug, hooks }: {
     hooks?.onToken?.('Draft proposal ', 'output')
     hooks?.onToken?.('ready', 'output')
     return answer('Draft proposal ready\n\n## Summary\nDraft proposal summary', [10, 15])
+  }
+
+  if (agentSlug === 'decider' && messages[0]?.content?.includes('fresh set of candidates')) {
+    hooks?.onToken?.('Rerolling options', 'output')
+    if (rerollFails) return answer('No options this time', [8, 4])
+    return answer('## Candidate 1\nGentle Alpha Option\n\n## Candidate 2\nGentle Beta Option', [21, 26])
   }
 
   if (agentSlug === 'decider') {
@@ -275,6 +283,66 @@ export async function runResumeScenario({ setRunId, setTime }: ScenarioContext):
   )
 
   return recordScenarioRun({ scenario: 'resume', runId, requestBody, response: res })
+}
+
+async function heldRunWithFeedback(runId: string, feedback: string) {
+  const { POST: startRun } = await import('../../app/api/run/route')
+  await drainSse(await startRun({ json: async () => ({ chainName: 'held-chain', seedPrompt: 'Setup reroll' }) } as NextRequest))
+  const feedbackBody = { feedback }
+  const { PATCH } = await import('../../app/api/runs/[runId]/holds/[holdId]/route')
+  const saved = await PATCH({ json: async () => feedbackBody } as NextRequest, { params: Promise.resolve({ runId, holdId: 'hold' }) })
+  return { feedbackBody, feedbackResponse: await saved.json() }
+}
+
+async function rerollRoute(runId: string, body: unknown): Promise<Response> {
+  const { POST } = await import('../../app/api/runs/[runId]/holds/[holdId]/reroll/route')
+  return POST({ json: async () => body } as NextRequest, { params: Promise.resolve({ runId, holdId: 'hold' }) })
+}
+
+export async function runRerollScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
+  const runId = 'contract-run-reroll'
+  setRunId(runId)
+  setTime('2026-09-21T10:00:00.000Z')
+  const { feedbackBody, feedbackResponse } = await heldRunWithFeedback(runId, 'Less tragic, but keep a real consequence')
+
+  setTime('2026-09-21T10:01:00.000Z')
+  await drainSse(await rerollRoute(runId, { revision: 1 }))
+
+  setTime('2026-09-21T10:02:00.000Z')
+  const requestBody = { revision: 2 }
+  const res = await rerollRoute(runId, requestBody)
+  const result = await recordScenarioRun({ scenario: 'reroll', runId, requestBody, response: res })
+
+  const refusalReqBody = { chosen: 'Candidate 1', revision: 1 }
+  const { POST: resumeRoute } = await import('../../app/api/runs/[runId]/resume/route')
+  const refusal = await resumeRoute({ json: async () => refusalReqBody } as NextRequest, { params: Promise.resolve({ runId }) })
+  return {
+    ...result,
+    files: {
+      ...result.files,
+      'feedback-request.json': formatJson(feedbackBody),
+      'feedback-response.json': formatJson(feedbackResponse),
+      'refusal-request.json': formatJson(refusalReqBody),
+      'refusal-response.json': formatJson(await refusal.json()),
+    },
+  }
+}
+
+export async function runRerollFailedScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
+  const runId = 'contract-run-reroll-failed'
+  setRunId(runId)
+  setTime('2026-09-21T10:00:00.000Z')
+  await heldRunWithFeedback(runId, 'Less tragic')
+
+  setTime('2026-09-21T10:01:00.000Z')
+  const requestBody = { feedback: 'Kinder still', revision: 1 }
+  rerollFails = true
+  try {
+    const res = await rerollRoute(runId, requestBody)
+    return await recordScenarioRun({ scenario: 'reroll-failed', runId, requestBody, response: res })
+  } finally {
+    rerollFails = false
+  }
 }
 
 export async function runPromoteScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
@@ -558,6 +626,92 @@ export function getContractManifest(): Record<string, unknown> {
             status: 200,
             contentType: 'application/json',
             file: 'fork/layout.json',
+          },
+        ],
+      },
+      reroll: {
+        description: 'Rerolling an open hold twice with saved feedback, plus a stale-revision refusal',
+        setup: 'Held chain paused at hold; feedback saved by PATCH; one reroll at revision 1; recorded reroll at revision 2',
+        feedback: {
+          request: {
+            method: 'PATCH',
+            path: '/api/runs/:id/holds/:holdId',
+            file: 'reroll/feedback-request.json',
+          },
+          response: {
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll/feedback-response.json',
+          },
+        },
+        request: {
+          method: 'POST',
+          path: '/api/runs/:id/holds/:holdId/reroll',
+          file: 'reroll/request.json',
+        },
+        response: {
+          status: 200,
+          contentType: 'text/event-stream',
+          descriptorFile: 'reroll/response.json',
+          streamFile: 'reroll/stream.sse',
+        },
+        refusal: {
+          request: {
+            method: 'POST',
+            path: '/api/runs/:id/resume',
+            file: 'reroll/refusal-request.json',
+          },
+          response: {
+            status: 409,
+            contentType: 'application/json',
+            file: 'reroll/refusal-response.json',
+          },
+        },
+        observations: [
+          {
+            method: 'GET',
+            path: '/api/runs/:id',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll/run.json',
+          },
+          {
+            method: 'GET',
+            path: '/api/runs/:id/layout',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll/layout.json',
+          },
+        ],
+      },
+      'reroll-failed': {
+        description: 'A reroll answered without candidates: reroll_failed, then run_waiting with the kept set and the new feedback',
+        setup: 'Held chain paused at hold with saved feedback; the reroll replaces the feedback and the decider answers without candidates',
+        request: {
+          method: 'POST',
+          path: '/api/runs/:id/holds/:holdId/reroll',
+          file: 'reroll-failed/request.json',
+        },
+        response: {
+          status: 200,
+          contentType: 'text/event-stream',
+          descriptorFile: 'reroll-failed/response.json',
+          streamFile: 'reroll-failed/stream.sse',
+        },
+        observations: [
+          {
+            method: 'GET',
+            path: '/api/runs/:id',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll-failed/run.json',
+          },
+          {
+            method: 'GET',
+            path: '/api/runs/:id/layout',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll-failed/layout.json',
           },
         ],
       },

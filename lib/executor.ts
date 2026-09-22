@@ -9,6 +9,7 @@ import { topoOrder, hasLiteralInput } from './chainGraph'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
+import { withModelOverride } from './modelOverride'
 import { kindOf, agentSlugOf, resolveNodeSkills, zoneStateName, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 
@@ -146,18 +147,7 @@ export async function runChainGraph(
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
-    // #128: Run override applies immediately before execution without mutating definitions.
-    const effectiveAgent: AgentDef = modelOverride ? {
-      ...agent,
-      model: modelOverride,
-      resolution: {
-        forbidden: agent.resolution?.forbidden ?? [],
-        sources: {
-          ...(agent.resolution?.sources ?? {}),
-          model: 'run override',
-        },
-      } as AgentDef['resolution'],
-    } : agent
+    const effectiveAgent = withModelOverride(agent, modelOverride)
     const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —

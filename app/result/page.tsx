@@ -12,6 +12,9 @@ import { LaunchForm } from '@/components/result/LaunchForm'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { RunTrace } from '@/components/RunTrace'
+import { ResumeForm } from '@/components/trace/ResumeForm'
+import { useRouter } from 'next/navigation'
+import type { HoldRecord, RunMeta } from '@/lib/types'
 
 export default function ResultPage() {
   const chains = useWorkspaceStore(s => s.files.chains)
@@ -31,6 +34,16 @@ export default function ResultPage() {
 
   // #128: Run override defaults to 'As declared' on fresh launch; not saved to localStorage.
   const [modelOverride, setModelOverride] = useState('')
+  const router = useRouter()
+  const [waiting, setWaiting] = useState<{ runId: string; hold: HoldRecord } | null>(null)
+
+  async function refreshHold(runId: string) {
+    const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`)
+    if (!res.ok) return
+    const run: RunMeta = await res.json()
+    const hold = run.holds?.findLast(h => !h.resolvedAt)
+    setWaiting(hold ? { runId, hold } : null)
+  }
 
   const chain = chains.find(c => c.slug === chainSlug)
   const seedFile = contextFiles.find(f => f.slug === fileSlug)
@@ -46,6 +59,7 @@ export default function ResultPage() {
     const override = modelOverride.trim() || undefined
     view.start({ chain, seed, paramValue, modelOverride: override })
     setFormOpen(false)
+    setWaiting(null)
     try {
       const res = await fetch('/api/run', {
         method: 'POST',
@@ -61,7 +75,10 @@ export default function ResultPage() {
       if (!res.ok) { view.apply({ type: 'error', error: await runErrorMessage(res) }); return }
       const reader = res.body?.getReader()
       if (!reader) return
-      await streamRun(reader, view.apply)
+      await streamRun(reader, e => {
+        view.apply(e)
+        if (e.type === 'run_waiting') setWaiting({ runId: e.runId, hold: e.hold })
+      })
     } finally {
       view.settle()
     }
@@ -114,6 +131,17 @@ export default function ResultPage() {
           fallback={<RunTrace order={view.order} states={view.states} />}
           fit={view.fit}
           actions={<div className="flex flex-col items-start gap-3">{changeButton}{switches}</div>}
+        />
+      )}
+
+      {waiting && !view.running && (
+        <ResumeForm
+          key={waiting.runId}
+          runId={waiting.runId}
+          hold={waiting.hold}
+          initialModelOverride={modelOverride.trim() || undefined}
+          onRerolled={() => refreshHold(waiting.runId)}
+          onResumed={id => router.push(`/history/${id ?? waiting.runId}`)}
         />
       )}
     </div>

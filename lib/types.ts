@@ -218,6 +218,7 @@ export interface AgentOutput {
   custom?: string               // a hold's answer: the human's custom idea (#96, #135)
   conversation?: ChatMessage[]  // the human's turns with this node after it ran (#97)
   priorTranscript?: ChatMessage[]  // a promoted output's earlier output and turns, oldest first (#98)
+  reroll?: { holdId: string; feedback?: string }  // a fresh candidate set asked for at a hold, and the feedback it ran with (#134)
 }
 
 export type HoldCandidate = MarkdownSection
@@ -237,6 +238,12 @@ export interface HoldRecord {
   custom?: string
   direction?: string
   resolvedAt?: string
+  /** Guides the next reroll of this hold's candidates; never reaches downstream nodes (#134). */
+  feedback?: string
+  /** Which candidate set this is, counting from 1; absent on records from before #134. */
+  revision?: number
+  /** When this open hold was last rerolled; a refresh keeps it (#134). */
+  rerolledAt?: string
 }
 
 export interface RunMeta {

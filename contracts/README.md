@@ -45,6 +45,22 @@ contracts/
     stream.sse
     run.json
     layout.json
+  reroll/              # Rerolling an open hold twice with saved feedback (#134)
+    feedback-request.json  # PATCH /api/runs/:id/holds/:holdId body
+    feedback-response.json # its JSON response
+    request.json       # POST /api/runs/:id/holds/:holdId/reroll body (the second reroll)
+    response.json
+    stream.sse
+    run.json
+    layout.json
+    refusal-request.json   # POST /api/runs/:id/resume with a stale revision
+    refusal-response.json  # HTTP 409 JSON response body
+  reroll-failed/       # A reroll answered without candidates: reroll_failed, then run_waiting with the kept set
+    request.json
+    response.json
+    stream.sse
+    run.json
+    layout.json
   fork/                # Forking a completed run from an upstream anchor node
     request.json       # POST /api/runs/:id/fork request body
     response.json
@@ -91,6 +107,7 @@ For non-streaming endpoints (such as the HTTP 400 Bad Request recorded in `error
 5. **Feature Detection**:
    Use `capabilities.json` to verify client feature-detection branches without hardcoding engine version numbers.
    `varianceGroups` advertises `POST /api/variance`, `GET /api/variance/:groupId`, and the `varianceGroupId` run-list filter.
+   `holdFeedback` advertises `PATCH /api/runs/:id/holds/:holdId`; `holdReroll` advertises `POST /api/runs/:id/holds/:holdId/reroll`, the `reroll_failed` event, and `revision` on hold records and resume bodies.
 
 ## Checking & Updating Contracts
 

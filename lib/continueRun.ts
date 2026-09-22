@@ -1,4 +1,5 @@
-import { answerHold, readPick, selectHold, type AnswerRequest } from './hold'
+import { answerHold, checkRevision, readPick, selectHold, type AnswerRequest } from './hold'
+import { reroll, type RerollRequest } from './reroll'
 import { planPromotion, type PromoteRequest } from './promote'
 import { forkRun, planFork, type ForkRequest } from './fork'
 import { runLog } from './partialRun'
@@ -10,9 +11,10 @@ import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace 
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 import { resolveContinuationModelOverride } from './pricing'
 
-/** What a continuation does to a run: answer a hold (resume), promote a reply, or fork. */
+/** What a continuation does to a run: answer a hold (resume), reroll its candidates, promote a reply, or fork. */
 export type ContinuePlan =
   | { answer: AnswerRequest }
+  | { reroll: RerollRequest }
   | { promote: PromoteRequest }
   | { fork: ForkRequest }
 
@@ -32,6 +34,7 @@ export function continueRun(
   const context = contextOverrides(requestContext)
   const workspace = ws.definitions()
   const res = 'answer' in plan ? answer(ws, workspace, meta, plan.answer, context)
+    : 'reroll' in plan ? reroll(ws, workspace, meta, plan.reroll)
     : 'promote' in plan ? promote(ws, workspace, meta, plan.promote, context)
     : fork(ws, workspace, meta, plan.fork, context)
   return 'error' in res ? toResponse(res) : res
@@ -39,13 +42,15 @@ export function continueRun(
 
 function answer(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta,
-  { holdId, direction, chosen, custom, modelOverride }: AnswerRequest,
+  { holdId, direction, chosen, custom, modelOverride, revision }: AnswerRequest,
   context: Record<string, string>,
 ): Response | Refusal {
   const hold = selectHold(meta, holdId)
   if ('error' in hold) return hold
   const pick = readPick(hold, chosen, custom)
   if (pick && 'error' in pick) return pick
+  const stale = checkRevision(hold, revision, pick)
+  if (stale) return stale
 
   // #128: Omission inherits source override; null clears; nonempty string replaces.
   const effectiveOverride = resolveContinuationModelOverride(meta.modelOverride, modelOverride)

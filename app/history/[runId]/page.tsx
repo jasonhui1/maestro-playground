@@ -33,6 +33,8 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   // One state cell tagged with the run it describes, so navigating to another run
   // resets to loading in the same render instead of flashing the previous run.
   const [fetched, setFetched] = useState<Fetched>({ runId })
+  // Bumped when the run changes in place (a reroll), refetching without the loading state.
+  const [version, setVersion] = useState(0)
   if (fetched.runId !== runId) setFetched({ runId })
   const { run, error } = fetched.runId === runId ? fetched : { run: undefined, error: undefined }
 
@@ -46,7 +48,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       .then(data => { if (!cancelled) setFetched({ runId, run: data }) })
       .catch(err => { if (!cancelled) setFetched({ runId, error: err.message }) })
     return () => { cancelled = true }
-  }, [runId])
+  }, [runId, version])
 
   if (!run && !error) {
     return (
@@ -68,10 +70,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   }
 
   // Remount on run change so the view state below re-derives from the new run.
-  return <RunDetail key={run.runId} run={run} />
+  return <RunDetail key={run.runId} run={run} onChanged={() => setVersion(v => v + 1)} />
 }
 
-function RunDetail({ run }: { run: RunMeta }) {
+function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) {
   const router = useRouter()
   const g = run.graph
 
@@ -208,6 +210,7 @@ function RunDetail({ run }: { run: RunMeta }) {
               runId={run.runId}
               hold={openHold}
               initialModelOverride={run.modelOverride}
+              onRerolled={onChanged}
               onResumed={(resumedId) => {
                 if (resumedId && resumedId !== run.runId) {
                   router.push(`/history/${resumedId}`)

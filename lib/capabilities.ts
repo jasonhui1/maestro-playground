@@ -18,6 +18,11 @@ export const CAPABILITIES = {
   runFork: true,
   /** Grouped launches and summaries are exposed by `/api/variance` (#133). */
   varianceGroups: true,
+  /** `PATCH /api/runs/:id/holds/:holdId` takes `{ feedback }` and saves it on the open hold; `""` clears it (#134). */
+  holdFeedback: true,
+  /** `POST /api/runs/:id/holds/:holdId/reroll` streams fresh candidates, ending `run_waiting` (`reroll_failed`
+   *  first when the old set stays); hold records and resume bodies carry `revision`, a stale one is 409 (#134). */
+  holdReroll: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

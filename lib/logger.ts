@@ -102,6 +102,8 @@ export function stepLog(runId: string, stepIdx: number, output: AgentOutput): { 
     tool_turns: output.toolTurns,
     chosen: output.chosen,
     custom: output.custom,
+    reroll_hold: output.reroll?.holdId,
+    reroll_feedback: output.reroll?.feedback,
   }
 
   // Remove undefined properties to prevent js-yaml from throwing

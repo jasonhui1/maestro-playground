@@ -1,14 +1,14 @@
 {
-  "runId": "contract-run-resume",
+  "runId": "contract-run-reroll-failed",
   "chainName": "held-chain",
-  "seedPrompt": "Setup hold",
+  "seedPrompt": "Setup reroll",
   "startedAt": "2026-09-21T10:00:00.000Z",
-  "status": "complete",
+  "status": "waiting",
   "agentOutputs": [
     {
       "agentName": "Proposer",
       "input": "Follow your instructions.",
-      "systemPrompt": "propose on Setup hold",
+      "systemPrompt": "propose on Setup reroll",
       "model": "openai/gpt-4o-mini",
       "modelSource": "file",
       "timestamp": "2026-09-21T10:00:00.000Z",
@@ -27,6 +27,30 @@
     {
       "agentName": "Decider",
       "input": "Follow your instructions.",
+      "systemPrompt": "decide on Draft proposal ready\n\n## Summary\nDraft proposal summary\n\n---\nThe human asked for a fresh set of candidates. Their feedback:\nKinder still",
+      "model": "openai/gpt-4o-mini",
+      "modelSource": "file",
+      "timestamp": "2026-09-21T10:01:00.000Z",
+      "output": "No options this time",
+      "thought": "",
+      "tokensIn": 8,
+      "tokensOut": 4,
+      "costUsd": 0.0000036,
+      "latencyMs": 0,
+      "status": "error",
+      "toolCalls": [],
+      "toolTurns": 0,
+      "nodeId": "decider",
+      "reroll": {
+        "holdId": "hold",
+        "feedback": "Kinder still"
+      },
+      "versionNumber": 1,
+      "error": "Reroll produced no `## Candidate N` sections; the earlier candidates stay"
+    },
+    {
+      "agentName": "Decider",
+      "input": "Follow your instructions.",
       "systemPrompt": "decide on Draft proposal ready\n\n## Summary\nDraft proposal summary",
       "model": "openai/gpt-4o-mini",
       "modelSource": "file",
@@ -41,41 +65,6 @@
       "toolCalls": [],
       "toolTurns": 0,
       "nodeId": "decider",
-      "versionNumber": 1
-    },
-    {
-      "nodeId": "hold",
-      "agentName": "hold",
-      "systemPrompt": "",
-      "input": "## Candidate 1\nAlpha Option\n\n## Candidate 2\nBeta Option",
-      "output": "PICK: Candidate 1\nAlpha Option\n\nKEEP: Alpha Option\nKILL: Beta Option",
-      "tokensIn": 0,
-      "tokensOut": 0,
-      "costUsd": 0,
-      "latencyMs": 0,
-      "model": "",
-      "timestamp": "2026-09-21T10:01:00.000Z",
-      "status": "success",
-      "chosen": "Candidate 1",
-      "versionNumber": 1
-    },
-    {
-      "agentName": "After",
-      "input": "Follow your instructions.",
-      "systemPrompt": "build on PICK: Candidate 1\nAlpha Option\n\nKEEP: Alpha Option\nKILL: Beta Option",
-      "model": "openai/gpt-4o-mini",
-      "modelSource": "file",
-      "timestamp": "2026-09-21T10:01:00.000Z",
-      "output": "Acted on direction\n\n## Summary\nPolished final result",
-      "thought": "",
-      "tokensIn": 22,
-      "tokensOut": 28,
-      "costUsd": 0.000020099999999999997,
-      "latencyMs": 0,
-      "status": "success",
-      "toolCalls": [],
-      "toolTurns": 0,
-      "nodeId": "after",
       "versionNumber": 1
     }
   ],
@@ -160,10 +149,7 @@
       ],
       "reachedAt": "2026-09-21T10:00:00.000Z",
       "revision": 1,
-      "chosen": "Candidate 1",
-      "direction": "KEEP: Alpha Option\nKILL: Beta Option",
-      "resolvedAt": "2026-09-21T10:01:00.000Z"
+      "feedback": "Kinder still"
     }
-  ],
-  "completedAt": "2026-09-21T10:01:00.000Z"
+  ]
 }

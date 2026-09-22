@@ -1,5 +1,8 @@
 import type { Refusal } from './types'
 
+export const isRefusal = (value: unknown): value is Refusal =>
+  typeof value === 'object' && value !== null && 'error' in value
+
 export const badRequest = (error: string): Refusal => ({ error, status: 400 })
 export const notFound = (error: string): Refusal => ({ error, status: 404 })
 export const conflict = (error: string): Refusal => ({ error, status: 409 })

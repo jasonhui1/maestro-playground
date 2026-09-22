@@ -22,6 +22,8 @@ export type RunEvent =
   | { type: 'run_complete'; runId: string }
   // The run stopped at a hold and is not complete; the record is what meta.json stores (#93).
   | { type: 'run_waiting'; runId: string; nodeId: string; hold: HoldRecord }
+  // A reroll that produced no usable candidates; the run_waiting after it carries the kept set (#134).
+  | { type: 'reroll_failed'; runId: string; nodeId: string; error: string }
   | { type: 'error'; error: string }
 
 // The run id once the stream has ended without error: finished, or paused at a hold.

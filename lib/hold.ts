@@ -1,5 +1,5 @@
 import { listSections } from './graph'
-import { badRequest, conflict, notFound } from './refusal'
+import { badRequest, conflict, isRefusal, notFound } from './refusal'
 import { parseModelOverride } from './pricing'
 import type { SectionWarning } from './sectionWarning'
 import type { AgentOutput, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
@@ -26,6 +26,7 @@ export function openHold(
     input,
     candidates: sliceCandidates(input),
     reachedAt: new Date().toISOString(),
+    revision: 1,
   }
   const warning = record.candidates.length === 0 && fromNode !== undefined
     ? { fromNode, section: 'Candidate 1', toNode: nodeId, toSocket: 'candidates' }
@@ -40,10 +41,12 @@ export interface AnswerRequest {
   chosen?: string
   custom?: string
   modelOverride?: string | null
+  /** The candidate set the pick was made from (#134). */
+  revision?: number
 }
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
-export function readAnswerRequest({ holdId, direction, chosen, custom, modelOverride }: Record<string, unknown>): AnswerRequest | Refusal {
+export function readAnswerRequest({ holdId, direction, chosen, custom, modelOverride, revision }: Record<string, unknown>): AnswerRequest | Refusal {
   const dir = typeof direction === 'string' ? direction : ''
   const hasPick = (chosen != null && typeof chosen === 'string' && chosen.trim() !== '') ||
                   (custom != null && typeof custom === 'string' && custom.trim() !== '')
@@ -53,13 +56,30 @@ export function readAnswerRequest({ holdId, direction, chosen, custom, modelOver
   if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
   const parsedOverride = parseModelOverride(modelOverride)
   if (!parsedOverride.valid) return badRequest(parsedOverride.error)
+  const rev = readRevision(revision)
+  if (isRefusal(rev)) return rev
   return {
     direction: dir,
     holdId: holdId ?? undefined,
     chosen: chosen ?? undefined,
     custom: custom ?? undefined,
     ...(parsedOverride.value !== undefined ? { modelOverride: parsedOverride.value } : {}),
+    ...(rev !== undefined ? { revision: rev } : {}),
   }
+}
+
+/** A request's candidate revision; a null field is an absent one. */
+export function readRevision(revision: unknown): number | undefined | Refusal {
+  if (revision == null) return undefined
+  return typeof revision === 'number' && Number.isInteger(revision) && revision > 0
+    ? revision
+    : badRequest('revision must be a whole number')
+}
+
+/** A request's reroll feedback: omitted keeps the saved value, `''` clears it (#134). */
+export function readFeedback(feedback: unknown): string | undefined | Refusal {
+  if (feedback == null) return undefined
+  return typeof feedback === 'string' ? feedback.trim() : badRequest('feedback must be text')
 }
 
 /** The hold a resume answers: the named one, else the open one, else a finished run's only hold. */
@@ -73,6 +93,30 @@ export function selectHold(meta: RunMeta, holdId?: string): HoldRecord | Refusal
   const holdIds = new Set(holds.map(h => h.nodeId))
   if (holdIds.size > 1) return badRequest('The run has several holds; name one with holdId')
   return holds.at(-1) ?? conflict(`Run is ${meta.status}, not waiting`)
+}
+
+/** The open hold of a waiting run that a reroll or feedback edit acts on (#134). */
+export function selectOpenHold(meta: RunMeta, holdId: string): HoldRecord | Refusal {
+  const hold = selectHold(meta, holdId)
+  if ('error' in hold) return hold
+  if (meta.status !== 'waiting') return conflict(`Run is ${meta.status}, not waiting`)
+  if (hold.resolvedAt) return conflict(`Hold ${holdId} is already answered`)
+  return hold
+}
+
+/** A hold record's candidate revision; records from before #134 are their first set. */
+export const revisionOf = (hold: HoldRecord) => hold.revision ?? 1
+
+/** Whether a pick was made from the hold's current candidates. Without a revision, a candidate
+ *  pick is refused once the hold was rerolled: an old Candidate 2 would mean a new one (#134). */
+export function checkRevision(hold: HoldRecord, revision: number | undefined, pick: HoldPick | undefined): Refusal | undefined {
+  const current = revisionOf(hold)
+  if (revision !== undefined) {
+    return revision === current ? undefined : conflict(`Candidates of hold ${hold.nodeId} are at revision ${current}, not ${revision}`)
+  }
+  return pick && 'candidate' in pick && hold.rerolledAt
+    ? conflict(`Candidates of hold ${hold.nodeId} were rerolled; resend the pick with revision ${current}`)
+    : undefined
 }
 
 /** What the human picked at a hold: one of its candidates, or their own idea (#96). */
@@ -89,19 +133,23 @@ export function readPick(hold: HoldRecord, chosen?: string, custom?: string): Ho
   return candidate ? { candidate } : badRequest(`chosen names no candidate of hold ${hold.nodeId}`)
 }
 
-export interface HoldAnswer {
+/** One hold's new record, and the run's holds with it in place of the old one. */
+export interface HoldUpdate {
+  record: HoldRecord
+  holds: HoldRecord[]
+}
+
+export interface HoldAnswer extends HoldUpdate {
   /** The answer as a replayable output. */
   output: AgentOutput
-  /** The hold's record, resolved with this answer. */
-  record: HoldRecord
-  /** The run's holds with `record` in place of the answered one. */
-  holds: HoldRecord[]
   /** Re-answering an answered hold forks rather than rewriting the run (#99). */
   mode: 'resume' | 'fork'
 }
 
 // Records are copied into and out of meta.json, so a hold is known by where and when it was reached.
 const sameHold = (a: HoldRecord, b: HoldRecord) => a.nodeId === b.nodeId && a.reachedAt === b.reachedAt
+const replaceHold = (holds: HoldRecord[], hold: HoldRecord, record: HoldRecord) =>
+  holds.map(h => (sameHold(h, hold) ? record : h))
 
 /** Answers `hold`, one of `holds` (#94, #96). */
 export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: string, pick?: HoldPick): HoldAnswer {
@@ -123,7 +171,7 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
       ...recorded,
     },
     record,
-    holds: holds.map(h => (sameHold(h, hold) ? record : h)),
+    holds: replaceHold(holds, hold, record),
     mode: hold.resolvedAt ? 'fork' : 'resume',
   }
 }
@@ -138,13 +186,33 @@ export function holdsKeptByFork(holds: HoldRecord[] | undefined, dropped: Set<st
   return (holds ?? []).filter(h => h.resolvedAt && !dropped.has(h.nodeId))
 }
 
-/** A hold reached again while still open refreshes its record rather than adding one. */
+/**
+ * A hold reached again while still open refreshes its record rather than adding one:
+ * a new candidate set that keeps the hold's feedback (#134).
+ */
 export function mergeHolds(existing: HoldRecord[], reached: HoldRecord[]): HoldRecord[] {
   const merged = [...existing]
   for (const hold of reached) {
     const i = merged.findLastIndex(h => h.nodeId === hold.nodeId && !h.resolvedAt)
-    if (i === -1) merged.push(hold)
-    else merged[i] = hold
+    if (i === -1) { merged.push(hold); continue }
+    const { feedback, rerolledAt } = merged[i]
+    merged[i] = { ...hold, ...(feedback ? { feedback } : {}), ...(rerolledAt ? { rerolledAt } : {}), revision: revisionOf(merged[i]) + 1 }
   }
   return merged
+}
+
+/** `hold` with its reroll feedback set to `feedback`; `''` clears it (#134). */
+export function withFeedback(holds: HoldRecord[], hold: HoldRecord, feedback: string): HoldUpdate {
+  const record: HoldRecord = { ...hold, feedback }
+  if (!feedback) delete record.feedback
+  return { record, holds: replaceHold(holds, hold, record) }
+}
+
+/** `hold` with the candidates a reroll's `input` carries in place of its own (#134). */
+export function rerollHold(holds: HoldRecord[], hold: HoldRecord, input: string): HoldUpdate {
+  const record: HoldRecord = {
+    ...hold, input, candidates: sliceCandidates(input),
+    revision: revisionOf(hold) + 1, rerolledAt: new Date().toISOString(),
+  }
+  return { record, holds: replaceHold(holds, hold, record) }
 }

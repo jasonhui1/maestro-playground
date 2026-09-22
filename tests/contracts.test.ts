@@ -14,6 +14,8 @@ import {
   runHoldScenario,
   runResumeScenario,
   runPromoteScenario,
+  runRerollScenario,
+  runRerollFailedScenario,
   runForkScenario,
   runErrorScenario,
   runCapabilitiesScenario,
@@ -128,6 +130,36 @@ test('contract: promote run updates proposal and re-evaluates decider (#136)', a
   assert.ok(meta.holds?.[0].candidates[0].body.includes('Revised Alpha Option'))
 })
 
+test('contract: reroll replaces the open hold candidates and the run stays waiting (#134)', async () => {
+  freshWorkspace()
+  const result = await runRerollScenario(context)
+
+  assert.strictEqual(result.events[0].type, 'run_start')
+  assert.strictEqual(result.events.at(-1)!.type, 'run_waiting')
+  const hold = result.events.at(-1)!.hold as { revision: number; feedback?: string; candidates: Array<{ body: string }> }
+  assert.strictEqual(hold.revision, 3)
+  assert.strictEqual(hold.feedback, 'Less tragic, but keep a real consequence')
+  assert.ok(hold.candidates[0].body.includes('Gentle Alpha Option'))
+
+  const meta = result.metadata as { status: string; agentOutputs: Array<{ nodeId: string }> }
+  assert.strictEqual(meta.status, 'waiting')
+  assert.deepStrictEqual(meta.agentOutputs.map(o => o.nodeId), ['proposer', 'decider', 'decider', 'decider'])
+  assert.ok(result.files['refusal-response.json'].includes('revision 3'))
+})
+
+test('contract: a failed reroll keeps the candidates and reports reroll_failed before run_waiting (#134)', async () => {
+  freshWorkspace()
+  const result = await runRerollFailedScenario(context)
+
+  assert.strictEqual(result.events.at(-2)!.type, 'reroll_failed')
+  assert.strictEqual(result.events.at(-1)!.type, 'run_waiting')
+  const hold = result.events.at(-1)!.hold as { revision: number; feedback?: string; candidates: Array<{ body: string }> }
+  assert.strictEqual(hold.revision, 1)
+  assert.strictEqual(hold.feedback, 'Kinder still')
+  assert.ok(hold.candidates[0].body.includes('Alpha Option'))
+  assert.strictEqual((result.metadata as { status: string }).status, 'waiting')
+})
+
 test('contract: fork run forks from second node, preserving first output and leaving source run unchanged (#136)', async () => {
   freshWorkspace()
   const result = await runForkScenario(context)
@@ -175,6 +207,8 @@ test('contract: capabilities object matches workspace flags (#136)', async () =>
   assert.strictEqual(caps.runFailureFrame, true)
   assert.strictEqual(caps.runFork, true)
   assert.strictEqual(caps.varianceGroups, true)
+  assert.strictEqual(caps.holdFeedback, true)
+  assert.strictEqual(caps.holdReroll, true)
 })
 
 function listFilesRecursive(dir: string, base = ''): string[] {
@@ -214,6 +248,12 @@ test('contract: fixtures check and update harness (#136)', async () => {
   const promote = await runPromoteScenario(context)
 
   freshWorkspace()
+  const reroll = await runRerollScenario(context)
+
+  freshWorkspace()
+  const rerollFailed = await runRerollFailedScenario(context)
+
+  freshWorkspace()
   const fork = await runForkScenario(context)
 
   freshWorkspace()
@@ -227,7 +267,7 @@ test('contract: fixtures check and update harness (#136)', async () => {
   generatedFiles.set('manifest.json', formatJson(manifest))
   generatedFiles.set('capabilities.json', formatJson(capabilities))
 
-  for (const sc of [fresh, hold, resume, promote, fork, error]) {
+  for (const sc of [fresh, hold, resume, promote, reroll, rerollFailed, fork, error]) {
     for (const [file, content] of Object.entries(sc.files)) {
       generatedFiles.set(`${sc.scenario}/${file}`, content)
     }

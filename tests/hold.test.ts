@@ -1,6 +1,9 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { answerHold, hasAnsweredHold, holdsKeptByFork, openHold, readAnswerRequest, readPick, selectHold } from '../lib/hold'
+import {
+  answerHold, checkRevision, hasAnsweredHold, holdsKeptByFork, mergeHolds, openHold, readAnswerRequest, readFeedback, readPick,
+  rerollHold, selectHold, selectOpenHold, withFeedback,
+} from '../lib/hold'
 import type { HoldRecord, RunMeta } from '../lib/types'
 
 const DECIDER = '## Candidate 1\nA\n\n## Candidate 2\nB'
@@ -138,3 +141,90 @@ test('answerHold: pure candidate selection with empty direction produces clean o
   assert.strictEqual(answer.output.output, 'PICK: Candidate 1\nA')
 })
 
+
+test('openHold: a new record is revision 1 with no feedback', () => {
+  const { record } = openHold('gate', DECIDER)
+  assert.strictEqual(record.revision, 1)
+  assert.strictEqual(record.feedback, undefined)
+})
+
+test('mergeHolds: refreshing the open hold keeps its feedback and counts a new candidate set (#134)', () => {
+  const open = hold('gate', { feedback: 'less tragic', revision: 2, rerolledAt: 't1' })
+  const [refreshed] = mergeHolds([open], [openHold('gate', DECIDER).record])
+  assert.strictEqual(refreshed.feedback, 'less tragic')
+  assert.strictEqual(refreshed.revision, 3)
+  assert.strictEqual(refreshed.rerolledAt, 't1')
+})
+
+test('mergeHolds: a hold reached again after its answer starts without the old feedback', () => {
+  const done = hold('gate', { feedback: 'less tragic', direction: 'go', resolvedAt: 'x' })
+  const merged = mergeHolds([done], [openHold('gate', DECIDER).record])
+  assert.strictEqual(merged.length, 2)
+  assert.strictEqual(merged[0].feedback, 'less tragic')
+  assert.strictEqual(merged[1].feedback, undefined)
+  assert.strictEqual(merged[1].revision, 1)
+})
+
+test('withFeedback: replaces the saved feedback on that hold only; empty clears it', () => {
+  const other = answered('first')
+  const open = hold('gate', { feedback: 'old' })
+  const saved = withFeedback([other, open], open, 'new')
+  assert.strictEqual(saved.holds[0], other)
+  assert.strictEqual(saved.holds[1], saved.record)
+  assert.strictEqual(saved.record.feedback, 'new')
+  const cleared = withFeedback(saved.holds, saved.record, '')
+  assert.ok(!('feedback' in cleared.holds[1]))
+})
+
+test('rerollHold: the new candidates replace the old, the revision counts up, feedback stays', () => {
+  const open = hold('gate', { feedback: 'less tragic' })
+  const { record, holds } = rerollHold([open], open, '## Candidate 1\nC\n\n## Candidate 2\nD')
+  assert.deepStrictEqual(record.candidates.map(c => c.body), ['C', 'D'])
+  assert.strictEqual(record.revision, 2)
+  assert.strictEqual(record.feedback, 'less tragic')
+  assert.strictEqual(record.reachedAt, open.reachedAt)
+  assert.ok(record.rerolledAt)
+  assert.deepStrictEqual(holds, [record])
+})
+
+test('checkRevision: a stale revision is a conflict; the current one passes', () => {
+  const open = hold('gate', { revision: 2 })
+  assert.strictEqual(checkRevision(open, 2, { candidate: open.candidates[0] }), undefined)
+  const stale = checkRevision(open, 1, { candidate: open.candidates[0] })
+  assert.ok(stale && 'error' in stale)
+  assert.strictEqual(stale.status, 409)
+})
+
+test('checkRevision: a candidate picked without a revision is refused only once a reroll replaced the set', () => {
+  const pick = { candidate: hold('gate').candidates[0] }
+  assert.strictEqual(checkRevision(hold('gate'), undefined, pick), undefined)
+  assert.strictEqual(checkRevision(hold('gate', { revision: 2 }), undefined, pick), undefined)
+  const rerolled = hold('gate', { revision: 2, rerolledAt: 't1' })
+  assert.strictEqual(checkRevision(rerolled, undefined, pick)?.status, 409)
+  assert.strictEqual(checkRevision(rerolled, undefined, { custom: 'mine' }), undefined)
+  assert.strictEqual(checkRevision(rerolled, undefined, undefined), undefined)
+})
+
+test('selectOpenHold: only an open hold of a waiting run', () => {
+  const open = hold('gate')
+  assert.strictEqual(selectOpenHold(meta('waiting', [open]), 'gate'), open)
+  assert.strictEqual((selectOpenHold(meta('complete', [open]), 'gate') as { status: number }).status, 409)
+  assert.strictEqual((selectOpenHold(meta('waiting', [answered('gate')]), 'gate') as { status: number }).status, 409)
+  assert.strictEqual((selectOpenHold(meta('waiting', [open]), 'nope') as { status: number }).status, 404)
+})
+
+test('readFeedback: text or absent; anything else is refused', () => {
+  assert.strictEqual(readFeedback(undefined), undefined)
+  assert.strictEqual(readFeedback(null), undefined)
+  assert.strictEqual(readFeedback('  keep it  '), 'keep it')
+  assert.strictEqual(readFeedback(''), '')
+  assert.strictEqual((readFeedback(3) as { status: number }).status, 400)
+})
+
+test('readAnswerRequest: revision is a whole number when given', () => {
+  const req = readAnswerRequest({ chosen: 'Candidate 1', revision: 2 })
+  assert.ok(!('error' in req))
+  assert.strictEqual(req.revision, 2)
+  const refusal = readAnswerRequest({ chosen: 'Candidate 1', revision: 'two' })
+  assert.ok('error' in refusal)
+})
