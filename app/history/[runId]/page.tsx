@@ -20,6 +20,7 @@ import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { ForkCompareOverlay } from '@/components/result/ForkCompareOverlay'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { ResumeForm } from '@/components/trace/ResumeForm'
+import type { ChangedSinceResult } from '@/lib/changedSince'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -100,6 +101,21 @@ function RunDetail({ run }: { run: RunMeta }) {
     useWorkspaceStore.getState().load().finally(() => setChainsLoaded(true))
   }, [])
 
+  const [changedSince, setChangedSince] = useState<ChangedSinceResult | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/runs/${run.runId}/changed-since`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data) setChangedSince(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [run.runId])
+
   // A read-only stand-in for the chain the run was executed from, so node kinds can
   // resolve their slots. Empty when the run predates graph capture; buildData is only
   // ever called by the canvas, which renders only when `g` exists.
@@ -158,6 +174,24 @@ function RunDetail({ run }: { run: RunMeta }) {
         <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-900 text-[10px] font-bold uppercase tracking-wider">{run.status}</span>
         <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
         <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
+
+        {changedSince?.status === 'changed' && changedSince.predecessor && (
+          <Link
+            href={`/history/${changedSince.predecessor.runId}`}
+            className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-medium shrink-0 hover:bg-amber-100 transition-colors"
+            title={changedSince.summary}
+          >
+            Since run {changedSince.predecessor.runId.slice(-6)}: {changedSince.files.filter(f => f.status !== 'same').length} changed
+          </Link>
+        )}
+        {changedSince?.status === 'identical' && changedSince.predecessor && (
+          <span
+            className="px-2 py-0.5 rounded-md bg-zinc-50 border border-zinc-200 text-zinc-600 text-[10px] font-medium shrink-0"
+            title={changedSince.summary}
+          >
+            same versions as {changedSince.predecessor.runId.slice(-6)}
+          </span>
+        )}
 
         {view.renderable && (
           <div className="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 shrink-0">
@@ -239,6 +273,7 @@ function RunDetail({ run }: { run: RunMeta }) {
                 actions={switches}
                 fit={view.fit}
                 onCompareSource={run.branchedFromRunId ? () => setComparingSource(true) : undefined}
+                changedSince={changedSince}
               />
             </div>
           </div>

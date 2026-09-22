@@ -1,6 +1,7 @@
 import { ChainDef, FieldSource } from './types'
 import { RunStateMap } from './runState'
 import { isModelPriced } from './pricing'
+import type { ChangedSinceResult } from './changedSince'
 
 /** Where the run's seed came from — the two shapes the result view offers (#66), plus
  *  `log` for a past run reopened from history, which never recorded which one it was (#72),
@@ -36,6 +37,8 @@ export interface RunFrameModel {
   costWarning?: string
   /** The source run this fork diverged from (#130). */
   forkSourceRunId?: string
+  /** Pinned version differences since the previous run of the same chain (#131). */
+  changedSince?: ChangedSinceResult
 }
 
 function describeSeed(seed: SeedSource): string {
@@ -77,8 +80,9 @@ export function buildRunFrame(input: {
   modelOverride?: string
   status?: RunStatus
   forkSourceRunId?: string
+  changedSince?: ChangedSinceResult
 }): RunFrameModel {
-  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError, modelOverride, forkSourceRunId } = input
+  const { chain, seed, states, startedAt, endedAt, now, parameter, requestError, modelOverride, forkSourceRunId, changedSince } = input
   const nodeFailure = failureOf(states)
   const error = requestError ?? nodeFailure
   // A run is live until it has an end: `endedAt` is what the caller sets when the
@@ -148,5 +152,6 @@ export function buildRunFrame(input: {
   if (error) frame.error = error
   if (parameter) frame.parameter = parameter
   if (forkSourceRunId) frame.forkSourceRunId = forkSourceRunId
+  if (changedSince) frame.changedSince = changedSince
   return frame
 }

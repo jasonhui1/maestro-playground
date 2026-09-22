@@ -101,6 +101,8 @@ export function forkRun(
     replayedNodeIds,
     replayedSlots,
     sourceOutputs,
+    chainSlug: source.chainSlug,
+    entrypoint: source.entrypoint,
   })
 }
 

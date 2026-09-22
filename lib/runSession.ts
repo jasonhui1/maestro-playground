@@ -188,6 +188,8 @@ export function startRun(ws: Workspace, run: {
   replayedSlots?: string[]
   sourceOutputs?: AgentOutput[]
   modelOverride?: string
+  chainSlug?: string
+  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
 }): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
@@ -209,6 +211,8 @@ export function startRun(ws: Workspace, run: {
     versionNumber: versionNumber > 0 ? versionNumber : undefined,
     versions: run.versions,
     ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),
+    ...(run.chainSlug ? { chainSlug: run.chainSlug } : {}),
+    ...(run.entrypoint ? { entrypoint: run.entrypoint } : {}),
   })
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,

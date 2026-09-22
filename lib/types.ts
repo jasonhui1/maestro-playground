@@ -272,6 +272,10 @@ export interface RunMeta {
   versions?: Record<string, number>
   /** Model override for this run (#128). */
   modelOverride?: string
+  /** The slug of the chain or agent entrypoint (#131). */
+  chainSlug?: string
+  /** The entrypoint identity (kind + slug) (#131). */
+  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
 }
 
 export interface TemplateDef {

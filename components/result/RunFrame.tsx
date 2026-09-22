@@ -1,9 +1,10 @@
-'use client'
-import type { ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
 import type { RunFrameModel } from '@/lib/runFrame'
+import type { ChangedSinceResult, FileVersionChange } from '@/lib/changedSince'
 import { RUN_STATUS_LABEL, RUN_STATUS_TONE } from '@/lib/panelCopy'
 import { TYPE } from '@/lib/resultType'
+import { VersionDiffModal } from '@/components/result/VersionDiffModal'
 
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -20,7 +21,7 @@ function formatElapsed(ms: number): string {
  * output scrolls: it is reference, and reference that scrolls away has to be scrolled
  * back to.
  */
-export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSource, actions, children }: {
+export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSource, changedSince: explicitChangedSince, actions, children }: {
   frame: RunFrameModel
   /** Absent until the run completes — the log has no id to link to before then. */
   runId?: string | null
@@ -29,10 +30,30 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
   onCompare: () => void
   /** Opens the fork diff comparison overlay (#130). */
   onCompareSource?: () => void
+  /** Pinned version differences since the previous run of the same chain (#131). */
+  changedSince?: ChangedSinceResult | null
   /** Page-level controls the rail absorbs, so the page spends no band above the output. */
   actions?: ReactNode
   children: ReactNode
 }) {
+  const [fetchedChange, setFetchedChange] = useState<ChangedSinceResult | null>(null)
+  const [selectedDiffFile, setSelectedDiffFile] = useState<FileVersionChange | null>(null)
+
+  const changeData = explicitChangedSince ?? frame.changedSince ?? fetchedChange
+
+  useEffect(() => {
+    if (explicitChangedSince || frame.changedSince || !runId) return
+    let cancelled = false
+    fetch(`/api/runs/${runId}/changed-since`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!cancelled && data) setFetchedChange(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [runId, explicitChangedSince, frame.changedSince])
   return (
     <div className="flex items-stretch gap-6">
       <aside className="w-40 shrink-0 border-r border-zinc-200">
@@ -87,6 +108,64 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
             </div>
           </dl>
 
+          {changeData && changeData.status !== 'unavailable' && (
+            <div className="flex flex-col gap-1.5 border-t border-zinc-100 pt-3">
+              {changeData.status === 'changed' && changeData.predecessor && (
+                <>
+                  <div className="text-zinc-500 font-medium text-[11px] leading-tight">
+                    Since run{' '}
+                    <Link
+                      href={`/history/${changeData.predecessor.runId}`}
+                      className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black"
+                    >
+                      {changeData.predecessor.runId.slice(-6)}
+                    </Link>
+                    :
+                  </div>
+                  <div className="flex flex-col gap-1 mt-0.5">
+                    {changeData.files.filter(f => f.status !== 'same').map(file => (
+                      <button
+                        key={file.key}
+                        type="button"
+                        onClick={() => setSelectedDiffFile(file)}
+                        className="text-left group flex flex-col p-1.5 rounded hover:bg-zinc-50 transition-colors border border-transparent hover:border-zinc-200"
+                        title="Click to view version diff"
+                      >
+                        <span className="font-mono text-[11px] font-semibold text-zinc-800 group-hover:text-blue-600 truncate">
+                          {file.key}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 leading-tight">
+                          {file.summary}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {changeData.status === 'identical' && changeData.predecessor && (
+                <div className="text-zinc-500 text-[11px] leading-snug">
+                  same source-file versions as run{' '}
+                  <Link
+                    href={`/history/${changeData.predecessor.runId}`}
+                    className="font-mono text-zinc-700 underline underline-offset-2 hover:text-black"
+                  >
+                    {changeData.predecessor.runId.slice(-6)}
+                  </Link>
+                </div>
+              )}
+              {changeData.status === 'no_predecessor' && (
+                <div className="text-zinc-400 text-[10px] italic">
+                  first run
+                </div>
+              )}
+              {changeData.continuationCaveat && (
+                <div className="text-[10px] text-amber-600 leading-tight mt-1">
+                  Pinned at run start; continuation executed live files.
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col items-start gap-3">
             <button
               type="button"
@@ -120,6 +199,13 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
       </aside>
 
       <div className="flex-1 min-w-0">{children}</div>
+
+      {selectedDiffFile && (
+        <VersionDiffModal
+          file={selectedDiffFile}
+          onClose={() => setSelectedDiffFile(null)}
+        />
+      )}
     </div>
   )
 }

@@ -52,6 +52,7 @@ export default function ResultPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chainName: chain.name,
+          chainSlug: chain.slug,
           seedPrompt: seedText,
           paramValue,
           ...(override ? { modelOverride: override } : {}),

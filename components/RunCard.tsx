@@ -1,11 +1,14 @@
 import { RunMeta } from '@/lib/types'
+import type { ChangedSinceResult } from '@/lib/changedSince'
 import Link from 'next/link'
 
 interface RunCardProps {
   run: RunMeta
+  /** Version differences compared to previous run of same chain (#131). */
+  changedSince?: ChangedSinceResult
 }
 
-export default function RunCard({ run }: RunCardProps) {
+export default function RunCard({ run, changedSince }: RunCardProps) {
   const hasUnpriced = run.agentOutputs.some(o => o.costUsd === undefined)
   const totalCost = hasUnpriced ? undefined : run.agentOutputs.reduce((sum, o) => sum + (o.costUsd ?? 0), 0)
   const totalTokens = run.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
@@ -27,9 +30,27 @@ export default function RunCard({ run }: RunCardProps) {
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex flex-col gap-0.5">
-          <h3 className="font-semibold text-zinc-900 group-hover:text-black transition-colors">
-            {run.chainName}
-          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-zinc-900 group-hover:text-black transition-colors">
+              {run.chainName}
+            </h3>
+            {changedSince?.status === 'changed' && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200"
+                title={changedSince.summary}
+              >
+                ± {changedSince.files.filter(f => f.status !== 'same').length} changed
+              </span>
+            )}
+            {changedSince?.status === 'identical' && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-50 text-zinc-500 border border-zinc-200"
+                title={changedSince.summary}
+              >
+                same files
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-tight">
             {run.runId}
           </span>

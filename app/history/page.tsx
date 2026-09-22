@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { RunMeta } from '@/lib/types'
+import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/changedSince'
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
@@ -37,6 +38,15 @@ export default function HistoryPage() {
 
     fetchRuns()
   }, [filterChain, filterStatus, filterKeyword])
+
+  const previousRunsMap = useMemo(() => {
+    const map = new Map<string, ChangedSinceResult>()
+    for (const r of runs) {
+      const pred = findPreviousRun(runs, r)
+      map.set(r.runId, changedSince(pred, r))
+    }
+    return map
+  }, [runs])
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 flex flex-col gap-8">
@@ -102,7 +112,7 @@ export default function HistoryPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {runs.map(run => (
-            <RunCard key={run.runId} run={run} />
+            <RunCard key={run.runId} run={run} changedSince={previousRunsMap.get(run.runId)} />
           ))}
         </div>
       )}

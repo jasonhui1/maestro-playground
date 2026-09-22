@@ -106,3 +106,6 @@ export function pinRunVersions(root: string, chain: ChainDef, ws: VersionedWorks
   return versions
 }
 
+// #131: Changed-since comparisons over run-start pinned versions
+export * from './changedSince'
+
