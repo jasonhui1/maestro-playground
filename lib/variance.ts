@@ -21,7 +21,8 @@ export interface VarianceNode {
   nodeId: string
   nodeName: string
   round?: number
-  spread: number
+  /** Absent until at least two runs produced successful output for this slot. */
+  spread?: number
   samples: VarianceSample[]
 }
 
@@ -134,12 +135,15 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     completedRunCount: runs.filter(run => run.status === 'complete').length,
     ...(hasUnpriced ? { costWarning: 'one or more runs contain unpriced output' } : { costUsd: totalCost }),
     runs,
-    nodes: entries.map(([, entry], index) => ({
-      nodeId: entry.output.nodeId!,
-      nodeName: entry.output.agentName,
-      ...(entry.output.round !== undefined ? { round: entry.output.round } : {}),
-      spread: spreads[index],
-      samples: entry.samples,
-    })),
+    nodes: entries.map(([, entry], index) => {
+      const successful = entry.samples.filter(sample => sample.status === 'success')
+      return {
+        nodeId: entry.output.nodeId!,
+        nodeName: entry.output.agentName,
+        ...(entry.output.round !== undefined ? { round: entry.output.round } : {}),
+        ...(successful.length >= 2 ? { spread: spreads[index] } : {}),
+        samples: entry.samples,
+      }
+    }),
   }
 }

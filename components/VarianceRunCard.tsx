@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { VarianceGroup } from '@/lib/variance'
 
 export function VarianceRunCard({ group }: { group: VarianceGroup }) {
-  const widest = group.nodes.reduce((max, node) => Math.max(max, node.spread), 0)
+  const widest = group.nodes.reduce((max, node) => Math.max(max, node.spread ?? 0), 0)
   return (
     <Link
       href={`/variance/${encodeURIComponent(group.groupId)}`}

@@ -139,9 +139,16 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
-                <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.max(0, Math.min(1, node.spread)) * 100}%` }} />
+                {node.spread !== undefined && (
+                  <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.max(0, Math.min(1, node.spread)) * 100}%` }} />
+                )}
               </div>
-              <span className="w-9 text-right font-mono text-xs text-zinc-700">{node.spread.toFixed(2)}</span>
+              <span
+                className="w-9 text-right font-mono text-xs text-zinc-700"
+                title={node.spread === undefined ? 'Needs at least two successful outputs' : undefined}
+              >
+                {node.spread === undefined ? 'n/a' : node.spread.toFixed(2)}
+              </span>
             </div>
             <button
               type="button"

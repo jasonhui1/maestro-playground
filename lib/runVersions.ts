@@ -1,6 +1,7 @@
 import { AgentDef, ChainDef, ChainNode, SkillDef, ToolDef } from './types'
 import { agentSlugOf, resolveNodeSkills } from './nodeKinds'
 import { snapshotVersion } from './fs/versions'
+import matter from 'gray-matter'
 
 /** One workspace file the run reached, with the bytes a version hashes (ADR-0011). */
 export interface TouchedFile {
@@ -98,12 +99,22 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
 }
 
 /** Snapshots every touched file and returns the map `meta.json` records (ADR-0011). */
-export function pinRunVersions(root: string, chain: ChainDef, ws: VersionedWorkspace): Record<string, number> {
+export function pinRunSnapshot(root: string, chain: ChainDef, ws: VersionedWorkspace): {
+  versions: Record<string, number>
+  context: Record<string, string>
+} {
   const versions: Record<string, number> = {}
+  const context: Record<string, string> = {}
   for (const [key, file] of collectTouchedFiles(chain, ws)) {
     versions[key] = snapshotVersion(root, file.type, file.slug, file.content)
+    if (file.type === 'context') context[file.slug] = matter(file.content).content
   }
-  return versions
+  return { versions, context }
+}
+
+/** Snapshot every touched file and return the version map recorded by existing callers. */
+export function pinRunVersions(root: string, chain: ChainDef, ws: VersionedWorkspace): Record<string, number> {
+  return pinRunSnapshot(root, chain, ws).versions
 }
 
 export * from './changedSince'

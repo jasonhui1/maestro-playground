@@ -1,7 +1,7 @@
 import { validateChain } from './chainGraph'
 import { parseModelOverride } from './pricing'
 import { resolveRunChain, type RunChainBody } from './resolveRunChain'
-import { pinRunVersions, versionKey } from './runVersions'
+import { pinRunSnapshot, versionKey } from './runVersions'
 import type { StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
 import type { Refusal } from './types'
@@ -12,6 +12,14 @@ export type RunRequestBody = RunChainBody & {
   context?: unknown
   modelOverride?: unknown
   chainSlug?: string
+}
+
+const RETIRED_BRANCH_FIELDS = ['branchOutputs', 'branchedFromRunId', 'branchedFromStep'] as const
+
+export function retiredBranchRefusal(body: Record<string, unknown>): Refusal | null {
+  return RETIRED_BRANCH_FIELDS.some(field => body[field] !== undefined)
+    ? { error: 'Branch fields are retired; fork through POST /api/runs/:id/fork', status: 400 }
+    : null
 }
 
 /** Resolve and pin one launch request once, so repeated runs share the same files. */
@@ -29,7 +37,8 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const validation = validateChain(chain, agents, chains, tools, skills)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
 
-  const versions = pinRunVersions(ws.root, chain, workspace)
+  const snapshot = pinRunSnapshot(ws.root, chain, workspace)
+  const versions = snapshot.versions
   const versionNumber = versions[kind === 'agent'
     ? versionKey('agent', chain.slug)
     : versionKey('chain', chain.slug)] ?? 0
@@ -49,6 +58,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
         ? { name: chain.parameter.name, value: body.paramValue }
         : undefined,
       context: body.context,
+      pinnedContext: snapshot.context,
       versions,
       versionNumber,
       modelOverride: cleanOverride,

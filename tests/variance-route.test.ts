@@ -12,25 +12,31 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 const ids = ['variance-run-1', 'variance-run-2', 'variance-run-3']
 let nextId = 0
+let afterFirstInput: (() => void) | undefined
 vi.mock('@/lib/logger', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/logger')>()
   return { ...actual, newRunId: () => ids[nextId++] }
 })
 
 vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { name: string; model: string }, systemPrompt: string, input: string): Promise<AgentOutput> => ({
-    agentName: agent.name,
-    systemPrompt,
-    input,
-    output: `answer ${nextId}`,
-    tokensIn: 10,
-    tokensOut: 10,
-    costUsd: 0.01,
-    latencyMs: 10,
-    model: agent.model,
-    timestamp: '2026-09-22T10:00:00.000Z',
-    status: 'success',
-  }),
+  runAgent: async (agent: { name: string; model: string }, systemPrompt: string, input: string): Promise<AgentOutput> => {
+    const mutate = afterFirstInput
+    afterFirstInput = undefined
+    mutate?.()
+    return {
+      agentName: agent.name,
+      systemPrompt,
+      input,
+      output: `answer ${nextId}`,
+      tokensIn: 10,
+      tokensOut: 10,
+      costUsd: 0.01,
+      latencyMs: 10,
+      model: agent.model,
+      timestamp: '2026-09-22T10:00:00.000Z',
+      status: 'success',
+    }
+  },
 }))
 
 function write(root: string, rel: string, body: string) {
@@ -43,16 +49,18 @@ function workspace(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-variance-'))
   requestEntry.root = root
   write(root, 'agents/writer.md', '---\nname: Writer\nmodel: model\n---\nWrite {input}\n')
+  write(root, 'context/fact.md', '---\nname: Fact\n---\noriginal context\n')
   write(root, 'chains/relay.md', `---
 name: relay
 nodes:
-  - id: seed
-    kind: seed
+  - id: fact
+    kind: context
+    file: fact
   - id: writer
     kind: agent
     agent: writer
 edges:
-  - from: seed
+  - from: fact
     to: writer.input
 ---
 `)
@@ -78,10 +86,12 @@ function storedRun(groupId: string, index: number, output: string): RunMeta {
 
 beforeEach(() => {
   nextId = 0
+  afterFirstInput = undefined
 })
 
 test('POST /api/variance launches ordinary runs with one group id and identical pins', async () => {
   const root = workspace()
+  afterFirstInput = () => write(root, 'context/fact.md', '---\nname: Fact\n---\nchanged during group\n')
   const { POST } = await import('../app/api/variance/route')
   const response = await POST({
     json: async () => ({ chainName: 'relay', chainSlug: 'relay', seedPrompt: 'same seed', count: 3 }),
@@ -105,6 +115,9 @@ test('POST /api/variance launches ordinary runs with one group id and identical 
   ])
   assert.ok(metas.every(meta => meta.seedPrompt === 'same seed'))
   assert.deepStrictEqual(metas.map(meta => meta.versions), [metas[0].versions, metas[0].versions, metas[0].versions])
+  const prompts = metas.map(meta => meta.agentOutputs.find(output => output.nodeId === 'writer')?.systemPrompt)
+  assert.ok(prompts.every(prompt => prompt?.includes('original context')))
+  assert.ok(prompts.every(prompt => !prompt?.includes('changed during group')))
 })
 
 test('POST /api/variance rejects more than ten runs', async () => {

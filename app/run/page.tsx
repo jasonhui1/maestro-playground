@@ -6,7 +6,7 @@ import { TemplateSelector } from '@/components/TemplateSelector'
 import { RunTrace } from '@/components/RunTrace'
 import { TemplateDef } from '@/lib/types'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
-import { streamRun, runErrorMessage, endedRunId } from '@/lib/runStream'
+import { streamRun, runErrorMessage, endedRunId, type RunEvent } from '@/lib/runStream'
 import { InstanceRunMap, InstanceOrder, applyInstanceEvent, applyInstanceOrder, orderFor } from '@/lib/runModel'
 import { ModelPicker } from '@/components/ModelPicker'
 import type { VarianceRunEvent } from '@/lib/variance'
@@ -40,6 +40,21 @@ export default function RunPage() {
     }
   }
 
+  function handleRunEvent(runIndex: number, event: RunEvent) {
+    if (event.type === 'error') { setRunError(event.error); return }
+    const ended = endedRunId(event)
+    if (ended) {
+      setEndedRuns(prev => {
+        const next = [...prev]
+        next[runIndex] = ended
+        return next
+      })
+      return
+    }
+    setRunState(prev => applyInstanceEvent(prev, runIndex, event))
+    setRunOrder(prev => applyInstanceOrder(prev, runIndex, event))
+  }
+
   async function runSingleInstance(runIndex: number) {
     const override = modelOverride.trim() || undefined
     const res = await fetch('/api/run', {
@@ -57,20 +72,7 @@ export default function RunPage() {
     const reader = res.body?.getReader()
     if (!reader) return
 
-    await streamRun(reader, e => {
-      if (e.type === 'error') { setRunError(e.error); return }
-      const ended = endedRunId(e)
-      if (ended) {
-        setEndedRuns(prev => {
-          const next = [...prev]
-          next[runIndex] = ended
-          return next
-        })
-        return
-      }
-      setRunState(prev => applyInstanceEvent(prev, runIndex, e))
-      setRunOrder(prev => applyInstanceOrder(prev, runIndex, e))
-    })
+    await streamRun(reader, event => handleRunEvent(runIndex, event))
   }
 
   async function runVarianceGroup() {
@@ -95,18 +97,7 @@ export default function RunPage() {
         setEndedRuns(event.runIds)
         return
       }
-      if (event.type === 'error') { setRunError(event.error); return }
-      const ended = endedRunId(event)
-      if (ended) {
-        setEndedRuns(prev => {
-          const next = [...prev]
-          next[event.instance] = ended
-          return next
-        })
-        return
-      }
-      setRunState(prev => applyInstanceEvent(prev, event.instance, event))
-      setRunOrder(prev => applyInstanceOrder(prev, event.instance, event))
+      handleRunEvent(event.instance, event)
     })
   }
 

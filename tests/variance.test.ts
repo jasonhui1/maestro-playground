@@ -80,3 +80,13 @@ test('one unpriced output makes the group total unpriced instead of silently par
   assert.strictEqual(group.costUsd, undefined)
   assert.strictEqual(group.costWarning, 'one or more runs contain unpriced output')
 })
+
+test('a node with fewer than two successful outputs has no spread instead of false zero', () => {
+  const failed = { ...output('world-builder', ''), status: 'error' as const, error: 'model failed' }
+  const group = buildVarianceGroup([
+    run(0, [output('world-builder', 'only successful answer')]),
+    run(1, [failed]),
+  ])
+
+  assert.strictEqual(group.nodes[0].spread, undefined)
+})
