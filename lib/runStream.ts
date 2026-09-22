@@ -1,6 +1,7 @@
 import { AgentOutput, ChainNode, HoldRecord } from './types'
 import type { SectionWarning } from './sectionWarning'
 import type { LayoutModel } from './layoutModel'
+import type { ToolLoopEvent } from './tools/events'
 
 // Optional: a replayed branch output can carry a synthetic nodeId absent from
 // the graph, so its kind is unknowable (#35).
@@ -43,6 +44,7 @@ export type ChatStreamEvent =
   | { type: 'token'; token: string; tokenType?: string }
   | { type: 'done'; result: AgentOutput; runId: string }
   | { type: 'error'; error: string }
+  | ToolLoopEvent
 
 export async function streamRun<E = RunEvent>(
   reader: ReadableStreamDefaultReader<Uint8Array>,

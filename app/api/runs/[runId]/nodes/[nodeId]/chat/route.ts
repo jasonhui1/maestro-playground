@@ -35,6 +35,7 @@ export async function POST(
         onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
         // A node keeps the tools it ran with when a human follows up (#112).
         boundTools: bindAgentTools(agent, tools, ws.root),
+        onToolEvent: event => send(event),
       })
       if (result.status !== 'success') {
         send({ type: 'error', error: result.error ?? 'chat failed' })

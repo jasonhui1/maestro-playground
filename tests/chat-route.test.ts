@@ -11,7 +11,7 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 const model = fakeModel(({ last, tools, hooks }) => {
   if (last.content === 'fail') throw new Error('model down')
-  if (tools.length > 0) return callRetrieve('Gilded Flagon')
+  if (tools.length > 0) return callRetrieve('Gilded Flagon', hooks)
   hooks?.onToken?.('weighing', 'thought')
   hooks?.onToken?.('Mirna owns it.', 'output')
   return answer('<thought>weighing</thought>Mirna owns it.', [30, 7])
@@ -60,6 +60,7 @@ test('a chat turn streams tokens, splits the thought, and lands in the run', asy
   const events = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'who owns the Gilded Flagon?' }] }))
 
   assert.strictEqual(events[0].type, 'run_id')
+  assert.strictEqual(events.some(e => e.type.startsWith('tool_')), false, 'a tool-less agent stream has no tool events (#140)')
   assert.deepStrictEqual(
     events.filter(e => e.type === 'token').map(e => [e.token, e.tokenType]),
     [['weighing', 'thought'], ['Mirna owns it.', 'output']],
@@ -86,6 +87,24 @@ test('a chat turn gets the tools the agent file declares, and they really run (#
   const events = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'who owns it?' }] }))
 
   assert.deepStrictEqual(seen[0].tools, ['retrieve'])
+  assert.deepStrictEqual(
+    events.map(e => e.type),
+    ['run_id', 'tool_pending', 'tool_call', 'tool_result', 'token', 'done'],
+    'tool events are forwarded in order before token and done (#140)',
+  )
+  const pending = events[1]
+  assert.strictEqual(pending.turn, 1)
+  const call = events[2]
+  assert.strictEqual(call.name, 'retrieve')
+  assert.strictEqual(call.turn, 1)
+  const res = events[3]
+  assert.strictEqual(res.name, 'retrieve')
+  assert.strictEqual(res.turn, 1)
+  assert.strictEqual(res.isError, false)
+  assert.match(res.result as string, /Mirna Copperhand/)
+  const token = events[4]
+  assert.match(token.token as string, /Mirna Copperhand/)
+
   const done = events.at(-1) as { type: string; result: { output: string; toolCalls?: unknown[] } }
   assert.strictEqual(done.type, 'done')
   assert.match(done.result.output, /Mirna Copperhand/, 'the tool ran against the workspace')

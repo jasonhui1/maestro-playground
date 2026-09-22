@@ -11,15 +11,18 @@ export const answer = (content: string, usage?: [number, number]): ChatCallRespo
   ...(usage ? { usage: { prompt_tokens: usage[0], completion_tokens: usage[1] } } : {}),
 })
 
-export const callRetrieve = (query: string): ChatCallResponse => ({
-  choices: [{
-    message: {
-      role: 'assistant',
-      content: null,
-      tool_calls: [{ id: 't1', function: { name: 'retrieve', arguments: JSON.stringify({ query }) } }],
-    },
-  }],
-})
+export const callRetrieve = (query: string, hooks?: ChatCallHooks): ChatCallResponse => {
+  hooks?.onToolCallStart?.()
+  return {
+    choices: [{
+      message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 't1', function: { name: 'retrieve', arguments: JSON.stringify({ query }) } }],
+      },
+    }],
+  }
+}
 
 /** What a turn looked like when it reached the model. */
 export interface SeenTurn {
@@ -48,7 +51,11 @@ export function fakeModel(
     reset: () => { seen.length = 0 },
     createChatCall: (agent) => async (req, hooks) => {
       const last = req.messages.at(-1)!
-      if (last.role === 'tool') return answer(`grounded: ${last.content}`)
+      if (last.role === 'tool') {
+        const text = `grounded: ${last.content}`
+        hooks?.onToken?.(text, 'output')
+        return answer(text)
+      }
       const turn: SeenTurn = {
         model: agent.model,
         tools: req.tools.map(t => t.function.name),

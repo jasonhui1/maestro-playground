@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
             // A human talking to an agent gets the tools its file declares, under
             // the same cap a run uses — the agent file says what it may use (#112).
             boundTools: bindAgentTools(agentDef, tools, root),
+            onToolEvent: event => send(event),
           }
         )
 

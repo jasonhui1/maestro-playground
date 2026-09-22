@@ -23,6 +23,7 @@ function ChatContent() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingThought, setStreamingThought] = useState('')
+  const [activeTool, setActiveTool] = useState<string | null>(null)
   const [isLoadingAgents, setIsLoadingAgents] = useState(true)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -106,6 +107,13 @@ function ChatContent() {
     fetchHistory()
   }, [runIdParam])
 
+  const resetStreaming = useCallback(() => {
+    setIsStreaming(false)
+    setStreamingContent('')
+    setStreamingThought('')
+    setActiveTool(null)
+  }, [])
+
   const handleSend = useCallback(async (content: string) => {
     if (!selectedAgent || isStreaming) return
 
@@ -115,6 +123,7 @@ function ChatContent() {
     setIsStreaming(true)
     setStreamingContent('')
     setStreamingThought('')
+    setActiveTool(null)
     setError(null)
 
     try {
@@ -143,7 +152,12 @@ function ChatContent() {
         if (data.type === 'run_id' && !activeRunIdRef.current) {
           setActiveRunId(data.runId)
           window.history.replaceState(null, '', `/chat?runId=${data.runId}`)
+        } else if (data.type === 'tool_pending') {
+          setActiveTool('Running tool...')
+        } else if (data.type === 'tool_call') {
+          setActiveTool(data.activity || `Running ${data.name}...`)
         } else if (data.type === 'token') {
+          setActiveTool(null)
           if (data.tokenType === 'thought') {
             accumulatedThought += data.token
             setStreamingThought(accumulatedThought)
@@ -158,28 +172,24 @@ function ChatContent() {
             thought: data.result.thought,
           }
           setMessages(prev => [...prev, assistantMessage])
-          setIsStreaming(false)
-          setStreamingContent('')
-          setStreamingThought('')
+          resetStreaming()
         } else if (data.type === 'error') {
+          resetStreaming()
           throw new Error(data.error)
         }
       })
     } catch (err) {
       console.error('Chat error:', err)
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-      setIsStreaming(false)
-      setStreamingContent('')
-      setStreamingThought('')
+      resetStreaming()
     }
-  }, [selectedAgent, messages, isStreaming, activeRunId])
+  }, [selectedAgent, messages, isStreaming, activeRunId, resetStreaming])
 
   const clearChat = () => {
     setMessages([])
     setError(null)
     setActiveRunId(null)
-    setStreamingContent('')
-    setStreamingThought('')
+    resetStreaming()
     router.push('/chat')
   }
 
@@ -334,6 +344,7 @@ function ChatContent() {
             isStreaming={isStreaming}
             streamingContent={streamingContent}
             streamingThought={streamingThought}
+            activeTool={activeTool}
           />
         )}
 

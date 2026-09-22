@@ -5,7 +5,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Brain,
-  MessageSquare
+  MessageSquare,
+  Loader2,
 } from 'lucide-react'
 import { CollapsibleDetail } from '@/components/ui/CollapsibleDetail'
 import { SaveToContextButton } from '@/components/SaveToContextButton'
@@ -22,12 +23,14 @@ interface Props {
   latencyMs?: number
   status?: 'success' | 'error' | 'skipped'
   error?: string
+  activeTool?: string | null
   className?: string
 }
 
 export function AgentStreamOutput({
   agentName, output, isStreaming, systemPrompt, thought,
   tokensIn, tokensOut, costUsd, latencyMs, status, error,
+  activeTool,
   className
 }: Props) {
   const [showInput, setShowInput] = useState(false)
@@ -146,7 +149,14 @@ export function AgentStreamOutput({
             <AlertCircle size={14} />
             <span>{error}</span>
           </div>
-        ) : output || (
+        ) : output ? (
+          output
+        ) : activeTool ? (
+          <div className="flex items-center gap-2 text-zinc-500 italic">
+            <Loader2 size={14} className="animate-spin text-blue-500 shrink-0" />
+            <span>{activeTool}</span>
+          </div>
+        ) : (
           <span className="text-zinc-300 italic">Waiting for agent output...</span>
         )}
       </div>

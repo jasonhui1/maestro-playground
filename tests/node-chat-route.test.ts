@@ -25,7 +25,7 @@ const fake = fakeModel(({ last, tools, messages, model, agentSlug, hooks }) => {
   chatModels.push(model)
   chatTools.push(tools)
   if (last.content === 'fail') throw new Error('model down')
-  if (tools.length > 0) return callRetrieve('Gilded Flagon')
+  if (tools.length > 0) return callRetrieve('Gilded Flagon', hooks)
   const n = messages.filter(m => m.role === 'user').length - 1
   hooks?.onToken?.('hmm', 'thought')
   hooks?.onToken?.(`reply ${n}`, 'output')
@@ -126,6 +126,7 @@ test('chat streams tokens and ends with the full reply', async () => {
 
   const events = await sse(await chat(runId, 'dec', { message: 'why candidate 1?' }))
 
+  assert.strictEqual(events.some(e => e.type.startsWith('tool_')), false, 'a tool-less agent stream has no tool events (#140)')
   assert.deepStrictEqual(events.filter(e => e.type === 'token').map(e => [e.token, e.tokenType]), [['hmm', 'thought'], ['reply 1', 'output']])
   const done = events.at(-1)!
   assert.strictEqual(done.type, 'chat_done')
@@ -300,6 +301,24 @@ test('a chat turn gets the tools the agent file declares, and they really run (#
   const events = await sse(await chat(runId, 'dec', { message: 'who owns the Gilded Flagon?' }))
 
   assert.deepStrictEqual(chatTools.at(-1), ['retrieve'], 'the chat turn declares the tools the agent file names')
+  assert.deepStrictEqual(
+    events.map(e => e.type),
+    ['tool_pending', 'tool_call', 'tool_result', 'token', 'chat_done'],
+    'tool events are forwarded in order before token and chat_done (#140)',
+  )
+  const pending = events[0]
+  assert.strictEqual(pending.turn, 1)
+  const call = events[1]
+  assert.strictEqual(call.name, 'retrieve')
+  assert.strictEqual(call.turn, 1)
+  const res = events[2]
+  assert.strictEqual(res.name, 'retrieve')
+  assert.strictEqual(res.turn, 1)
+  assert.strictEqual(res.isError, false)
+  assert.match(res.result as string, /Mirna Copperhand/)
+  const token = events[3]
+  assert.match(token.token as string, /Mirna Copperhand/)
+
   const done = events.at(-1)!
   assert.strictEqual(done.type, 'chat_done')
   assert.match((done.message as ChatMessage).content, /Mirna Copperhand/, 'the tool ran against the workspace')

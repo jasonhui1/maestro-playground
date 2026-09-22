@@ -10,6 +10,7 @@ interface Props {
   isStreaming: boolean
   streamingThought?: string
   streamingContent?: string
+  activeTool?: string | null
 }
 
 export function ChatHistory({ 
@@ -17,7 +18,8 @@ export function ChatHistory({
   agentName, 
   isStreaming, 
   streamingThought, 
-  streamingContent 
+  streamingContent,
+  activeTool,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -82,6 +84,7 @@ export function ChatHistory({
               output={streamingContent || ''}
               isStreaming={true}
               thought={streamingThought}
+              activeTool={activeTool}
             />
           </div>
         )}
