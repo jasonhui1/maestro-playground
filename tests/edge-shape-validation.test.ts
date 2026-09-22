@@ -15,7 +15,7 @@ function chain(edges: ChainEdge[]): ChainDef {
 test('validateChain rejects a self-edge and an unnamed socket, attributed to the edge', () => {
   const self: ChainEdge = { fromNode: 'j', fromSocket: 'output', toNode: 'j', toSocket: 'in' }
   const unnamed: ChainEdge = { fromNode: 'seed', fromSocket: '', toNode: 'r', toSocket: 'in' }
-  const v = validateChain(chain([self, unnamed]), [])
+  const v = validateChain(chain([self, unnamed]), {})
   assert.strictEqual(v.valid, false)
   assert.ok(v.issues.some(i => i.edge === self && i.message === edgeShapeError(self)))
   assert.ok(v.issues.some(i => i.edge === unnamed && i.message === edgeShapeError(unnamed)))
@@ -31,7 +31,7 @@ test('the canvas refuses exactly the connections validation rejects', () => {
   ]
   for (const c of connections) {
     const edge: ChainEdge = { fromNode: c.source, fromSocket: c.sourceHandle ?? '', toNode: c.target, toSocket: c.targetHandle ?? '' }
-    const rejected = validateChain(chain([edge]), []).issues.some(i => i.edge === edge && i.message === edgeShapeError(edge))
+    const rejected = validateChain(chain([edge]), {}).issues.some(i => i.edge === edge && i.message === edgeShapeError(edge))
     assert.strictEqual(edgeFromConnection(c) === null, rejected, JSON.stringify(c))
     if (!rejected) assert.deepStrictEqual(edgeFromConnection(c), edge)
   }
@@ -40,7 +40,7 @@ test('the canvas refuses exactly the connections validation rejects', () => {
 test('panel and node borders fold the same issues', () => {
   const self: ChainEdge = { fromNode: 'j', fromSocket: 'output', toNode: 'j', toSocket: 'in' }
   const bad = { ...chain([self]), nodes: [...chain([]).nodes, { id: 'h', kind: 'hold' as const }] }
-  const { issues } = validateChain(bad, [])
+  const { issues } = validateChain(bad, {})
   const byNode = issuesByNode(issues)
   // every attributable panel issue borders its node, and borders carry nothing else
   const attributable = issues.filter(i => i.nodeId ?? i.edge?.toNode)

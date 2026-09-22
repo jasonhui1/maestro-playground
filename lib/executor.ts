@@ -1,4 +1,5 @@
-import { ChainDef, ChainNode, AgentDef, SkillDef, AgentOutput, ToolDef, HoldRecord } from './types'
+import { ChainDef, ChainNode, AgentDef, AgentOutput, HoldRecord } from './types'
+import type { RunDefinitions } from './runDefinitions'
 import { makeContextReader } from './fs/contextReader'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
@@ -32,12 +33,8 @@ function controlOutput(nodeId: string, label: string, output: string, status: Ag
 
 /** The definitions a run reads. `root` alone is required: an empty one silently
  * resolves context and tool files against the process cwd (#105). */
-export interface ExecutorDefs {
+export interface ExecutorDefs extends Partial<RunDefinitions> {
   root: string
-  agents?: AgentDef[]
-  skills?: SkillDef[]
-  chains?: ChainDef[]
-  tools?: ToolDef[]
 }
 
 /** What one run supplies over those definitions. */

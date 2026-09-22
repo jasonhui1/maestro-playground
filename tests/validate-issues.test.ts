@@ -23,7 +23,7 @@ test('validate-issues', () => {
       { fromNode: 'p', fromSocket: 'output', toNode: 'g', toSocket: 'in' },
     ],
   }
-  const r = validateChain(noCond, agents)
+  const r = validateChain(noCond, { agents })
   assert.strictEqual(r.valid, false)
   assert.ok(r.issues.some(i => i.nodeId === 'g' && /condition/i.test(i.message)))
   // errors string list still populated (back-compat)
@@ -35,7 +35,7 @@ test('validate-issues', () => {
     nodes: [{ id: 'seed', kind: 'seed' }, { id: 'p', kind: 'agent', agent: 'producer' }],
     edges: [{ fromNode: 'seed', fromSocket: 'nope', toNode: 'p', toSocket: 'input' }],
   }
-  const r2 = validateChain(badEdge, agents)
+  const r2 = validateChain(badEdge, { agents })
   assert.ok(r2.issues.some(i => i.edge && i.edge.fromSocket === 'nope'))
 
   // malformed zone -> issue carries zone id
@@ -48,6 +48,6 @@ test('validate-issues', () => {
     ],
     edges: [],
   }
-  const r3 = validateChain(badZone, agents)
+  const r3 = validateChain(badZone, { agents })
   assert.ok(r3.issues.some(i => i.zone === 'z1'))
 })

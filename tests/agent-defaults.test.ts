@@ -130,7 +130,7 @@ test('a chain using an agent that names a parent fails validation', async () => 
   const { loadWorkspace } = await import('../lib/fs/workspace')
   const ws = loadWorkspace(wp)
   const { validateChain } = await import('../lib/chainGraph')
-  const result = validateChain(ws.chains[0], ws.agents, ws.chains)
+  const result = validateChain(ws.chains[0], { agents: ws.agents, chains: ws.chains })
 
   assert.strictEqual(result.valid, false)
   assert.ok(result.errors.some(e => e.includes('parent')), result.errors.join('\n'))

@@ -7,18 +7,15 @@ import { parseSkill } from './fs/parseSkill'
 import { parseTool } from './fs/parseTool'
 import { parseChain } from './fs/parseChain'
 import { parseVersionKey } from './runVersions'
-import type { AgentDef, ChainDef, Refusal, SkillDef, ToolDef } from './types'
+import type { RunDefinitions } from './runDefinitions'
+import type { Refusal } from './types'
 
-export interface PinnedWorkspace {
-  agents: AgentDef[]
-  skills: SkillDef[]
-  chains: ChainDef[]
-  tools: ToolDef[]
+export interface PinnedWorkspace extends RunDefinitions {
   /** Pinned context files by slug, as the executor's context overrides take them. */
   context: Record<string, string>
 }
 
-type Defs = Omit<PinnedWorkspace, 'context'>
+type Defs = RunDefinitions
 
 /** Per pinnable type: where its files live, which list it fills, and how a pinned file replaces its live entries. */
 const PINNABLE: Record<string, {

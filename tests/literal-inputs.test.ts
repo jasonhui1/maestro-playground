@@ -169,7 +169,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v1 = validateChain(validChain, agents)
+  const v1 = validateChain(validChain, { agents })
   assert.strictEqual(v1.valid, true)
 
   // Unsupported kind has inputs
@@ -180,7 +180,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v2 = validateChain(invalidKindChain, agents)
+  const v2 = validateChain(invalidKindChain, { agents })
   assert.strictEqual(v2.valid, false)
   assert.ok(v2.errors.some(e => e.includes('does not accept literal inputs')))
 
@@ -192,7 +192,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v3 = validateChain(unknownSlotChain, agents)
+  const v3 = validateChain(unknownSlotChain, { agents })
   assert.strictEqual(v3.valid, false)
   assert.ok(v3.errors.some(e => e.includes('literal declared for unknown input slot "unknown_slot"')))
 
@@ -204,7 +204,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v4 = validateChain(gateChain, agents)
+  const v4 = validateChain(gateChain, { agents })
   assert.strictEqual(v4.valid, false)
   assert.ok(v4.errors.some(e => e.includes('Node "g" of kind "gate" does not accept literal inputs')))
 
@@ -216,7 +216,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v5 = validateChain(malformedChain, agents)
+  const v5 = validateChain(malformedChain, { agents })
   assert.strictEqual(v5.valid, false)
   assert.ok(v5.errors.some(e => e.includes('inputs must be a key-value mapping')))
 
@@ -228,7 +228,7 @@ test('Validation: acceptsInputs and valid slot names', () => {
     ],
     edges: [],
   }
-  const v6 = validateChain(nonStringChain, agents)
+  const v6 = validateChain(nonStringChain, { agents })
   assert.strictEqual(v6.valid, false)
   assert.ok(v6.errors.some(e => e.includes('literal for slot "topic" must be a string')))
 })

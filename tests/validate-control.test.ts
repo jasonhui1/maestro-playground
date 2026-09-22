@@ -27,11 +27,11 @@ test('validate-control', () => {
       { fromNode: 'g', fromSocket: 'output', toNode: 'f', toSocket: 'in' },
     ],
   )
-  assert.deepStrictEqual(validateChain(good, agents).valid, true)
+  assert.deepStrictEqual(validateChain(good, { agents }).valid, true)
 
   // gate without condition
   const noCond = chain(good.nodes.map(n => n.id === 'g' ? { ...n, condition: '' } : n), good.edges)
-  assert.ok(validateChain(noCond, agents).errors.some(e => /gate.*condition/i.test(e)))
+  assert.ok(validateChain(noCond, { agents }).errors.some(e => /gate.*condition/i.test(e)))
 
   // branch-out edge with unknown case label
   const br = chain(
@@ -47,9 +47,9 @@ test('validate-control', () => {
       { fromNode: 'b', fromSocket: 'zzz', toNode: 'f', toSocket: 'in' }, // zzz not a case/default
     ],
   )
-  assert.ok(validateChain(br, agents).errors.some(e => /case/i.test(e)))
+  assert.ok(validateChain(br, { agents }).errors.some(e => /case/i.test(e)))
 
   // condition references an unknown node
   const badRef = chain(good.nodes.map(n => n.id === 'g' ? { ...n, condition: '{ghost.output} contains "x"' } : n), good.edges)
-  assert.ok(validateChain(badRef, agents).errors.some(e => /ghost/i.test(e)))
+  assert.ok(validateChain(badRef, { agents }).errors.some(e => /ghost/i.test(e)))
 })

@@ -40,12 +40,12 @@ test('a chain file with a hold round-trips byte-identically', () => {
 
 test('a wired hold outside any zone or subchain is valid', () => {
   const c = chain('ok', [{ id: 'seed', kind: 'seed' }, { id: 'h', kind: 'hold' }], [seedToHold])
-  const res = validateChain(c, [], [c])
+  const res = validateChain(c, { chains: [c] })
   assert.deepStrictEqual(res.errors, [])
 })
 
 test('a hold with `in` unwired is a node-level error', () => {
-  const res = validateChain(chain('c', [{ id: 'h', kind: 'hold' }]), [], [])
+  const res = validateChain(chain('c', [{ id: 'h', kind: 'hold' }]), {})
   assert.strictEqual(res.valid, false)
   assert.ok(res.issues.some(i => i.severity === 'error' && i.nodeId === 'h' && /hold/.test(i.message) && /in/.test(i.message)))
 })
@@ -57,14 +57,14 @@ test('a hold inside a loop zone is a node-level error', () => {
     { id: 'h', kind: 'hold', zone: 'z' },
     { id: 'le', kind: 'loop-end', zone: 'z', until: 'x', maxIterations: 2 },
   ], [seedToHold])
-  const res = validateChain(c, [], [])
+  const res = validateChain(c, {})
   assert.ok(res.issues.some(i => i.severity === 'error' && i.nodeId === 'h' && /loop zone/.test(i.message)))
 })
 
 test('a hold in a chain another chain uses as a subchain errors on the hold', () => {
   const inner = chain('inner', [{ id: 'seed', kind: 'seed' }, { id: 'h', kind: 'hold' }], [seedToHold])
   const outer = chain('outer', [{ id: 's', kind: 'subchain', subchain: 'inner' }])
-  const res = validateChain(inner, [], [inner, outer])
+  const res = validateChain(inner, { chains: [inner, outer] })
   assert.ok(res.issues.some(i => i.severity === 'error' && i.nodeId === 'h' && /subchain/.test(i.message) && /outer/.test(i.message)))
 })
 
@@ -72,6 +72,6 @@ test('a subchain node pointing at a chain with a hold, at any depth, errors on t
   const inner = chain('inner', [{ id: 'seed', kind: 'seed' }, { id: 'h', kind: 'hold' }], [seedToHold])
   const middle = chain('middle', [{ id: 'm', kind: 'subchain', subchain: 'inner' }])
   const outer = chain('outer', [{ id: 's', kind: 'subchain', subchain: 'middle' }])
-  const res = validateChain(outer, [], [inner, middle, outer])
+  const res = validateChain(outer, { chains: [inner, middle, outer] })
   assert.ok(res.issues.some(i => i.severity === 'error' && i.nodeId === 's' && /hold/.test(i.message)))
 })

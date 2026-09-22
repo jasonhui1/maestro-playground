@@ -126,7 +126,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     setContent(serializeChain(chain))
   }, [chain, setContent])
 
-  const validation = useMemo(() => validateChain(chain, agents, chains, tools, skills), [chain, agents, chains, tools, skills])
+  const validation = useMemo(() => validateChain(chain, { agents, chains, tools, skills }), [chain, agents, chains, tools, skills])
 
   const nodeIssues = useMemo(() => issuesByNode(validation.issues), [validation])
   useEffect(() => { onValidation?.(validation.issues) }, [validation, onValidation])

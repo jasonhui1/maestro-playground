@@ -75,7 +75,7 @@ const noop = { onStart() {}, onToken() {}, onDone() {} }
 
 test('creative-director validates against the real workspace', () => {
   const { chain, agents, chains, tools, skills } = workspace()
-  const result = validateChain(chain, agents, chains, tools, skills)
+  const result = validateChain(chain, { agents, chains, tools, skills })
   assert.deepStrictEqual(result.errors, [])
   assert.strictEqual(chain.view, 'columns')
   assert.ok(chain.parameter, 'declares the experimental dial')

@@ -15,7 +15,7 @@ test('report-validate', () => {
       { fromNode: 'seed', fromSocket: 'output', toNode: 'rep', toSocket: 'in' },
     ],
   }
-  const res1 = validateChain(validChain, [], [])
+  const res1 = validateChain(validChain, {})
   assert.strictEqual(res1.valid, true, 'valid chain should pass validation')
   assert.strictEqual(res1.errors.length, 0, 'no errors on valid chain')
 
@@ -30,7 +30,7 @@ test('report-validate', () => {
       { fromNode: 'rep', fromSocket: 'output', toNode: 'agent', toSocket: 'prompt' },
     ],
   }
-  const res2 = validateChain(invalidOutChain, [{ slug: 'my-agent', name: 'Agent', model: 'm', description: '', skills: [], context: [], input_from: 'user', output_format: 'markdown', outputs: [], inputs: [{ name: 'prompt' }], systemPrompt: 'hello {prompt}', filePath: '' }], [])
+  const res2 = validateChain(invalidOutChain, { agents: [{ slug: 'my-agent', name: 'Agent', model: 'm', description: '', skills: [], context: [], input_from: 'user', output_format: 'markdown', outputs: [], inputs: [{ name: 'prompt' }], systemPrompt: 'hello {prompt}', filePath: '' }] })
   assert.strictEqual(res2.valid, false, 'chain with edge out of report should fail validation')
   assert.ok(res2.errors.some(e => e.includes('no such output socket')), 'should report missing output socket error')
 
@@ -42,7 +42,7 @@ test('report-validate', () => {
     ],
     edges: [],
   }
-  const res3 = validateChain(unwiredChain, [], [])
+  const res3 = validateChain(unwiredChain, {})
   assert.strictEqual(res3.valid, true, 'unwired report is still valid (warning only)')
   assert.ok(res3.issues.some(i => i.severity === 'warning' && i.message.includes('report has no incoming')), 'should report warning for unwired report')
 })

@@ -28,14 +28,14 @@ test('validate-tools', () => {
   {
     const agents = [agent('writer', ['retrieve'])]
     const tools = [tool('retrieve', 'retrieve')]
-    const r = validateChain(chain('writer'), agents, [], tools)
+    const r = validateChain(chain('writer'), { agents, tools })
     assert.strictEqual(r.valid, true)
   }
 
   // unknown tool ref -> error, node-anchored
   {
     const agents = [agent('writer', ['nope'])]
-    const r = validateChain(chain('writer'), agents, [], [])
+    const r = validateChain(chain('writer'), { agents, tools: [] })
     assert.strictEqual(r.valid, false)
     assert.ok(r.issues.some(i => i.nodeId === 'a' && /unknown tool "nope"/i.test(i.message)))
   }
@@ -44,7 +44,7 @@ test('validate-tools', () => {
   {
     const agents = [agent('writer', ['broken'])]
     const tools = [tool('broken', 'shell-exec')]
-    const r = validateChain(chain('writer'), agents, [], tools)
+    const r = validateChain(chain('writer'), { agents, tools })
     assert.strictEqual(r.valid, false)
     assert.ok(r.issues.some(i => i.nodeId === 'a' && /unknown executor "shell-exec"/i.test(i.message)))
   }
@@ -53,7 +53,7 @@ test('validate-tools', () => {
   {
     const agents = [agent('writer', [{ name: 'retrieve', maxResults: 10 } as unknown as string])]
     const tools = [tool('retrieve', 'retrieve')]
-    const r = validateChain(chain('writer'), agents, [], tools)
+    const r = validateChain(chain('writer'), { agents, tools })
     assert.strictEqual(r.valid, false)
     assert.ok(r.issues.some(i => i.nodeId === 'a' && /slice 5/i.test(i.message)))
   }
@@ -62,7 +62,7 @@ test('validate-tools', () => {
   {
     const agents = [agent('writer', [])]
     const tools = [tool('retrieve', 'retrieve'), tool('retrieve', 'retrieve')]
-    const r = validateChain(chain('writer'), agents, [], tools)
+    const r = validateChain(chain('writer'), { agents, tools })
     assert.strictEqual(r.valid, false)
     assert.ok(r.issues.some(i => /duplicate tool name "retrieve"/i.test(i.message)))
   }

@@ -88,7 +88,7 @@ test('a named skill that does not exist fails validation before the run starts',
     nodes: [{ id: 't', kind: 'agent', agent: 'panel-member', 'skills!': ['made-up-skill'] }],
     edges: [],
   }
-  const result = validateChain(bad, agents, [], [], skills)
+  const result = validateChain(bad, { agents, skills })
   assert.strictEqual(result.valid, false)
   assert.ok(result.errors.some(e => e.includes('made-up-skill')), result.errors.join('\n'))
 })
@@ -99,7 +99,7 @@ test('a chain with only known skill names in its markers validates clean', () =>
     nodes: [{ id: 't', kind: 'agent', agent: 'panel-member', 'skills+': ['red-teaming'] }],
     edges: [],
   }
-  const result = validateChain(ok, agents, [], [], skills)
+  const result = validateChain(ok, { agents, skills })
   assert.strictEqual(result.valid, true, result.errors.join('\n'))
 })
 
@@ -110,7 +110,7 @@ test('an unknown skill on the agent file itself fails validation, with no marker
     nodes: [{ id: 't', kind: 'agent', agent: 'panel-member' }],
     edges: [],
   }
-  const result = validateChain(chain, badAgents, [], [], skills)
+  const result = validateChain(chain, { agents: badAgents, skills })
   assert.strictEqual(result.valid, false)
   assert.ok(result.errors.some(e => e.includes('made-up-default')), result.errors.join('\n'))
 })

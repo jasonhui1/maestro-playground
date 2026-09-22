@@ -46,7 +46,7 @@ test('join declares its input as multi-edge', () => {
 })
 
 test('a join legally accepts N incoming edges into `in`', () => {
-  const res = validateChain(chain, agents)
+  const res = validateChain(chain, { agents })
   assert.ok(res.valid, 'join accepts 3 edges into `in`: ' + res.errors.join('; '))
 })
 
@@ -55,7 +55,7 @@ test('a non-join slot still rejects a 2nd edge', () => {
     ...chain,
     edges: [...chain.edges, { fromNode: 'n1', fromSocket: 'output', toNode: 'ns', toSocket: 'in' }],
   }
-  const res = validateChain(bad, agents)
+  const res = validateChain(bad, { agents })
   assert.ok(!res.valid && res.errors.some(e => /only one allowed/.test(e)),
     'a normal slot still rejects a 2nd edge')
 })
@@ -71,7 +71,7 @@ test('a join inside a loop zone is rejected', () => {
     ],
     edges: [{ fromNode: 'n1', fromSocket: 'output', toNode: 'j', toSocket: 'in' }],
   }
-  const res = validateChain(zoned, agents)
+  const res = validateChain(zoned, { agents })
   assert.ok(!res.valid && res.errors.some(e => /join.*loop zone/i.test(e)),
     'a zoned join errors rather than silently never running')
 })
@@ -81,7 +81,7 @@ test('an unwired join warns', () => {
     slug: 'c2', name: 'c2', description: '', filePath: '',
     nodes: [{ id: 'j', kind: 'join' }], edges: [],
   }
-  assert.ok(validateChain(lonely, agents).issues.some(
+  assert.ok(validateChain(lonely, { agents }).issues.some(
     i => i.severity === 'warning' && /no incoming/.test(i.message)),
     'unwired join warns')
 })

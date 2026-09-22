@@ -251,7 +251,7 @@ test('validateChain validates declared path sockets and prevents collisions', ()
     edges: [{ fromNode: 'w', fromSocket: 'act-2/scene-3', toNode: 'r', toSocket: 'in' }],
   }
 
-  const validResult = validateChain(validChain, [agent, dst])
+  const validResult = validateChain(validChain, { agents: [agent, dst] })
   assert.strictEqual(validResult.valid, true)
 
   // Flat selector must not collide or falsely match the nested declaration
@@ -259,7 +259,7 @@ test('validateChain validates declared path sockets and prevents collisions', ()
     ...validChain,
     edges: [{ fromNode: 'w', fromSocket: 'act-2-scene-3', toNode: 'r', toSocket: 'in' }],
   }
-  const collideResult = validateChain(collidingChain, [agent, dst])
+  const collideResult = validateChain(collidingChain, { agents: [agent, dst] })
   assert.strictEqual(collideResult.valid, false)
   assert.ok(collideResult.errors.some(e => e.includes('no such output socket')))
 })

@@ -29,14 +29,14 @@ test('chain-graph', () => {
       { fromNode: 'wb', fromSocket: 'summary', toNode: 'cd', toSocket: 'world' },
     ],
   )
-  assert.deepStrictEqual(validateChain(good, agents).valid, true)
+  assert.deepStrictEqual(validateChain(good, { agents }).valid, true)
   const order = topoOrder(good)
   assert.ok(order.indexOf('wb') < order.indexOf('cd'), 'wb before cd')
   assert.ok(order.indexOf('seed') < order.indexOf('wb'), 'seed before wb')
 
   // dangling edge (unknown source node)
   const dangling = chain(good.nodes, [...good.edges, { fromNode: 'ghost', fromSocket: 'output', toNode: 'cd', toSocket: 'world' }])
-  assert.strictEqual(validateChain(dangling, agents).valid, false)
+  assert.strictEqual(validateChain(dangling, { agents }).valid, false)
 
   // fan-in: two edges into cd.world
   const fanin = chain(good.nodes, [
@@ -44,14 +44,14 @@ test('chain-graph', () => {
     { fromNode: 'wb', fromSocket: 'summary', toNode: 'cd', toSocket: 'world' },
     { fromNode: 'seed', fromSocket: 'output', toNode: 'cd', toSocket: 'world' },
   ])
-  assert.ok(validateChain(fanin, agents).errors.some(e => /one allowed|incoming/i.test(e)), 'fan-in flagged')
+  assert.ok(validateChain(fanin, { agents }).errors.some(e => /one allowed|incoming/i.test(e)), 'fan-in flagged')
 
   // undeclared output socket (.characters not declared on world-builder)
   const badSock = chain(good.nodes, [
     { fromNode: 'seed', fromSocket: 'output', toNode: 'wb', toSocket: 'input' },
     { fromNode: 'wb', fromSocket: 'characters', toNode: 'cd', toSocket: 'world' },
   ])
-  assert.ok(validateChain(badSock, agents).errors.some(e => /output socket/i.test(e)), 'undeclared output flagged')
+  assert.ok(validateChain(badSock, { agents }).errors.some(e => /output socket/i.test(e)), 'undeclared output flagged')
 
   // cycle
   const cyc = chain(
@@ -60,7 +60,7 @@ test('chain-graph', () => {
      { fromNode: 'b', fromSocket: 'output', toNode: 'a', toSocket: 'world' }],
   )
   assert.strictEqual(topoOrder(cyc).length < cyc.nodes.length, true)
-  assert.ok(validateChain(cyc, agents).errors.some(e => /cycle/i.test(e)), 'cycle flagged')
+  assert.ok(validateChain(cyc, { agents }).errors.some(e => /cycle/i.test(e)), 'cycle flagged')
 
   // duplicate node IDs
   const dup = chain(
@@ -70,8 +70,8 @@ test('chain-graph', () => {
     ],
     []
   )
-  assert.strictEqual(validateChain(dup, agents).valid, false)
-  assert.ok(validateChain(dup, agents).errors.some(e => /duplicate/i.test(e)), 'duplicate node ID flagged')
+  assert.strictEqual(validateChain(dup, { agents }).valid, false)
+  assert.ok(validateChain(dup, { agents }).errors.some(e => /duplicate/i.test(e)), 'duplicate node ID flagged')
 
   // invalid node kind
   const invalidKind = chain(
@@ -80,6 +80,6 @@ test('chain-graph', () => {
     ],
     []
   )
-  assert.strictEqual(validateChain(invalidKind, agents).valid, false)
-  assert.ok(validateChain(invalidKind, agents).errors.some(e => /invalid or missing kind/i.test(e)), 'invalid kind flagged')
+  assert.strictEqual(validateChain(invalidKind, { agents }).valid, false)
+  assert.ok(validateChain(invalidKind, { agents }).errors.some(e => /invalid or missing kind/i.test(e)), 'invalid kind flagged')
 })

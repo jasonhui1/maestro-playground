@@ -90,14 +90,14 @@ test('a chain declaring a parameter must name exactly one param node as its targ
   // wired correctly
   const ok = validateChain(
     { ...base, nodes: [paramNode], parameter: { name: 'target audience', options: ['a'], node: 'audience' } },
-    [],
+    {},
   )
   assert.strictEqual(ok.valid, true)
 
   // declares a parameter but names a node that isn't kind: param
   const wrongKind = validateChain(
     { ...base, nodes: [{ id: 'audience', kind: 'seed' }], parameter: { name: 'target audience', options: ['a'], node: 'audience' } },
-    [],
+    {},
   )
   assert.strictEqual(wrongKind.valid, false)
 
@@ -105,11 +105,11 @@ test('a chain declaring a parameter must name exactly one param node as its targ
   // would feed the chosen value to both, so this must fail validation (#69)
   const twoParamNodes = validateChain(
     { ...base, nodes: [paramNode, { id: 'other', kind: 'param' }], parameter: { name: 'target audience', options: ['a'], node: 'audience' } },
-    [],
+    {},
   )
   assert.strictEqual(twoParamNodes.valid, false)
 
   // a param node with no declared parameter — the run would have nowhere to send a value
-  const undeclared = validateChain({ ...base, nodes: [paramNode] }, [])
+  const undeclared = validateChain({ ...base, nodes: [paramNode] }, {})
   assert.strictEqual(undeclared.valid, false)
 })

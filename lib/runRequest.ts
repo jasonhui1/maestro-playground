@@ -29,12 +29,12 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const cleanOverride = parsedOverride.value ?? undefined
 
   const workspace = ws.definitions()
-  const { agents, skills, chains, tools } = workspace
+  const { agents, chains } = workspace
   const resolved = resolveRunChain(body, { agents, chains })
   if ('error' in resolved) return resolved
   const { chain, title, kind } = resolved
 
-  const validation = validateChain(chain, agents, chains, tools, skills)
+  const validation = validateChain(chain, workspace)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
 
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)

@@ -10,7 +10,8 @@ import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
 import { keepConversations } from './nodeChat'
-import type { AgentDef, AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta, SkillDef, ToolDef } from './types'
+import type { AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta } from './types'
+import type { RunDefinitions } from './runDefinitions'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -52,7 +53,7 @@ export function loadContinuation(root: string, live: LiveWorkspace, meta: RunMet
 function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refusal {
   const chain = chainForResume(meta, ws.chains)
   if (!chain) return unprocessable('Run has no recorded graph')
-  const validation = validateChain(chain, ws.agents, ws.chains, ws.tools, ws.skills)
+  const validation = validateChain(chain, ws)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
   return chain
 }
@@ -61,7 +62,7 @@ export interface RunSession {
   ws: Workspace
   runId: string
   chain: ChainDef
-  workspace: { agents: AgentDef[]; skills: SkillDef[]; chains: ChainDef[]; tools: ToolDef[] }
+  workspace: RunDefinitions
   seedPrompt: string
   paramValue: string
   context: Record<string, string>

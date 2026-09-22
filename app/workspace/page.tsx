@@ -73,7 +73,7 @@ function WorkspaceContent() {
     if (view !== 'yaml' || !slug) return []
     try {
       const live = { ...parseChainContent(content, slug), filePath: '' }
-      return validateChain(live, editorAgents, editorChains, editorTools, editorSkills).issues
+      return validateChain(live, { agents: editorAgents, chains: editorChains, tools: editorTools, skills: editorSkills }).issues
     } catch {
       return []
     }

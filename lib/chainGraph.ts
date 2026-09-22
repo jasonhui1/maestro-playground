@@ -1,4 +1,5 @@
-import { ChainDef, ChainNode, ChainEdge, AgentDef, ToolDef, SkillDef, ValidationIssue, ValidationResult } from './types'
+import { ChainDef, ChainNode, ChainEdge, ToolDef, ValidationIssue, ValidationResult } from './types'
+import type { RunDefinitions } from './runDefinitions'
 import { inputAcceptsMany, kindOf, allKinds, resolveNodeSkills, unknownSkillNames } from './nodeKinds'
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
@@ -48,7 +49,11 @@ export function issuesByNode(issues: ValidationIssue[]): Map<string, string[]> {
   return m
 }
 
-export function validateChain(chain: ChainDef, agents: AgentDef[], chains: ChainDef[] = [], tools: ToolDef[] = [], skills: SkillDef[] = []): ValidationResult {
+export function validateChain(
+  chain: ChainDef,
+  defs: Partial<RunDefinitions> = {}
+): ValidationResult {
+  const { agents = [], chains = [], tools = [], skills = [] } = defs
   const errors: string[] = []
   const issues: ValidationIssue[] = []
   const add = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => {

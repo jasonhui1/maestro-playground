@@ -32,19 +32,19 @@ test('validate-loop', () => {
       { fromNode: 'le', fromSocket: 'draft', toNode: 'rep', toSocket: 'in' },
     ],
   )
-  assert.strictEqual(validateChain(good, agents).valid, true)
+  assert.strictEqual(validateChain(good, { agents }).valid, true)
 
   // missing loop-end
   const noEnd = chain(good.nodes.filter(n => n.id !== 'le'), good.edges.filter(e => e.toNode !== 'le' && e.fromNode !== 'le'))
-  assert.ok(validateChain(noEnd, agents).errors.some(e => /loop-end/i.test(e)))
+  assert.ok(validateChain(noEnd, { agents }).errors.some(e => /loop-end/i.test(e)))
 
   // bad maxIterations
   const badMax = chain(good.nodes.map(n => n.id === 'le' ? { ...n, maxIterations: 0 } : n), good.edges)
-  assert.ok(validateChain(badMax, agents).errors.some(e => /maxIterations/i.test(e)))
+  assert.ok(validateChain(badMax, { agents }).errors.some(e => /maxIterations/i.test(e)))
 
   // boundary-crossing edge (outside node -> body node, not via loop-start)
   const cross = chain(good.nodes, [...good.edges, { fromNode: 'seed', fromSocket: 'output', toNode: 'review', toSocket: 'draft' }])
-  assert.ok(validateChain(cross, agents).errors.some(e => /zone boundary/i.test(e)))
+  assert.ok(validateChain(cross, { agents }).errors.some(e => /zone boundary/i.test(e)))
 })
 
 test('only accumulating loop-end state accepts several incoming edges', () => {
@@ -71,6 +71,6 @@ test('only accumulating loop-end state accepts several incoming edges', () => {
     ],
   })
 
-  assert.strictEqual(validateChain(makeChain({ name: 'transcript', accumulate: true }), [speaker]).valid, true)
-  assert.ok(validateChain(makeChain('transcript'), [speaker]).errors.some(error => /only one allowed/i.test(error)))
+  assert.strictEqual(validateChain(makeChain({ name: 'transcript', accumulate: true }), { agents: [speaker] }).valid, true)
+  assert.ok(validateChain(makeChain('transcript'), { agents: [speaker] }).errors.some(error => /only one allowed/i.test(error)))
 })
