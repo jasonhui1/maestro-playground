@@ -20,6 +20,7 @@ import { LayoutModelView } from '@/components/result/LayoutModelView'
 import { ForkCompareOverlay } from '@/components/result/ForkCompareOverlay'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { ResumeForm } from '@/components/trace/ResumeForm'
+import { DAGTraceView } from '@/components/trace/DAGTraceView'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
 
@@ -88,7 +89,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   // The reader's own pick, once they make one. Null means "whatever the chain says",
   // so a classified run is already in its result view on the first render that shows
   // anything — an effect would flip it a frame later, flashing the canvas (#72).
-  const [picked, setPicked] = useState<'result' | 'trace' | null>(null)
+  const [picked, setPicked] = useState<'result' | 'trace' | 'canvas' | null>(null)
   const [comparingSource, setComparingSource] = useState(false)
 
   // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
@@ -161,19 +162,39 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
         <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
         <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
 
-        {view.renderable && (
+        {(view.renderable || g) && (
           <div className="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 shrink-0">
-            {(['result', 'trace'] as const).map(m => (
+            {view.renderable && (
               <button
-                key={m}
-                onClick={() => setPicked(m)}
+                key="result"
+                onClick={() => setPicked('result')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  viewMode === m ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                  viewMode === 'result' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
                 }`}
               >
-                {m}
+                result
               </button>
-            ))}
+            )}
+            <button
+              key="trace"
+              onClick={() => setPicked('trace')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                viewMode === 'trace' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+              }`}
+            >
+              trace
+            </button>
+            {g && (
+              <button
+                key="canvas"
+                onClick={() => setPicked('canvas')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  viewMode === 'canvas' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                canvas
+              </button>
+            )}
           </div>
         )}
 
@@ -247,50 +268,31 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
           </div>
         ) : (
         <DockSplit
-          main={g ? (
-            <ChainCanvas
-              nodes={g.nodes}
-              edges={g.edges}
-              buildData={buildData}
-              selectedIds={selectedIds}
-              onSelectionChange={selectOnCanvas}
-              onMove={noop}
-              onMoveMany={noop}
-              onConnect={noop}
-              onDeleteNode={noop}
-              onDeleteEdge={noop}
-              instanceCount={0}
-              currentInstance={0}
-              onInstance={noop}
-              readOnly
-            />
-          ) : (
-            // Runs captured before the graph was recorded have no canvas to draw,
-            // so their outputs are the main region instead.
-            <div className="h-full overflow-auto p-4 flex flex-col gap-4">
-              {run.agentOutputs.map((output, idx) => (
-                <div key={idx} className="flex flex-col border border-zinc-200 rounded-xl overflow-hidden bg-white">
-                  <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[11px] font-bold">{idx + 1}</div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-zinc-900">{output.agentName}</span>
-                        <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{output.model} &bull; {output.latencyMs}ms</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-                      <div className="w-full sm:w-48">
-                        <TokenCostBar tokensIn={output.tokensIn} tokensOut={output.tokensOut} costUsd={output.costUsd} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <AgentStreamOutput {...output} isStreaming={false} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          main={
+            viewMode === 'canvas' && g ? (
+              <ChainCanvas
+                nodes={g.nodes}
+                edges={g.edges}
+                buildData={buildData}
+                selectedIds={selectedIds}
+                onSelectionChange={selectOnCanvas}
+                onMove={noop}
+                onMoveMany={noop}
+                onConnect={noop}
+                onDeleteNode={noop}
+                onDeleteEdge={noop}
+                instanceCount={0}
+                currentInstance={0}
+                onInstance={noop}
+                readOnly
+              />
+            ) : (
+              <DAGTraceView
+                run={run}
+                onFork={handleFork}
+              />
+            )
+          }
           dock={
             <RunDock
               run={run}

@@ -1,14 +1,26 @@
 import { streamRun, endedRunId } from './runStream'
 
-// Reruns a run from one node on the engine's fork path (#103, #128). Drives the SSE stream to
-// completion and returns the new run's id (null if it ended without a run_complete or run_waiting).
+export interface ForkFromNodeOptions {
+  modelOverride?: string | null
+  promptOverride?: string
+  revisions?: Record<string, string>
+}
+
+// Reruns a run from one node on the engine's fork path (#103, #128, #143).
 export async function forkFromNode(
   runId: string,
   nodeId: string,
-  opts?: { modelOverride?: string | null }
+  opts?: ForkFromNodeOptions
 ): Promise<string | null> {
-  const body: Record<string, unknown> = { from: nodeId }
-  if (opts && 'modelOverride' in opts) {
+  const body: Record<string, unknown> = {}
+  if (opts?.revisions) {
+    body.revisions = opts.revisions
+  } else if (opts?.promptOverride) {
+    body.revisions = { [nodeId]: opts.promptOverride }
+  } else {
+    body.from = nodeId
+  }
+  if (opts && 'modelOverride' in opts && opts.modelOverride !== undefined) {
     body.modelOverride = opts.modelOverride
   }
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/fork`, {
