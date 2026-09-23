@@ -101,7 +101,25 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
             </div>
             <div className="flex flex-col">
               <dt className={TYPE.label}>cost</dt>
-              <dd className="font-mono text-zinc-600">{frame.costUsd !== undefined ? `$${frame.costUsd.toFixed(4)}` : 'unpriced'}</dd>
+              <dd
+                className="font-mono text-zinc-600 flex flex-wrap items-center gap-1"
+                title={frame.costWarning ?? (frame.unpricedModels?.length ? `Unpriced models: ${frame.unpricedModels.join(', ')}` : undefined)}
+              >
+                {frame.costUsd !== undefined ? (
+                  frame.unpricedCount && frame.unpricedCount > 0 ? (
+                    <>
+                      <span>${frame.costUsd.toFixed(4)}</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-sans font-normal">
+                        (+{frame.unpricedCount} unpriced)
+                      </span>
+                    </>
+                  ) : (
+                    `$${frame.costUsd.toFixed(4)}`
+                  )
+                ) : (
+                  'unpriced'
+                )}
+              </dd>
               {frame.costWarning && (
                 <dd className="text-amber-600 text-[11px] leading-tight mt-0.5">{frame.costWarning}</dd>
               )}

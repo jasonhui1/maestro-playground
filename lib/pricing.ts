@@ -64,3 +64,43 @@ export function resolveContinuationModelOverride(
   return clean ? clean : sourceOverride
 }
 
+// #145
+export function summarizeRunCost(outputs: Array<{ costUsd?: number; model?: string }>): {
+  totalCost: number
+  pricedCount: number
+  unpricedCount: number
+  unpricedModels: string[]
+  formatted: string
+} {
+  let totalCost = 0
+  let pricedCount = 0
+  let unpricedCount = 0
+  const unpricedSet = new Set<string>()
+
+  for (const o of outputs) {
+    if (typeof o.costUsd === 'number') {
+      pricedCount++
+      totalCost += o.costUsd
+    } else {
+      unpricedCount++
+      if (o.model?.trim()) {
+        unpricedSet.add(o.model.trim())
+      }
+    }
+  }
+
+  const unpricedModels = Array.from(unpricedSet)
+  const formatted = pricedCount === 0
+    ? 'unpriced'
+    : unpricedCount > 0
+      ? `$${totalCost.toFixed(4)} (+${unpricedCount} unpriced)`
+      : `$${totalCost.toFixed(4)}`
+
+  return {
+    totalCost,
+    pricedCount,
+    unpricedCount,
+    unpricedModels,
+    formatted,
+  }
+}
