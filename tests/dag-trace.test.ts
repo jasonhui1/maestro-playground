@@ -215,7 +215,7 @@ describe('DAG Tree Execution Trace & DAG Forking (#143)', () => {
 
     // Crisp 1px orthogonal connector below Step 1 bridging across to branch column
     expect(html).toContain('data-testid="orthogonal-fork-connector"')
-    expect(html).toContain('478px') // Exact crossbar width bridging column centers
+    expect(html).toContain('calc(100% + 2rem)')
 
     // Forked step in branch lane at Step 2 depth
     expect(html).toContain('data-testid="branch-step-2"')
@@ -263,7 +263,7 @@ describe('DAG Tree Execution Trace & DAG Forking (#143)', () => {
     expect(html).toContain('Adapted reviewer output reflecting writer override')
   })
 
-  test('forking at Step 1 opens branch lane at Step 1 depth (#143)', () => {
+  test('forking at Step 1 cleanly branches from root seed (#143)', () => {
     const html = renderToStaticMarkup(
       React.createElement(DAGTraceView, {
         run: mockRun,
@@ -272,6 +272,8 @@ describe('DAG Tree Execution Trace & DAG Forking (#143)', () => {
     )
 
     expect(html).toContain('data-testid="dag-fork-view"')
+    expect(html).toContain('data-testid="seed-root-card"')
+    expect(html).toContain('data-testid="root-orthogonal-fork-connector"')
     expect(html).toContain('data-testid="branch-step-1"')
     expect(html).toContain('data-testid="branch-prompt-override"')
     expect(html).toContain('data-testid="run-branch-btn"')

@@ -11,7 +11,6 @@ export interface DAGTraceViewProps {
   run: RunMeta
   initialBranchStepIndex?: number | null
   initialBranchOutputs?: AgentOutput[]
-  onFork?: (nodeId: string, opts?: { modelOverride?: string | null }) => void
   onExecuteBranch?: (
     nodeId: string,
     opts: { promptOverride?: string; modelOverride?: string | null; stepIndex: number }
@@ -29,12 +28,11 @@ interface ActiveBranch {
   forkedRunId?: string
 }
 
-// Tree-structured execution trace with DAG forking and orthogonal topology (#143).
+// Tree trace with DAG forking and orthogonal topology (#143).
 export function DAGTraceView({
   run,
   initialBranchStepIndex,
   initialBranchOutputs,
-  onFork,
   onExecuteBranch,
 }: DAGTraceViewProps) {
   const outputs = run.agentOutputs ?? []
@@ -99,48 +97,17 @@ export function DAGTraceView({
         }
       }
 
-      let forkedId: string | null = null
-      let branchOutputs: AgentOutput[] | null = null
+      const forkedId = await forkFromNode(run.runId, activeBranch.nodeId, {
+        promptOverride: activeBranch.promptOverride,
+        modelOverride: activeBranch.modelOverride || null,
+      })
+      if (!forkedId) throw new Error('Fork run did not produce a run ID')
 
-      try {
-        forkedId = await forkFromNode(run.runId, activeBranch.nodeId, {
-          promptOverride: activeBranch.promptOverride,
-          modelOverride: activeBranch.modelOverride || null,
-        })
-        if (forkedId) {
-          const res = await fetch(`/api/runs/${encodeURIComponent(forkedId)}`)
-          if (res.ok) {
-            const data: RunMeta = await res.json()
-            if (data.agentOutputs && data.agentOutputs.length > 0) {
-              branchOutputs = data.agentOutputs
-            }
-          }
-        }
-      } catch {
-        // Fall back to simulated branch adaptation when offline or in tests (#143).
-      }
-
-      if (!branchOutputs) {
-        branchOutputs = outputs.map((orig, idx) => {
-          if (idx < activeBranch.stepIndex) return orig
-          if (idx === activeBranch.stepIndex) {
-            return {
-              ...orig,
-              output: activeBranch.promptOverride || orig.output,
-              model: activeBranch.modelOverride || orig.model,
-              status: 'success',
-              latencyMs: Math.round(orig.latencyMs * 0.9) || 120,
-            }
-          }
-          return {
-            ...orig,
-            input: `Adapted from step ${activeBranch.stepIndex + 1} branch`,
-            output: `${orig.output} (adapted downstream output)`,
-            model: activeBranch.modelOverride || orig.model,
-            status: 'success',
-            latencyMs: Math.round(orig.latencyMs * 1.05) || 150,
-          }
-        })
+      const res = await fetch(`/api/runs/${encodeURIComponent(forkedId)}`)
+      if (!res.ok) throw new Error(`Failed to load forked run (${res.status})`)
+      const data: RunMeta = await res.json()
+      if (!data.agentOutputs || data.agentOutputs.length === 0) {
+        throw new Error('Forked run returned no agent outputs')
       }
 
       setActiveBranch(prev =>
@@ -148,8 +115,8 @@ export function DAGTraceView({
           ? {
               ...prev,
               status: 'completed',
-              outputs: branchOutputs ?? undefined,
-              forkedRunId: forkedId ?? undefined,
+              outputs: data.agentOutputs,
+              forkedRunId: forkedId,
             }
           : null
       )
@@ -168,7 +135,6 @@ export function DAGTraceView({
     )
   }
 
-  // Single-column vertical tree trace when no branch is active (#143).
   if (!activeBranch) {
     return (
       <div className="h-full overflow-auto p-6" data-testid="dag-trace-container">
@@ -179,10 +145,7 @@ export function DAGTraceView({
                 <TrunkStepCard
                   step={step}
                   index={idx}
-                  onFork={() => {
-                    handleStartFork(idx)
-                    if (onFork && step.nodeId) onFork(step.nodeId)
-                  }}
+                  onFork={() => handleStartFork(idx)}
                   isSharedAncestor={false}
                 />
                 {idx < outputs.length - 1 && <LinearWire testId="linear-wire" />}
@@ -200,18 +163,25 @@ export function DAGTraceView({
   return (
     <div className="h-full overflow-auto p-6" data-testid="dag-trace-container">
       <div className="max-w-5xl mx-auto overflow-x-auto pb-8" data-testid="dag-fork-view">
-        <div className="min-w-[920px] flex justify-center gap-12 relative">
-          {/* Dedicated Left Column: Trunk Lane (#143) */}
-          <div className="w-[430px] shrink-0 flex flex-col items-center" data-testid="trunk-column">
-            <div className="w-full px-2 py-1 mb-2 flex items-center justify-between border-b border-zinc-200">
+        {forkIdx === 0 && (
+          <div className="w-full max-w-md mx-auto mb-3 flex flex-col items-center" data-testid="seed-root-card">
+            <div className="w-full px-4 py-2 rounded-xl border border-zinc-200 bg-zinc-50 text-center flex flex-col gap-0.5 shadow-2xs">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Pipeline Root &bull; Seed</span>
+              <span className="text-xs text-zinc-700 italic truncate">&ldquo;{run.seedPrompt || 'Root Entry'}&rdquo;</span>
+            </div>
+            <RootOrthogonalConnector />
+          </div>
+        )}
+
+        <div className="min-w-[920px] flex justify-center gap-8 relative">
+          <div className="flex-1 max-w-[440px] shrink-0 flex flex-col items-center" data-testid="trunk-column">
+            <div className="w-full px-2 py-1 mb-3 flex items-center justify-between border-b border-zinc-200">
               <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Trunk Execution</span>
               <span className="text-[10px] text-zinc-400 font-mono">Original Baseline</span>
             </div>
 
             {outputs.map((step, idx) => {
               const isShared = idx === sharedAncestorIdx
-              const isForkPoint = idx === forkIdx
-              const isBelowFork = idx > forkIdx
 
               return (
                 <div key={idx} className="w-full flex flex-col items-center" data-testid={`trunk-step-${idx + 1}`}>
@@ -222,11 +192,9 @@ export function DAGTraceView({
                     isSharedAncestor={isShared}
                   />
 
-                  {/* Wire below this trunk card */}
                   {idx < outputs.length - 1 && (
                     <>
                       {isShared ? (
-                        // Orthogonal fork connector bridging from shared ancestor into branch column (#143)
                         <OrthogonalForkConnector />
                       ) : (
                         <LinearWire testId="linear-trunk-wire" />
@@ -238,9 +206,8 @@ export function DAGTraceView({
             })}
           </div>
 
-          {/* Dedicated Right Column: Branch Lane (#143) */}
-          <div className="w-[430px] shrink-0 flex flex-col items-center" data-testid="branch-column">
-            <div className="w-full px-2 py-1 mb-2 flex items-center justify-between border-b border-zinc-200">
+          <div className="flex-1 max-w-[440px] shrink-0 flex flex-col items-center" data-testid="branch-column">
+            <div className="w-full px-2 py-1 mb-3 flex items-center justify-between border-b border-zinc-200">
               <div className="flex items-center gap-1.5">
                 <GitFork size={13} className="text-zinc-700 rotate-180" />
                 <span className="text-[11px] font-bold text-zinc-800 uppercase tracking-wider">Branch Lane</span>
@@ -256,30 +223,18 @@ export function DAGTraceView({
             </div>
 
             {outputs.map((step, idx) => {
-              // Pre-fork ancestor rows: render spacer/indicator to preserve vertical depth alignment (#143)
               if (idx < forkIdx) {
                 const isShared = idx === sharedAncestorIdx
                 return (
                   <div key={idx} className="w-full flex flex-col items-center">
-                    <div className="w-full min-h-[120px] rounded-xl border border-dashed border-zinc-200 bg-zinc-50/40 p-4 flex flex-col items-center justify-center text-center gap-1 opacity-70">
-                      <span className="text-xs font-semibold text-zinc-500">
-                        {isShared ? `Shared Ancestor (Step ${idx + 1})` : `Step ${idx + 1}`}
-                      </span>
-                      <span className="text-[11px] text-zinc-400">
-                        {isShared
-                          ? `Branch divergence originates below ${step.agentName}`
-                          : `Pre-fork ancestor: ${step.agentName}`}
-                      </span>
-                    </div>
-
+                    <SharedAncestorCard step={step} index={idx} isSharedAncestor={isShared} />
                     {idx < outputs.length - 1 && (
-                      <div className="w-full h-12 flex items-center justify-center" aria-hidden="true" />
+                      <div className="w-full h-10 flex items-center justify-center" aria-hidden="true" />
                     )}
                   </div>
                 )
               }
 
-              // Forked step row: inline prompt override editor and execution control
               if (idx === forkIdx) {
                 return (
                   <div key={idx} className="w-full flex flex-col items-center" data-testid={`branch-step-${idx + 1}`}>
@@ -297,7 +252,6 @@ export function DAGTraceView({
                 )
               }
 
-              // Downstream steps in branch lane: pending or adapted outputs
               const adaptedStep = activeBranch.outputs ? activeBranch.outputs[idx] : null
               return (
                 <div key={idx} className="w-full flex flex-col items-center">
@@ -370,7 +324,40 @@ function TrunkStepCard({
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 max-h-56 overflow-auto">
+        <AgentStreamOutput {...step} isStreaming={false} />
+      </div>
+    </div>
+  )
+}
+
+function SharedAncestorCard({
+  step,
+  index,
+  isSharedAncestor,
+}: {
+  step: AgentOutput
+  index: number
+  isSharedAncestor: boolean
+}) {
+  return (
+    <div
+      className={`w-full flex flex-col border border-dashed rounded-xl overflow-hidden bg-zinc-50/50 shadow-2xs opacity-75 ${
+        isSharedAncestor ? 'border-zinc-400 ring-2 ring-zinc-100' : 'border-zinc-200'
+      }`}
+    >
+      <div className="bg-zinc-100/70 px-4 py-2.5 border-b border-dashed border-zinc-200 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-5 h-5 rounded-full bg-zinc-300 text-zinc-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+            {index + 1}
+          </div>
+          <span className="text-xs font-semibold text-zinc-600 truncate">{step.agentName}</span>
+        </div>
+        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-200/80 px-2 py-0.5 rounded">
+          {isSharedAncestor ? `Shared Ancestor (Step ${index + 1})` : 'Shared Ancestor'}
+        </span>
+      </div>
+      <div className="p-3 max-h-56 overflow-auto">
         <AgentStreamOutput {...step} isStreaming={false} />
       </div>
     </div>
@@ -475,7 +462,6 @@ function ForkedStepCard({
           </div>
         )}
 
-        {/* Display executed branch output for this step once run */}
         {activeBranch.status === 'completed' && activeBranch.outputs && activeBranch.outputs[index] && (
           <div className="mt-2 pt-3 border-t border-zinc-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
@@ -542,14 +528,14 @@ function AdaptedDownstreamCard({
         </span>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 max-h-56 overflow-auto">
         <AgentStreamOutput {...step} isStreaming={false} />
       </div>
     </div>
   )
 }
 
-// Crisp 1px orthogonal linear wire connector (#143).
+// 1px orthogonal linear wire connector (#143).
 function LinearWire({ testId }: { testId: string }) {
   return (
     <div className="flex flex-col items-center my-2 h-7 justify-center" data-testid={testId}>
@@ -559,33 +545,59 @@ function LinearWire({ testId }: { testId: string }) {
   )
 }
 
-// Crisp 1px orthogonal fork connector bridging shared ancestor into branch column (#143).
+// Orthogonal fork connector bridging shared ancestor into branch column (#143).
 function OrthogonalForkConnector() {
   return (
-    <div className="w-full h-12 relative" data-testid="orthogonal-fork-connector">
-      {/* Vertical wire from shared ancestor card to tee junction (y: 0 -> 24px) */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-6 bg-zinc-300" />
-
-      {/* Horizontal orthogonal crossbar extending right to branch column center */}
+    <div className="w-full h-10 relative" data-testid="orthogonal-fork-connector">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-5 bg-zinc-300" />
       <div
-        className="absolute top-6 left-1/2 h-px bg-zinc-300"
-        style={{ width: '478px' }}
+        className="absolute top-5 left-1/2 h-px bg-zinc-300"
+        style={{ width: 'calc(100% + 2rem)' }}
       />
-
-      {/* Left vertical trunk line into Trunk Step N (y: 24 -> 48px) with arrow */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 w-px h-6 bg-zinc-300" />
+      <div className="absolute top-5 left-1/2 -translate-x-1/2 w-px h-5 bg-zinc-300" />
       <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[9px] text-zinc-400 select-none leading-none -mb-1">
         ▼
       </span>
-
-      {/* Right vertical branch line into Branch Step N with arrow */}
       <div
-        className="absolute top-6 w-px h-6 bg-zinc-300"
-        style={{ left: 'calc(50% + 478px)' }}
+        className="absolute top-5 w-px h-5 bg-zinc-300"
+        style={{ left: 'calc(150% + 2rem)' }}
       />
       <span
         className="absolute bottom-0 text-[9px] text-zinc-400 select-none leading-none -mb-1"
-        style={{ left: 'calc(50% + 478px)', transform: 'translateX(-50%)' }}
+        style={{ left: 'calc(150% + 2rem)', transform: 'translateX(-50%)' }}
+      >
+        ▼
+      </span>
+    </div>
+  )
+}
+
+// Root-level orthogonal connector for Step 1 fork (#143).
+function RootOrthogonalConnector() {
+  return (
+    <div className="w-full h-9 relative" data-testid="root-orthogonal-fork-connector">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-4 bg-zinc-300" />
+      <div
+        className="absolute top-4 left-1/2 -translate-x-1/2 h-px bg-zinc-300"
+        style={{ width: 'calc(100% + 2rem)' }}
+      />
+      <div
+        className="absolute top-4 w-px h-5 bg-zinc-300"
+        style={{ left: 'calc(0% - 1rem)' }}
+      />
+      <span
+        className="absolute bottom-0 text-[9px] text-zinc-400 select-none leading-none -mb-1"
+        style={{ left: 'calc(0% - 1rem)', transform: 'translateX(-50%)' }}
+      >
+        ▼
+      </span>
+      <div
+        className="absolute top-4 w-px h-5 bg-zinc-300"
+        style={{ left: 'calc(100% + 1rem)' }}
+      />
+      <span
+        className="absolute bottom-0 text-[9px] text-zinc-400 select-none leading-none -mb-1"
+        style={{ left: 'calc(100% + 1rem)', transform: 'translateX(-50%)' }}
       >
         ▼
       </span>

@@ -89,7 +89,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   // The reader's own pick, once they make one. Null means "whatever the chain says",
   // so a classified run is already in its result view on the first render that shows
   // anything — an effect would flip it a frame later, flashing the canvas (#72).
-  const [picked, setPicked] = useState<'result' | 'trace' | 'canvas' | null>(null)
+  const [picked, setPicked] = useState<'result' | 'trace' | null>(null)
   const [comparingSource, setComparingSource] = useState(false)
 
   // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
@@ -162,39 +162,19 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
         <span className="text-[11px] text-zinc-500">{new Date(run.startedAt).toLocaleString()}</span>
         <span className="text-[11px] font-mono text-zinc-400 truncate max-w-[14rem]">{run.runId}</span>
 
-        {(view.renderable || g) && (
+        {view.renderable && (
           <div className="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 shrink-0">
-            {view.renderable && (
+            {(['result', 'trace'] as const).map(m => (
               <button
-                key="result"
-                onClick={() => setPicked('result')}
+                key={m}
+                onClick={() => setPicked(m)}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  viewMode === 'result' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                  viewMode === m ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
                 }`}
               >
-                result
+                {m}
               </button>
-            )}
-            <button
-              key="trace"
-              onClick={() => setPicked('trace')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                viewMode === 'trace' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
-              }`}
-            >
-              trace
-            </button>
-            {g && (
-              <button
-                key="canvas"
-                onClick={() => setPicked('canvas')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  viewMode === 'canvas' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
-                }`}
-              >
-                canvas
-              </button>
-            )}
+            ))}
           </div>
         )}
 
@@ -269,29 +249,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
         ) : (
         <DockSplit
           main={
-            viewMode === 'canvas' && g ? (
-              <ChainCanvas
-                nodes={g.nodes}
-                edges={g.edges}
-                buildData={buildData}
-                selectedIds={selectedIds}
-                onSelectionChange={selectOnCanvas}
-                onMove={noop}
-                onMoveMany={noop}
-                onConnect={noop}
-                onDeleteNode={noop}
-                onDeleteEdge={noop}
-                instanceCount={0}
-                currentInstance={0}
-                onInstance={noop}
-                readOnly
-              />
-            ) : (
-              <DAGTraceView
-                run={run}
-                onFork={handleFork}
-              />
-            )
+            <DAGTraceView run={run} />
           }
           dock={
             <RunDock
