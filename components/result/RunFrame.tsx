@@ -5,6 +5,7 @@ import type { ChangedSinceResult, FileVersionChange } from '@/lib/changedSince'
 import { RUN_STATUS_LABEL, RUN_STATUS_TONE } from '@/lib/panelCopy'
 import { TYPE } from '@/lib/resultType'
 import { VersionDiffModal } from '@/components/result/VersionDiffModal'
+import { UnpricedBadge } from '@/components/UnpricedBadge'
 
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -101,7 +102,23 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
             </div>
             <div className="flex flex-col">
               <dt className={TYPE.label}>cost</dt>
-              <dd className="font-mono text-zinc-600">{frame.costUsd !== undefined ? `$${frame.costUsd.toFixed(4)}` : 'unpriced'}</dd>
+              <dd
+                className="font-mono text-zinc-600 flex flex-wrap items-center gap-1"
+                title={frame.costWarning ?? (frame.unpricedModels?.length ? `Unpriced models: ${frame.unpricedModels.join(', ')}` : undefined)}
+              >
+                {frame.costUsd !== undefined ? (
+                  frame.unpricedCount && frame.unpricedCount > 0 ? (
+                    <>
+                      <span>${frame.costUsd.toFixed(4)}</span>
+                      <UnpricedBadge count={frame.unpricedCount} />
+                    </>
+                  ) : (
+                    `$${frame.costUsd.toFixed(4)}`
+                  )
+                ) : (
+                  'unpriced'
+                )}
+              </dd>
               {frame.costWarning && (
                 <dd className="text-amber-600 text-[11px] leading-tight mt-0.5">{frame.costWarning}</dd>
               )}

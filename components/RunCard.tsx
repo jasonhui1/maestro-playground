@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { RunMeta } from '@/lib/types'
+import { summarizeRunCost } from '@/lib/pricing'
+import { UnpricedBadge } from '@/components/UnpricedBadge'
 import type { ChangedSinceResult } from '@/lib/changedSince'
 
 export interface RunCardProps {
@@ -84,8 +86,8 @@ export function renderDrift(changedSince?: ChangedSinceResult) {
 export default function RunCard({ run, changedSince }: RunCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const hasUnpriced = run.agentOutputs.some(o => o.costUsd === undefined)
-  const totalCost = hasUnpriced ? undefined : run.agentOutputs.reduce((sum, o) => sum + (o.costUsd ?? 0), 0)
+  const costSummary = summarizeRunCost(run.agentOutputs)
+  const costTooltip = costSummary.unpricedModels.length > 0 ? `Unpriced models: ${costSummary.unpricedModels.join(', ')}` : undefined
   const totalTokens = run.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
   const durationMs = getRunDurationMs(run)
 
@@ -165,9 +167,22 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          <span className="font-mono text-xs text-zinc-900 font-medium">
-            {totalCost !== undefined ? `$${totalCost.toFixed(4)}` : '—'}
-          </span>
+          {costSummary.pricedCount === 0 ? (
+            <span
+              className="font-mono text-xs text-zinc-900 font-medium"
+              title={costTooltip}
+            >
+              {run.agentOutputs.length === 0 ? '—' : 'unpriced'}
+            </span>
+          ) : (
+            <span
+              className="font-mono text-xs text-zinc-900 font-medium inline-flex items-center gap-1 justify-end"
+              title={costTooltip}
+            >
+              <span>${costSummary.totalCost.toFixed(4)}</span>
+              <UnpricedBadge count={costSummary.unpricedCount} />
+            </span>
+          )}
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
@@ -244,8 +259,15 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Cost</span>
-                  <span className="font-mono font-medium text-zinc-800">
-                    {totalCost !== undefined ? `$${totalCost.toFixed(4)}` : 'unpriced'}
+                  <span className="font-mono font-medium text-zinc-800 inline-flex items-center gap-1" title={costTooltip}>
+                    {costSummary.pricedCount === 0 ? (
+                      'unpriced'
+                    ) : (
+                      <>
+                        <span>${costSummary.totalCost.toFixed(4)}</span>
+                        <UnpricedBadge count={costSummary.unpricedCount} />
+                      </>
+                    )}
                   </span>
                 </div>
                 <div>

@@ -5,7 +5,7 @@ import { AgentStreamOutput } from '@/components/AgentStreamOutput'
 import TokenCostBar from '@/components/TokenCostBar'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, Download } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import ChainCanvas from '@/components/editor/ChainCanvas'
 import type { EditorNodeData } from '@/components/editor/nodeData'
 import { socketHandles } from '@/lib/nodeSockets'
@@ -181,9 +181,13 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
         <button
           onClick={() => setSeedOpen(o => !o)}
           title={run.seedPrompt}
-          className="flex-1 min-w-0 text-left text-[11px] italic text-zinc-500 hover:text-zinc-900 truncate border-l border-zinc-100 pl-3"
+          className="flex-1 min-w-0 text-left text-[11px] italic text-zinc-500 hover:text-zinc-900 border-l border-zinc-100 pl-3 flex items-center gap-1.5 group cursor-pointer"
         >
-          &ldquo;{run.seedPrompt}&rdquo;
+          <ChevronRight
+            size={12}
+            className={`shrink-0 text-zinc-400 group-hover:text-zinc-700 transition-transform duration-200 ${seedOpen ? 'rotate-90 text-zinc-700' : ''}`}
+          />
+          <span className="truncate">&ldquo;{run.seedPrompt}&rdquo;</span>
         </button>
 
         <a href={`/api/runs/${run.runId}/export?format=markdown`}

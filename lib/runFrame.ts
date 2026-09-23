@@ -35,6 +35,8 @@ export interface RunFrameModel {
   elapsedMs: number
   costUsd?: number
   costWarning?: string
+  unpricedCount?: number
+  unpricedModels?: string[]
   /** The source run this fork diverged from (#130). */
   forkSourceRunId?: string
   /** Pinned version differences since the previous run of the same chain (#131). */
@@ -106,37 +108,40 @@ export function buildRunFrame(input: {
     }
   }
 
-  // #126, #128
+  // #126, #128, #145
   let sum = 0
-  let hasUnpriced = false
+  let pricedCount = 0
+  let unpricedCount = 0
   const unpricedModels = new Set<string>()
   if (modelOverride && Object.values(states).every(s => !s.result && s.rounds.length === 0)) {
     if (!isModelPriced(modelOverride)) {
-      hasUnpriced = true
+      unpricedCount++
       unpricedModels.add(modelOverride)
     }
   }
   for (const s of Object.values(states)) {
     if (s.rounds.length > 0) {
       for (const r of s.rounds) {
-        if (r.metrics.costUsd === undefined) {
-          hasUnpriced = true
-          if (s.result?.model) unpricedModels.add(s.result.model)
-        } else {
+        if (typeof r.metrics.costUsd === 'number') {
+          pricedCount++
           sum += r.metrics.costUsd
+        } else {
+          unpricedCount++
+          if (s.result?.model) unpricedModels.add(s.result.model)
         }
       }
     } else if (s.result) {
-      if (s.result.costUsd === undefined) {
-        hasUnpriced = true
-        if (s.result.model) unpricedModels.add(s.result.model)
-      } else {
+      if (typeof s.result.costUsd === 'number') {
+        pricedCount++
         sum += s.result.costUsd
+      } else {
+        unpricedCount++
+        if (s.result.model) unpricedModels.add(s.result.model)
       }
     }
   }
 
-  const costUsd = hasUnpriced ? undefined : sum
+  const costUsd = pricedCount > 0 ? sum : undefined
   const costWarning = unpricedModels.size > 0 ? `no price for ${Array.from(unpricedModels).join(', ')}` : undefined
 
   const frame: RunFrameModel = {
@@ -147,6 +152,8 @@ export function buildRunFrame(input: {
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
     costUsd,
   }
+  if (unpricedCount > 0) frame.unpricedCount = unpricedCount
+  if (unpricedModels.size > 0) frame.unpricedModels = Array.from(unpricedModels)
   if (costWarning) frame.costWarning = costWarning
   if (models.length > 0) frame.models = models
   if (error) frame.error = error

@@ -99,6 +99,20 @@ test('unpriced model leaves costUsd undefined and sets costWarning', () => {
   assert.strictEqual(frame.costWarning, 'no price for unpriced-model')
 })
 
+// #145
+test('mixed priced and unpriced run reports partial sum in costUsd, unpricedCount, and costWarning', () => {
+  const frame = buildRunFrame({
+    chain: chain(), seed: paste, now: 0,
+    states: states({
+      first: { status: 'success', result: { ...output(0.02), model: 'openai/gpt-4o' } },
+      second: { status: 'success', result: { ...output(), model: 'unpriced-model' } },
+    }),
+  })
+  assert.strictEqual(Number(frame.costUsd?.toFixed(4)), 0.02)
+  assert.strictEqual(frame.unpricedCount, 1)
+  assert.strictEqual(frame.costWarning, 'no price for unpriced-model')
+})
+
 test('elapsed runs against the clock while the run is live, and freezes when it ends', () => {
   const live = buildRunFrame({ chain: chain(), seed: paste, states: {}, startedAt: 1000, now: 4500 })
   assert.strictEqual(live.elapsedMs, 3500)

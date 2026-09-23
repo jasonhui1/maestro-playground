@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { calcCost, isModelPriced, priceWarningFor } from '../lib/pricing'
+import { calcCost, isModelPriced, priceWarningFor, summarizeRunCost } from '../lib/pricing'
 import { buildRunFrame } from '../lib/runFrame'
 import { emptyNodeState, RunStateMap } from '../lib/runState'
 import type { AgentOutput, ChainDef } from '../lib/types'
@@ -118,4 +118,94 @@ test('run frame reports costUsd and no warning when models are priced', () => {
 
   assert.strictEqual(frame.costUsd, 0.015)
   assert.strictEqual(frame.costWarning, undefined)
+})
+
+// #145
+test('summarizeRunCost handles all priced outputs', () => {
+  const summary = summarizeRunCost([
+    { costUsd: 0.0124, model: 'openai/gpt-4o' },
+    { costUsd: 0.0260, model: 'anthropic/claude-3.5-sonnet' },
+  ])
+  assert.strictEqual(summary.pricedCount, 2)
+  assert.strictEqual(summary.unpricedCount, 0)
+  assert.deepStrictEqual(summary.unpricedModels, [])
+  assert.strictEqual(summary.totalCost.toFixed(4), '0.0384')
+  assert.strictEqual(summary.formatted, '$0.0384')
+})
+
+test('summarizeRunCost handles mixed priced and unpriced outputs (#145)', () => {
+  const summary = summarizeRunCost([
+    { costUsd: 0.0384, model: 'openai/gpt-4o' },
+    { costUsd: undefined, model: 'custom/unpriced-model' },
+  ])
+  assert.strictEqual(summary.pricedCount, 1)
+  assert.strictEqual(summary.unpricedCount, 1)
+  assert.deepStrictEqual(summary.unpricedModels, ['custom/unpriced-model'])
+  assert.strictEqual(summary.totalCost.toFixed(4), '0.0384')
+  assert.strictEqual(summary.formatted, '$0.0384 (+1 unpriced)')
+})
+
+test('summarizeRunCost deduplicates unpriced models with multiple unpriced nodes', () => {
+  const summary = summarizeRunCost([
+    { costUsd: 0.01, model: 'openai/gpt-4o' },
+    { costUsd: undefined, model: 'unpriced-a' },
+    { costUsd: undefined, model: 'unpriced-b' },
+    { costUsd: undefined, model: 'unpriced-a' },
+  ])
+  assert.strictEqual(summary.pricedCount, 1)
+  assert.strictEqual(summary.unpricedCount, 3)
+  assert.deepStrictEqual(summary.unpricedModels, ['unpriced-a', 'unpriced-b'])
+  assert.strictEqual(summary.formatted, '$0.0100 (+3 unpriced)')
+})
+
+test('summarizeRunCost returns bare unpriced when zero outputs are priced', () => {
+  const summary = summarizeRunCost([
+    { costUsd: undefined, model: 'unpriced-model' },
+  ])
+  assert.strictEqual(summary.pricedCount, 0)
+  assert.strictEqual(summary.unpricedCount, 1)
+  assert.deepStrictEqual(summary.unpricedModels, ['unpriced-model'])
+  assert.strictEqual(summary.totalCost, 0)
+  assert.strictEqual(summary.formatted, 'unpriced')
+})
+
+test('summarizeRunCost returns bare unpriced for empty outputs', () => {
+  const summary = summarizeRunCost([])
+  assert.strictEqual(summary.pricedCount, 0)
+  assert.strictEqual(summary.unpricedCount, 0)
+  assert.deepStrictEqual(summary.unpricedModels, [])
+  assert.strictEqual(summary.totalCost, 0)
+  assert.strictEqual(summary.formatted, 'unpriced')
+})
+
+test('summarizeRunCost treats free model with costUsd 0 as priced', () => {
+  const summary = summarizeRunCost([
+    { costUsd: 0, model: 'gemma-4-31b-it' },
+  ])
+  assert.strictEqual(summary.pricedCount, 1)
+  assert.strictEqual(summary.unpricedCount, 0)
+  assert.strictEqual(summary.formatted, '$0.0000')
+})
+
+test('run frame computes partial sum when some models are priced and some unpriced (#145)', () => {
+  const frame = buildRunFrame({
+    chain: chain(),
+    seed: { kind: 'paste' },
+    now: 0,
+    states: states({
+      node1: {
+        status: 'success',
+        result: agentOutput('anthropic/claude-sonnet-4.5', 0.0384),
+      },
+      node2: {
+        status: 'success',
+        result: agentOutput('unpriced-model', undefined),
+      },
+    }),
+  })
+
+  assert.strictEqual(frame.costUsd, 0.0384)
+  assert.strictEqual(frame.unpricedCount, 1)
+  assert.deepStrictEqual(frame.unpricedModels, ['unpriced-model'])
+  assert.strictEqual(frame.costWarning, 'no price for unpriced-model')
 })

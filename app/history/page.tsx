@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { RunMeta } from '@/lib/types'
 import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/changedSince'
 import RunCard from '@/components/RunCard'
@@ -23,10 +23,29 @@ export default function HistoryPage() {
   const [filterChain, setFilterChain] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterKeyword, setFilterKeyword] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const chains = useWorkspaceStore(s => s.files.chains)
 
   useEffect(() => { useWorkspaceStore.getState().load() }, [])
+
+  // #145: / hotkey focuses prompt search filter
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== '/') return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      const tagName = target.tagName?.toLowerCase()
+      if (tagName === 'input' || tagName === 'textarea' || target.isContentEditable) {
+        return
+      }
+      e.preventDefault()
+      searchInputRef.current?.focus()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   useEffect(() => {
     fetch('/api/runs')
@@ -120,6 +139,7 @@ export default function HistoryPage() {
 
             <div className="relative">
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search prompt or run ID..."
                 className="pl-3 pr-10 py-2 border border-zinc-200 rounded-lg bg-white text-xs font-medium text-zinc-600 w-48 sm:w-64 focus:outline-none focus:ring-2 focus:ring-zinc-100"
