@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
-import type { VarianceGroup } from '@/lib/variance'
-import type { RunMeta } from '@/lib/types'
-import { formatDuration, formatClockTime, formatDate } from '@/components/RunCard'
+import { varianceGroupStatus, type VarianceGroup } from '@/lib/variance'
+import { formatDuration, formatClockTime, formatDate, getRunDurationMs, STATUS_CONFIG } from '@/components/RunCard'
 
 export interface VarianceRunCardProps {
   group: VarianceGroup
@@ -17,22 +16,14 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
   const spreads = group.nodes.flatMap(node => node.spread === undefined ? [] : [node.spread])
   const widest = spreads.length > 0 ? Math.max(...spreads).toFixed(2) : 'n/a'
 
-  const hasError = group.runs.some(r => r.status === 'error')
-  const hasWaiting = group.runs.some(r => r.status === 'waiting')
-  const isAllComplete = group.completedRunCount === group.expectedRunCount
-  const varianceStatus: RunMeta['status'] = hasError ? 'error' : isAllComplete ? 'complete' : hasWaiting ? 'waiting' : 'running'
-
-  const STATUS_CONFIG: Record<RunMeta['status'], { label: string; dotClass: string; textClass: string }> = {
-    complete: { label: 'done', dotClass: 'text-emerald-500', textClass: 'text-emerald-700' },
-    waiting: { label: 'hold', dotClass: 'text-amber-500', textClass: 'text-amber-700' },
-    running: { label: 'running', dotClass: 'text-blue-500 animate-pulse', textClass: 'text-blue-700' },
-    error: { label: 'error', dotClass: 'text-rose-500', textClass: 'text-rose-700' },
-  }
+  const varianceStatus = varianceGroupStatus(group)
   const statusStyle = STATUS_CONFIG[varianceStatus] ?? STATUS_CONFIG.running
 
+  const totalSteps = group.runs.reduce((sum, r) => sum + r.agentOutputs.length, 0)
   const totalTokens = group.runs.reduce((acc, r) =>
     acc + r.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
   , 0)
+  const durationMs = group.runs.reduce((max, r) => Math.max(max, getRunDurationMs(r)), 0)
 
   const startedAt = group.runs[0]?.startedAt || ''
   const href = `/variance/${encodeURIComponent(group.groupId)}`
@@ -45,7 +36,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
           expanded ? 'bg-zinc-50/90' : 'hover:bg-zinc-50/60 bg-zinc-50/20'
         }`}
       >
-        {/* Status */}
         <td className="py-3 px-4 whitespace-nowrap">
           <div className="flex items-center gap-1.5">
             <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
@@ -58,7 +48,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
           </div>
         </td>
 
-        {/* Chain */}
         <td className="py-3 px-4">
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1.5">
@@ -82,7 +71,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
           </div>
         </td>
 
-        {/* Prompt */}
         <td className="py-3 px-4">
           <div className="truncate text-xs text-zinc-600 max-w-xs md:max-w-sm lg:max-w-md" title={group.seedPrompt}>
             {group.seedPrompt ? (
@@ -93,7 +81,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
           </div>
         </td>
 
-        {/* Drift / Spread */}
         <td className="py-3 px-4 whitespace-nowrap">
           {widest !== 'n/a' ? (
             <span
@@ -107,41 +94,37 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
           )}
         </td>
 
-        {/* Steps */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span
             className="font-mono text-xs text-zinc-700"
-            title={`${group.completedRunCount} of ${group.expectedRunCount} complete · ${group.nodes.length} nodes`}
+            title={`${totalSteps} total steps across ${group.runs.length} runs`}
           >
-            {group.nodes.length}
+            {totalSteps}
           </span>
         </td>
 
-        {/* Tokens */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-700">
             {totalTokens > 0 ? totalTokens.toLocaleString() : '0'}
           </span>
         </td>
 
-        {/* Cost */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-900 font-medium">
             {group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : '—'}
           </span>
         </td>
 
-        {/* Time */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <div className="flex items-center justify-end gap-2">
             <div className="flex flex-col items-end">
               <span className="font-mono text-xs font-medium text-zinc-900">
-                {group.completedRunCount}/{group.expectedRunCount} runs
+                {formatDuration(durationMs)}
               </span>
               {startedAt && (
                 <time
                   dateTime={startedAt}
-                  className="text-[10px] text-zinc-400"
+                  className="text-[10px] text-zinc-400 font-mono"
                   title={new Date(startedAt).toLocaleString()}
                 >
                   {formatDate(startedAt)} {formatClockTime(startedAt)}
@@ -164,7 +147,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
         </td>
       </tr>
 
-      {/* Expandable Variance Drawer (#142) */}
       {expanded && (
         <tr className="bg-zinc-50/80 border-b border-zinc-200">
           <td colSpan={8} className="p-5">
@@ -213,40 +195,6 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Total Cost</span>
                   <span className="font-mono font-medium text-zinc-800">{group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : 'unpriced'}</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                  Group Runs ({group.runs.length})
-                </div>
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                  {group.runs.map((r, idx) => (
-                    <div
-                      key={r.runId}
-                      className="flex items-center justify-between text-xs p-2.5 rounded-md bg-white border border-zinc-200"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-[10px] font-mono text-zinc-400">#{idx + 1}</span>
-                        <Link
-                          href={`/history/${r.runId}`}
-                          className="font-mono text-zinc-900 hover:underline font-medium"
-                        >
-                          {r.runId}
-                        </Link>
-                        <span className="text-[10px] font-medium text-zinc-500 uppercase">({r.status})</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-zinc-500 font-mono text-[11px] shrink-0">
-                        <span>{r.agentOutputs.length} steps</span>
-                        <Link
-                          href={`/history/${r.runId}`}
-                          className="text-zinc-600 hover:text-zinc-900 underline underline-offset-2"
-                        >
-                          trace &rarr;
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>

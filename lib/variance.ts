@@ -152,3 +152,13 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     }),
   }
 }
+
+/** Aggregate status across all runs in a variance group (#142). */
+export function varianceGroupStatus(group: VarianceGroup): RunMeta['status'] {
+  if (group.runs.some(r => r.status === 'error')) return 'error'
+  if (group.completedRunCount === group.expectedRunCount && group.runs.every(r => r.status === 'complete')) {
+    return 'complete'
+  }
+  if (group.runs.some(r => r.status === 'waiting')) return 'waiting'
+  return 'running'
+}

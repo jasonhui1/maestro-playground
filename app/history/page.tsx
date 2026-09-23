@@ -6,7 +6,7 @@ import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/ch
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
-import { buildVarianceGroup } from '@/lib/variance'
+import { buildVarianceGroup, varianceGroupStatus } from '@/lib/variance'
 import { VarianceRunCard } from '@/components/VarianceRunCard'
 
 const STATUS_FILTERS = [
@@ -38,24 +38,6 @@ export default function HistoryPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const runs = useMemo(() => {
-    let list = allRuns
-    if (filterChain) {
-      list = list.filter(r => r.chainName === filterChain)
-    }
-    if (filterStatus) {
-      list = list.filter(r => r.status === filterStatus)
-    }
-    if (filterKeyword) {
-      const kw = filterKeyword.toLowerCase()
-      list = list.filter(r =>
-        r.seedPrompt.toLowerCase().includes(kw) ||
-        r.runId.toLowerCase().includes(kw)
-      )
-    }
-    return list
-  }, [allRuns, filterChain, filterStatus, filterKeyword])
-
   const previousRunsMap = useMemo(() => {
     const map = new Map<string, ChangedSinceResult>()
     for (const r of allRuns) {
@@ -78,11 +60,13 @@ export default function HistoryPage() {
       members.push(candidate)
       runsByGroup.set(groupId, members)
     }
+
     const items: Array<
       | { kind: 'run'; run: RunMeta }
       | { kind: 'variance'; group: ReturnType<typeof buildVarianceGroup> }
     > = []
-    for (const run of runs) {
+
+    for (const run of allRuns) {
       const groupId = run.variance?.groupId
       if (!groupId) {
         items.push({ kind: 'run', run })
@@ -92,8 +76,31 @@ export default function HistoryPage() {
       seenGroups.add(groupId)
       items.push({ kind: 'variance', group: buildVarianceGroup(runsByGroup.get(groupId) ?? []) })
     }
-    return items
-  }, [runs, allRuns])
+
+    return items.filter(item => {
+      if (item.kind === 'run') {
+        if (filterChain && item.run.chainName !== filterChain) return false
+        if (filterStatus && item.run.status !== filterStatus) return false
+        if (filterKeyword) {
+          const kw = filterKeyword.toLowerCase()
+          if (!item.run.seedPrompt.toLowerCase().includes(kw) && !item.run.runId.toLowerCase().includes(kw)) {
+            return false
+          }
+        }
+        return true
+      }
+
+      if (filterChain && item.group.chainName !== filterChain) return false
+      if (filterStatus && varianceGroupStatus(item.group) !== filterStatus) return false
+      if (filterKeyword) {
+        const kw = filterKeyword.toLowerCase()
+        if (!item.group.seedPrompt.toLowerCase().includes(kw) && !item.group.groupId.toLowerCase().includes(kw)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [allRuns, filterChain, filterStatus, filterKeyword])
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-6">
@@ -131,7 +138,6 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {/* Quick status filter chips (#142) */}
         <div className="flex items-center gap-2">
           {STATUS_FILTERS.map(pill => (
             <button
@@ -155,7 +161,7 @@ export default function HistoryPage() {
           <div className="w-6 h-6 border-2 border-zinc-200 border-t-zinc-800 rounded-full animate-spin" />
           <span className="text-xs font-medium uppercase tracking-widest">Loading history</span>
         </div>
-      ) : runs.length === 0 ? (
+      ) : historyItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-zinc-100 rounded-2xl bg-zinc-50/50">
           <p className="text-sm text-zinc-500 font-medium">No runs found matching your filters.</p>
           <button
@@ -166,19 +172,18 @@ export default function HistoryPage() {
           </button>
         </div>
       ) : (
-        /* High-density executive run ledger table (#142) */
         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full table-fixed text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50/75 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                <th className="py-3 px-4 w-28">Status</th>
-                <th className="py-3 px-4 w-52">Chain</th>
-                <th className="py-3 px-4 min-w-[200px]">Prompt</th>
-                <th className="py-3 px-4 w-32">Drift</th>
-                <th className="py-3 px-4 w-20 text-right">Steps</th>
-                <th className="py-3 px-4 w-28 text-right">Tokens</th>
-                <th className="py-3 px-4 w-28 text-right">Cost</th>
-                <th className="py-3 px-4 w-44 text-right">Time</th>
+                <th className="py-3 px-4 w-24">Status</th>
+                <th className="py-3 px-4 w-48">Chain</th>
+                <th className="py-3 px-4 w-72">Prompt</th>
+                <th className="py-3 px-4 w-28">Drift</th>
+                <th className="py-3 px-4 w-16 text-right">Steps</th>
+                <th className="py-3 px-4 w-24 text-right">Tokens</th>
+                <th className="py-3 px-4 w-24 text-right">Cost</th>
+                <th className="py-3 px-4 w-40 text-right">Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">

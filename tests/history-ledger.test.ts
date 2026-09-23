@@ -5,6 +5,7 @@ import {
   formatDuration,
   renderDrift,
 } from '@/components/RunCard'
+import { varianceGroupStatus, type VarianceGroup } from '@/lib/variance'
 import type { RunMeta } from '@/lib/types'
 import type { ChangedSinceResult } from '@/lib/changedSince'
 
@@ -110,6 +111,37 @@ describe('history ledger and status mapping (#142)', () => {
     expect(filterBy('complete').map(r => r.runId)).toEqual(['r1'])
     expect(filterBy('waiting').map(r => r.runId)).toEqual(['r2'])
     expect(filterBy('error').map(r => r.runId)).toEqual(['r3'])
+  })
+
+  test('varianceGroupStatus resolves aggregate group status correctly (#142)', () => {
+    const makeGroup = (statuses: RunMeta['status'][]): VarianceGroup => ({
+      groupId: 'g1',
+      chainName: 'Chain V',
+      seedPrompt: 'prompt',
+      expectedRunCount: statuses.length,
+      completedRunCount: statuses.filter(s => s === 'complete').length,
+      runs: statuses.map((status, i) => ({
+        runId: `run-${i}`,
+        chainName: 'Chain V',
+        seedPrompt: 'prompt',
+        startedAt: '2026-09-23T10:00:00Z',
+        status,
+        agentOutputs: [],
+      })),
+      nodes: [],
+    })
+
+    // All complete -> complete
+    expect(varianceGroupStatus(makeGroup(['complete', 'complete']))).toBe('complete')
+
+    // Mixed complete and error -> error (must not leak into complete)
+    expect(varianceGroupStatus(makeGroup(['complete', 'error']))).toBe('error')
+
+    // Mixed complete and running -> running
+    expect(varianceGroupStatus(makeGroup(['complete', 'running']))).toBe('running')
+
+    // Mixed complete and waiting -> waiting
+    expect(varianceGroupStatus(makeGroup(['complete', 'waiting']))).toBe('waiting')
   })
 
   test('renderDrift produces valid elements for drift statuses', () => {

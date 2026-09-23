@@ -101,7 +101,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
           expanded ? 'bg-zinc-50/90' : 'hover:bg-zinc-50/60 bg-white'
         }`}
       >
-        {/* Status */}
         <td className="py-3 px-4 whitespace-nowrap">
           <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
             <span className={`text-[10px] leading-none ${statusStyle.dotClass}`}>●</span>
@@ -109,7 +108,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
           </span>
         </td>
 
-        {/* Chain */}
         <td className="py-3 px-4">
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1.5">
@@ -140,7 +138,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
           </div>
         </td>
 
-        {/* Prompt */}
         <td className="py-3 px-4">
           <div className="truncate text-xs text-zinc-600 max-w-xs md:max-w-sm lg:max-w-md" title={run.seedPrompt}>
             {run.seedPrompt ? (
@@ -151,33 +148,28 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
           </div>
         </td>
 
-        {/* Drift */}
         <td className="py-3 px-4 whitespace-nowrap">
           {renderDrift(changedSince)}
         </td>
 
-        {/* Steps */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-700" title={`${run.agentOutputs.length} ${isChat ? 'turns' : 'steps'}`}>
             {run.agentOutputs.length}
           </span>
         </td>
 
-        {/* Tokens */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-700">
             {totalTokens > 0 ? totalTokens.toLocaleString() : '0'}
           </span>
         </td>
 
-        {/* Cost */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-900 font-medium">
             {totalCost !== undefined ? `$${totalCost.toFixed(4)}` : '—'}
           </span>
         </td>
 
-        {/* Time */}
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <div className="flex items-center justify-end gap-2">
             <div className="flex flex-col items-end">
@@ -186,7 +178,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
               </span>
               <time
                 dateTime={run.startedAt}
-                className="text-[10px] text-zinc-400"
+                className="text-[10px] text-zinc-400 font-mono"
                 title={new Date(run.startedAt).toLocaleString()}
               >
                 {formatDate(run.startedAt)} {formatClockTime(run.startedAt)}
@@ -208,7 +200,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
         </td>
       </tr>
 
-      {/* Expandable Transcript Drawer (#142) */}
       {expanded && (
         <tr className="bg-zinc-50/80 border-b border-zinc-200">
           <td colSpan={8} className="p-5">
@@ -240,14 +231,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                 <div className="rounded-lg border border-zinc-200 bg-white p-3.5 text-xs text-zinc-800 font-mono whitespace-pre-wrap leading-relaxed select-text shadow-xs max-h-48 overflow-y-auto">
                   {run.seedPrompt || <span className="italic text-zinc-400">No seed prompt provided</span>}
                 </div>
-                {run.parameter && (
-                  <div className="mt-2 text-xs text-zinc-600 flex items-center gap-2">
-                    <span className="font-semibold text-zinc-700">Parameter:</span>
-                    <span className="font-mono bg-zinc-100 px-2 py-0.5 rounded text-zinc-800 border border-zinc-200">
-                      {run.parameter.name} = {run.parameter.value}
-                    </span>
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-lg border border-zinc-200 text-xs">
@@ -272,71 +255,6 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                   </span>
                 </div>
               </div>
-
-              {run.agentOutputs.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                    Execution Steps ({run.agentOutputs.length})
-                  </div>
-                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                    {run.agentOutputs.map((output, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between text-xs p-2.5 rounded-md bg-white border border-zinc-200"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className={`w-2 h-2 rounded-full shrink-0 ${
-                              output.status === 'success'
-                                ? 'bg-emerald-500'
-                                : output.status === 'skipped'
-                                ? 'bg-zinc-400'
-                                : 'bg-rose-500'
-                            }`}
-                          />
-                          <span className="font-semibold text-zinc-800 truncate">{output.agentName}</span>
-                          {output.round !== undefined && (
-                            <span className="text-[10px] text-zinc-500 font-mono">round {output.round}</span>
-                          )}
-                          <span className="text-[10px] font-mono text-zinc-400 truncate">({output.model})</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-zinc-500 font-mono text-[11px] shrink-0">
-                          {output.latencyMs > 0 && <span>{formatDuration(output.latencyMs)}</span>}
-                          <span>{(output.tokensIn + output.tokensOut).toLocaleString()} tok</span>
-                          {output.costUsd !== undefined && (
-                            <span className="text-zinc-800 font-medium">${output.costUsd.toFixed(4)}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {run.holds && run.holds.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-1.5">
-                    Interventions ({run.holds.length})
-                  </div>
-                  <div className="space-y-1.5">
-                    {run.holds.map((h, i) => (
-                      <div key={i} className="text-xs bg-amber-50/70 border border-amber-200 rounded-md p-2.5 text-amber-900">
-                        <div className="font-semibold">Node: {h.nodeId}</div>
-                        {h.chosen && <div>Selected candidate: <span className="font-mono font-medium">{h.chosen}</span></div>}
-                        {h.custom && <div>Custom Direction: <span className="italic">{h.custom}</span></div>}
-                        {h.feedback && <div>Feedback: <span className="italic">{h.feedback}</span></div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {changedSince && changedSince.hasChanges && (
-                <div className="text-xs bg-zinc-100/80 border border-zinc-200 rounded-md p-2.5">
-                  <span className="font-semibold text-zinc-700">Version Drift: </span>
-                  <span className="text-zinc-600">{changedSince.summary}</span>
-                </div>
-              )}
             </div>
           </td>
         </tr>
