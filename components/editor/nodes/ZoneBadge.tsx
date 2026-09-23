@@ -9,7 +9,6 @@ interface ZoneBadgeProps {
   availableZones?: string[]
 }
 
-// Linked badge for loop zone boundaries (#144).
 export default function ZoneBadge({
   zone,
   onChange,

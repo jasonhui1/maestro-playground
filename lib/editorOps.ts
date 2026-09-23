@@ -73,13 +73,8 @@ export function updateNode(
     target.zone &&
     patch.zone !== target.zone
   ) {
-    const oldZone = target.zone
-    const newZone = patch.zone
-    return nodes.map(n => {
-      if (n.id === id) return { ...n, ...patch }
-      if (n.zone === oldZone) return { ...n, zone: newZone }
-      return n
-    })
+    const renamed = renameZone(nodes, target.zone, patch.zone)
+    return renamed.map(n => (n.id === id ? { ...n, ...patch } : n))
   }
   return nodes.map(n => (n.id === id ? { ...n, ...patch } : n))
 }

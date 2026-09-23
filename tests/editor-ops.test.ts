@@ -352,14 +352,12 @@ test('updateNode on loop-start or loop-end synchronizes zone across boundaries a
     { id: 'outside', kind: 'agent', agent: 'other' },
   ]
 
-  // Editing zone on loop-start synchronizes loop-end and member nodes
   const updatedFromStart = updateNode(nodes, 'ls-1', { zone: 'zone-2' })
   assert.strictEqual(updatedFromStart.find(n => n.id === 'ls-1')?.zone, 'zone-2')
   assert.strictEqual(updatedFromStart.find(n => n.id === 'le-1')?.zone, 'zone-2')
   assert.strictEqual(updatedFromStart.find(n => n.id === 'agent-1')?.zone, 'zone-2')
   assert.strictEqual(updatedFromStart.find(n => n.id === 'outside')?.zone, undefined)
 
-  // Editing zone on loop-end synchronizes loop-start and member nodes
   const updatedFromEnd = updateNode(nodes, 'le-1', { zone: 'zone-3' })
   assert.strictEqual(updatedFromEnd.find(n => n.id === 'ls-1')?.zone, 'zone-3')
   assert.strictEqual(updatedFromEnd.find(n => n.id === 'le-1')?.zone, 'zone-3')
