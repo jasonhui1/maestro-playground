@@ -70,6 +70,7 @@ export function summarizeRunCost(outputs: Array<{ costUsd?: number; model?: stri
   pricedCount: number
   unpricedCount: number
   unpricedModels: string[]
+  /** Textual fallback for plain strings, exports, or non-rich renderings (#145). */
   formatted: string
 } {
   let totalCost = 0

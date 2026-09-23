@@ -5,6 +5,7 @@ import type { ChangedSinceResult, FileVersionChange } from '@/lib/changedSince'
 import { RUN_STATUS_LABEL, RUN_STATUS_TONE } from '@/lib/panelCopy'
 import { TYPE } from '@/lib/resultType'
 import { VersionDiffModal } from '@/components/result/VersionDiffModal'
+import { UnpricedBadge } from '@/components/UnpricedBadge'
 
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -109,9 +110,7 @@ export function RunFrame({ frame, runId, selectedCount, onCompare, onCompareSour
                   frame.unpricedCount && frame.unpricedCount > 0 ? (
                     <>
                       <span>${frame.costUsd.toFixed(4)}</span>
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-sans font-normal">
-                        (+{frame.unpricedCount} unpriced)
-                      </span>
+                      <UnpricedBadge count={frame.unpricedCount} />
                     </>
                   ) : (
                     `$${frame.costUsd.toFixed(4)}`

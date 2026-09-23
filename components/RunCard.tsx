@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { RunMeta } from '@/lib/types'
 import { summarizeRunCost } from '@/lib/pricing'
+import { UnpricedBadge } from '@/components/UnpricedBadge'
 import type { ChangedSinceResult } from '@/lib/changedSince'
 
 export interface RunCardProps {
@@ -179,11 +180,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
               title={costTooltip}
             >
               <span>${costSummary.totalCost.toFixed(4)}</span>
-              {costSummary.unpricedCount > 0 && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-sans font-normal">
-                  (+{costSummary.unpricedCount} unpriced)
-                </span>
-              )}
+              <UnpricedBadge count={costSummary.unpricedCount} />
             </span>
           )}
         </td>
@@ -268,11 +265,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                     ) : (
                       <>
                         <span>${costSummary.totalCost.toFixed(4)}</span>
-                        {costSummary.unpricedCount > 0 && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-sans font-normal">
-                            (+{costSummary.unpricedCount} unpriced)
-                          </span>
-                        )}
+                        <UnpricedBadge count={costSummary.unpricedCount} />
                       </>
                     )}
                   </span>
