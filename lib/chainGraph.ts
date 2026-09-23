@@ -222,9 +222,15 @@ export function validateChain(
 }
 
 function validateZones(chain: ChainDef, add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void) {
+  for (const n of chain.nodes) {
+    if ((n.kind === 'loop-start' || n.kind === 'loop-end') && (!n.zone || !n.zone.trim())) {
+      add(`Node "${n.id}": ${n.kind} has no zone`, { nodeId: n.id })
+    }
+  }
+
   const byZone = new Map<string, ChainNode[]>()
   for (const n of chain.nodes) {
-    if (!n.zone) continue
+    if (!n.zone || !n.zone.trim()) continue
     const arr = byZone.get(n.zone) ?? []
     arr.push(n); byZone.set(n.zone, arr)
   }
@@ -232,10 +238,36 @@ function validateZones(chain: ChainDef, add: (message: string, ref?: Omit<Valida
   for (const [zid, members] of byZone) {
     const starts = members.filter(n => n.kind === 'loop-start')
     const ends = members.filter(n => n.kind === 'loop-end')
-    if (starts.length !== 1) add(`Zone "${zid}": needs exactly one loop-start (found ${starts.length})`, { zone: zid })
-    if (ends.length !== 1) add(`Zone "${zid}": needs exactly one loop-end (found ${ends.length})`, { zone: zid })
-    const end = ends[0]
-    if (end) {
+
+    if (starts.length === 0) {
+      if (ends.length > 0) {
+        for (const end of ends) {
+          add(`Loop end "${end.id}" in zone "${zid}" is missing a paired loop-start`, { zone: zid, nodeId: end.id })
+        }
+      } else {
+        add(`Zone "${zid}": needs exactly one loop-start (found 0)`, { zone: zid })
+      }
+    } else if (starts.length > 1) {
+      for (const start of starts) {
+        add(`Zone "${zid}": duplicate loop-start "${start.id}" (found ${starts.length})`, { zone: zid, nodeId: start.id })
+      }
+    }
+
+    if (ends.length === 0) {
+      if (starts.length > 0) {
+        for (const start of starts) {
+          add(`Loop start "${start.id}" in zone "${zid}" is missing a paired loop-end`, { zone: zid, nodeId: start.id })
+        }
+      } else {
+        add(`Zone "${zid}": needs exactly one loop-end (found 0)`, { zone: zid })
+      }
+    } else if (ends.length > 1) {
+      for (const end of ends) {
+        add(`Zone "${zid}": duplicate loop-end "${end.id}" (found ${ends.length})`, { zone: zid, nodeId: end.id })
+      }
+    }
+
+    for (const end of ends) {
       if (!end.until || !end.until.trim()) add(`Zone "${zid}": loop-end needs an "until" condition`, { zone: zid, nodeId: end.id })
       if (!end.maxIterations || end.maxIterations < 1 || !Number.isInteger(end.maxIterations)) add(`Zone "${zid}": loop-end needs a positive integer maxIterations`, { zone: zid, nodeId: end.id })
     }

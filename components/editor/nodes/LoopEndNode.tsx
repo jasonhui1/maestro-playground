@@ -4,6 +4,7 @@ import { type NodeProps, type Node } from '@xyflow/react'
 import type { EditorNodeDataOf } from '../nodeData'
 import { statusDotClass } from '../nodeData'
 import { Sockets } from './Sockets'
+import ZoneBadge from './ZoneBadge'
 
 function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-end'>>>) {
   const { node, run, issues } = data
@@ -16,9 +17,12 @@ function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-e
       </div>
       <div className="px-4 py-2">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">zone</label>
-        <input value={node.zone ?? ''} onChange={e => data.onChange({ zone: e.target.value })}
-          disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+        <ZoneBadge
+          zone={node.zone}
+          onChange={zone => data.onChange({ zone })}
+          readOnly={data.readOnly}
+          availableZones={data.availableZones}
+        />
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">until</label>
         <input value={node.until ?? ''} onChange={e => data.onChange({ until: e.target.value })}
           placeholder='e.g. {ls.draft} contains "DONE"'

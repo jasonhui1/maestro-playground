@@ -16,6 +16,7 @@ export interface EditorNodeData {
   chains: { slug: string; name: string }[]
   readOnly?: boolean
   wiredSockets?: Set<string>
+  availableZones?: string[]
   [key: string]: unknown
 }
 
