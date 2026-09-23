@@ -202,6 +202,12 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'Enter' || e.key === 'enter')) {
+        e.preventDefault()
+        run()
+        return
+      }
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       if (!(e.metaKey || e.ctrlKey)) return
@@ -227,7 +233,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedIds, clipboard])
+  }, [selectedIds, clipboard, run])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
@@ -275,6 +281,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
                   onAddLoopZone={addLoopZone}
                   agents={agents}
                   contextFiles={contextFiles}
+                  onRun={run}
                 />
               </Panel>
               <Separator className="w-1 border-x border-zinc-200 bg-zinc-100 hover:bg-zinc-200 transition-colors" />
@@ -307,6 +314,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
               onAddLoopZone={addLoopZone}
               agents={agents}
               contextFiles={contextFiles}
+              onRun={run}
             />
           )}
         </div>

@@ -30,7 +30,7 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'
           <button
             onClick={() => data.onRunFromHere?.(node.id)}
             title="Run up to here"
-            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded px-1.5 py-0.5 transition-colors"
+            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-md px-1.5 py-0.5 transition-colors"
           >
             ▶ Run To
           </button>
@@ -49,11 +49,11 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'
               <div key={i} className="relative flex items-center gap-1">
                 <input value={c.label} onChange={e => setCase(i, { label: e.target.value })}
                   disabled={data.readOnly}
-                  className="w-16 text-xs font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+                  className="w-16 text-xs font-mono border border-zinc-200 rounded-md px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
                 <input value={c.condition} onChange={e => setCase(i, { condition: e.target.value })}
                   placeholder="condition"
                   disabled={data.readOnly}
-                  className="flex-1 text-xs font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+                  className="flex-1 text-xs font-mono border border-zinc-200 rounded-md px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
                 {!data.readOnly && (
                   <button onClick={() => removeCase(i)} className="text-zinc-300 hover:text-red-500 text-xs nodrag">×</button>
                 )}
@@ -72,7 +72,7 @@ function BranchNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'branch'
           <input value={node.default ?? ''} onChange={e => data.onChange({ default: e.target.value })}
             placeholder="default label"
             disabled={data.readOnly}
-            className="flex-1 text-xs font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+            className="flex-1 text-xs font-mono border border-zinc-200 rounded-md px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
           {defaultOut && <SocketDot handle={defaultOut} tone="muted" />}
         </div>
       </div>

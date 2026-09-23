@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls, ReactFlowProvider, useReactFlow,
-  type Node, type Edge, type NodeProps, type NodeChange,
+  BaseEdge, EdgeLabelRenderer, getBezierPath,
+  type Node, type Edge, type NodeProps, type NodeChange, type EdgeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
@@ -24,6 +25,112 @@ import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
 import JoinNode from './nodes/JoinNode'
 import HoldNode from './nodes/HoldNode'
+
+// Custom edge with hover highlight and quick-disconnect badge (#146).
+interface DeletableEdgeData extends Record<string, unknown> {
+  edge: ChainEdge
+  onDelete?: () => void
+  readOnly?: boolean
+}
+
+export function DeletableEdge({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  markerEnd,
+  data,
+}: EdgeProps<Edge<DeletableEdgeData>>) {
+  const [hovered, setHovered] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleMouseEnter = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setHovered(true)
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      setHovered(false)
+    }, 80)
+  }, [])
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
+
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetPosition,
+    targetX,
+    targetY,
+  })
+
+  return (
+    <>
+      <g onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+        <path
+          d={edgePath}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={20}
+          className="cursor-pointer"
+        />
+        <BaseEdge
+          path={edgePath}
+          markerEnd={markerEnd}
+          style={{
+            ...style,
+            stroke: hovered ? '#18181b' : (style?.stroke ?? '#a1a1aa'),
+            strokeWidth: hovered ? 2.5 : (style?.strokeWidth ?? 2),
+            transition: 'stroke 0.15s, stroke-width 0.15s',
+          }}
+        />
+      </g>
+      {!data?.readOnly && hovered && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: 'all',
+            }}
+            className="nodrag nopan"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                data?.onDelete?.()
+              }}
+              title="Disconnect edge"
+              aria-label="Disconnect edge"
+              className="w-4 h-4 bg-white border border-zinc-300 hover:border-red-500 rounded-full flex items-center justify-center text-[10px] text-zinc-500 hover:text-red-600 hover:bg-red-50 shadow-sm transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  )
+}
+
+const edgeTypes = {
+  deletable: DeletableEdge,
+  default: DeletableEdge,
+}
 
 // Each kind maps to the component that renders it. Keying by the mapped type gives
 // two compile-time guarantees at once: every kind must have an entry (miss one and it
@@ -61,6 +168,7 @@ interface ChainCanvasProps {
   onAddLoopZone?: (pos: [number, number]) => void
   agents?: { slug: string; name: string }[]
   contextFiles?: { slug: string; name: string }[]
+  onRun?: () => void
 }
 
 import QuickAddMenu, { type QuickAddItem } from './QuickAddMenu'
@@ -79,6 +187,13 @@ function CanvasContent(props: ChainCanvasProps) {
   useEffect(() => {
     if (props.readOnly) return
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'Enter' || e.key === 'enter')) {
+        if (props.onRun) {
+          e.preventDefault()
+          props.onRun()
+          return
+        }
+      }
       if (!isOverCanvasRef.current) return
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
@@ -100,7 +215,7 @@ function CanvasContent(props: ChainCanvasProps) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('mousemove', onMouseMove)
     }
-  }, [props.readOnly])
+  }, [props.readOnly, props.onRun])
 
   const handleSelectMenuItem = useCallback((item: QuickAddItem) => {
     if (!menuPos) return
@@ -161,15 +276,21 @@ function CanvasContent(props: ChainCanvasProps) {
     [onMoveMany],
   )
 
-  const rfEdges = useMemo<Edge[]>(() => props.edges.map(e => ({
+  const rfEdges = useMemo<Edge<DeletableEdgeData>[]>(() => props.edges.map(e => ({
     id: edgeId(e),
+    type: 'deletable',
     source: e.fromNode,
     sourceHandle: e.fromSocket,
     target: e.toNode,
     targetHandle: e.toSocket,
     animated: true,
     style: { stroke: '#a1a1aa', strokeWidth: 2 },
-  })), [props.edges])
+    data: {
+      edge: e,
+      onDelete: () => props.onDeleteEdge(e),
+      readOnly: props.readOnly,
+    },
+  })), [props.edges, props.onDeleteEdge, props.readOnly])
 
   return (
     <div
@@ -178,7 +299,7 @@ function CanvasContent(props: ChainCanvasProps) {
       className="w-full h-full bg-zinc-50 relative"
     >
       {props.instanceCount > 1 && (
-        <div className="absolute top-2 right-2 z-10 bg-white/90 border border-zinc-200 rounded-md px-2 py-1 shadow-sm">
+        <div className="absolute top-2 right-2 z-10 bg-white/90 border border-zinc-200 rounded-lg px-2 py-1 shadow-sm">
           <InstanceSwitcher count={props.instanceCount} index={props.currentInstance} onChange={props.onInstance} />
         </div>
       )}
@@ -195,6 +316,7 @@ function CanvasContent(props: ChainCanvasProps) {
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         nodesDraggable={!props.readOnly}
         nodesConnectable={!props.readOnly}

@@ -23,7 +23,7 @@ function HoldNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'hold'>>>)
           onChange={e => data.onChange({ prompt: e.target.value || undefined })}
           placeholder="Prompt shown to you (optional)"
           disabled={data.readOnly}
-          className="w-full text-xs border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
+          className="w-full text-xs border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
         />
         <Sockets handles={data.sockets} />
       </div>

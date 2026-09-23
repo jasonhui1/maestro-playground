@@ -74,12 +74,11 @@ export function NodeRunPanel({ nodeId, state, fork }: {
             </button>
           )}
           {fork && forkOpen && (
-            <div className="flex items-center gap-2 border border-zinc-300 bg-white rounded-md px-2 py-1 shadow-sm">
+            <div className="flex items-center gap-2 border border-zinc-300 bg-white rounded-lg px-2 py-1 shadow-sm">
               <span className="text-[10px] font-bold text-zinc-500 uppercase">Model:</span>
               <ModelPicker
                 value={forkModel}
                 onChange={setForkModel}
-                className="text-xs font-mono border border-zinc-200 rounded px-1.5 py-0.5"
               />
               <button
                 type="button"
@@ -88,7 +87,7 @@ export function NodeRunPanel({ nodeId, state, fork }: {
                   fork.onFork({ modelOverride: resolved })
                 }}
                 disabled={fork.isForking}
-                className="text-[10px] font-bold bg-zinc-900 text-white rounded px-2.5 py-1 hover:bg-zinc-800 disabled:opacity-50"
+                className="text-[10px] font-bold bg-zinc-900 text-white rounded-md px-2.5 py-1 hover:bg-zinc-800 disabled:opacity-50"
               >
                 {fork.isForking ? 'Forking…' : 'Fork'}
               </button>

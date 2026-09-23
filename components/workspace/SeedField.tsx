@@ -10,7 +10,7 @@ export default function SeedField({ value, onChange }: { value: string; onChange
         onChange={e => onChange(e.target.value)}
         onFocus={() => setOpen(false)}
         placeholder="Seed prompt ({input})…"
-        className="w-full text-xs border border-zinc-200 rounded px-2 py-1"
+        className="w-full text-xs border border-zinc-200 rounded-md px-2 py-1"
       />
       <button
         onClick={() => setOpen(o => !o)}
@@ -19,13 +19,13 @@ export default function SeedField({ value, onChange }: { value: string; onChange
         ⤢
       </button>
       {open && (
-        <div className="absolute z-30 mt-1 w-[420px] bg-white border border-zinc-200 rounded-md shadow-lg p-2">
+        <div className="absolute z-30 mt-1 w-[420px] bg-white border border-zinc-200 rounded-lg shadow-lg p-2">
           <textarea
             value={value}
             onChange={e => onChange(e.target.value)}
             rows={6}
             autoFocus
-            className="w-full text-xs border border-zinc-100 rounded p-2 resize-none"
+            className="w-full text-xs border border-zinc-100 rounded-md p-2 resize-none"
             placeholder="Seed prompt ({input})…"
           />
         </div>

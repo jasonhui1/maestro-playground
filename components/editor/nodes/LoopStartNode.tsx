@@ -29,7 +29,7 @@ function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">zone</label>
         <input value={node.zone ?? ''} onChange={e => data.onChange({ zone: e.target.value })}
           disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
 
         <div className="space-y-1">
           {/* Using index as key is necessary because items are editable strings; using the value as key would cause text inputs to lose focus on every keystroke. */}
@@ -42,7 +42,7 @@ function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop
                 {inDot && <SocketDot handle={inDot} tone="loop" />}
                 <input value={name} onChange={e => setName(i, e.target.value)}
                   disabled={data.readOnly}
-                  className="flex-1 text-xs font-mono border border-zinc-200 rounded px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
+                  className="flex-1 text-xs font-mono border border-zinc-200 rounded-md px-1 py-0.5 nodrag disabled:bg-zinc-50 disabled:text-zinc-500" />
                 {!data.readOnly && (
                   <button onClick={() => removeName(i)} className="text-zinc-300 hover:text-red-500 text-xs nodrag">×</button>
                 )}

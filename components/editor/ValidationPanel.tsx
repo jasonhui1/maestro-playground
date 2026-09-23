@@ -25,7 +25,7 @@ export default function ValidationPanel({ issues, onSelect }: {
             <li key={idx}>
               <button
                 onClick={() => onSelect(i.nodeId ?? i.edge?.toNode ?? null)}
-                className={`w-full text-left text-[11px] rounded px-2 py-0.5 ${warn ? 'text-amber-700 hover:bg-amber-100/60' : 'text-red-700 hover:bg-red-100/60'}`}
+                className={`w-full text-left text-[11px] rounded-md px-2 py-0.5 ${warn ? 'text-amber-700 hover:bg-amber-100/60' : 'text-red-700 hover:bg-red-100/60'}`}
               >
                 {warn ? '⚠ ' : ''}{i.message}
               </button>

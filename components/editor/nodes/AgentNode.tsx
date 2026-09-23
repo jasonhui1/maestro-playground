@@ -20,7 +20,7 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'agent' |
               <button
                 onClick={() => data.onRunFromHere?.(node.id)}
                 title="Run up to here"
-                className="nodrag text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded px-1.5 py-0.5 transition-colors"
+                className="nodrag text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-md px-1.5 py-0.5 transition-colors"
               >
                 ▶ Run To
               </button>
@@ -35,7 +35,7 @@ function AgentNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'agent' |
           value={node.agent ?? ''}
           onChange={e => data.onChange({ agent: e.target.value })}
           disabled={data.readOnly}
-          className="w-full text-xs border border-zinc-200 hover:border-zinc-300 rounded px-2 py-1.5 nodrag mb-2 bg-white text-zinc-800 disabled:bg-zinc-50 disabled:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-colors"
+          className="w-full text-xs border border-zinc-200 hover:border-zinc-300 rounded-md px-2 py-1.5 nodrag mb-2 bg-white text-zinc-800 disabled:bg-zinc-50 disabled:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-colors"
         >
           <option value="">— pick an agent —</option>
           {data.agents.map(a => <option key={a.slug} value={a.slug}>{a.name}</option>)}

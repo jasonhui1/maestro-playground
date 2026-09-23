@@ -34,7 +34,7 @@ export default function DockShell({ tabs, active, actions, banner, children }: {
       <div className="flex items-center gap-1 px-2 py-1 border-b border-zinc-200 bg-white">
         {tabs.map(t => (
           <button key={t.id} onClick={() => useWorkspaceUiStore.getState().setActiveTab(t.id)}
-            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded ${active === t.id ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}>
+            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md ${active === t.id ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}>
             {t.label}
           </button>
         ))}

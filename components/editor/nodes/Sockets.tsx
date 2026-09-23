@@ -25,7 +25,10 @@ function dotClass(handle: SocketHandle, tone: SocketTone): string {
   return `${shape} border-2 ${skin}`
 }
 
-function dotTitle(handle: SocketHandle): string {
+function dotTitle(handle: SocketHandle, tone: SocketTone = 'default', isSection = false): string {
+  if (isSection && handle.side === 'output' && handle.id !== 'output' && tone !== 'loop' && tone !== 'muted') {
+    return `Extracts ## ${handle.id} from output`
+  }
   if (handle.optional) return `${handle.id} (optional)`
   if (handle.multi) return `${handle.id} (accepts many)`
   return handle.id
@@ -35,14 +38,24 @@ function dotTitle(handle: SocketHandle): string {
  * The app's only `<Handle>` (#114). The dot is centred on whatever row hosts it, so
  * that row must be `relative`.
  */
-export function SocketDot({ handle, tone = 'default' }: { handle: SocketHandle; tone?: SocketTone }) {
+export function SocketDot({
+  handle,
+  tone = 'default',
+  title,
+  isSection = false,
+}: {
+  handle: SocketHandle
+  tone?: SocketTone
+  title?: string
+  isSection?: boolean
+}) {
   const isInput = handle.side === 'input'
   return (
     <Handle
       type={isInput ? 'target' : 'source'}
       id={handle.id}
       position={isInput ? Position.Left : Position.Right}
-      title={dotTitle(handle)}
+      title={title ?? dotTitle(handle, tone, isSection)}
       style={{ [isInput ? 'left' : 'right']: -16, top: '50%', transform: 'translateY(-50%)' }}
       className={dotClass(handle, tone)}
     />
@@ -112,7 +125,7 @@ function SlotLiteralPopover({
             setDraft(value)
             setOpen(true)
           }}
-          className="nodrag text-xs font-mono text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+          className="nodrag text-xs font-mono text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded-md px-1.5 py-0.5 transition-colors disabled:opacity-50"
         >
           + literal
         </button>
@@ -125,7 +138,7 @@ function SlotLiteralPopover({
             setOpen(true)
           }}
           title={value}
-          className="nodrag inline-flex items-center text-xs font-mono text-zinc-700 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded px-1.5 py-0.5 transition-colors max-w-[120px] disabled:opacity-50"
+          className="nodrag inline-flex items-center text-xs font-mono text-zinc-700 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-md px-1.5 py-0.5 transition-colors max-w-[120px] disabled:opacity-50"
         >
           <span className="truncate">{`["${displayValue}" ✎]`}</span>
         </button>
@@ -152,32 +165,33 @@ function SlotLiteralPopover({
             onKeyDown={e => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault()
+                e.stopPropagation()
                 handleSave()
               }
             }}
             placeholder="Enter literal value…"
             rows={3}
-            className="nodrag w-full text-xs font-mono border border-zinc-200 focus:border-zinc-400 rounded p-1.5 mb-2 focus:outline-none focus:ring-1 focus:ring-zinc-400 resize-y text-zinc-900 bg-white"
+            className="nodrag w-full text-xs font-mono border border-zinc-200 focus:border-zinc-400 rounded-md p-1.5 mb-2 focus:outline-none focus:ring-1 focus:ring-zinc-400 resize-y text-zinc-900 bg-white"
           />
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={handleSave}
-              className="nodrag px-2.5 py-1 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded transition-colors"
+              className="nodrag px-2.5 py-1 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-md transition-colors"
             >
               Save
             </button>
             <button
               type="button"
               onClick={handleClear}
-              className="nodrag px-2.5 py-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors"
+              className="nodrag px-2.5 py-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
             >
               Clear
             </button>
             <button
               type="button"
               onClick={handleCancel}
-              className="nodrag ml-auto px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-800 rounded transition-colors"
+              className="nodrag ml-auto px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-800 rounded-md transition-colors"
             >
               Cancel
             </button>
@@ -188,7 +202,7 @@ function SlotLiteralPopover({
   )
 }
 
-/** One labelled column of sockets — inputs read `name`, outputs read `.name`. */
+/** One labelled column of sockets — inputs read `name`, outputs read `.name` or `## name` (#146). */
 export function SocketList({
   handles,
   tone = 'default',
@@ -208,7 +222,11 @@ export function SocketList({
     <div className="flex flex-col gap-1.5 flex-1 min-w-0">
       {handles.map(h => {
         const isInput = h.side === 'input'
-        const label = isInput ? h.id : `.${h.id}`
+        const isSection = !isInput && h.id !== 'output' && tone !== 'loop' && tone !== 'muted'
+        const label = isInput ? h.id : (isSection ? `## ${h.id}` : `.${h.id}`)
+        const tooltip = isSection
+          ? dotTitle(h, tone, true)
+          : (isInput ? dotTitle(h, tone) : label)
         const isWired = isInput && (wiredSockets?.has(h.id) ?? false)
         const isInputNodeKind = node?.kind === 'agent' || node?.kind === 'decider'
         const showLiteralInput = isInput && !isWired && isInputNodeKind && onChange !== undefined
@@ -221,7 +239,16 @@ export function SocketList({
             className={`relative flex items-center min-h-[22px] py-0.5 ${isInput ? 'pl-3' : 'pr-3 justify-end text-right'}`}
           >
             {isInput && <SocketDot handle={h} tone={tone} />}
-            <span className="truncate max-w-[80px]" title={isInput ? dotTitle(h) : label}>{label}</span>
+            <span className="truncate max-w-[100px]" title={tooltip}>
+              {isSection ? (
+                <>
+                  <span className="text-zinc-400 font-semibold select-none">## </span>
+                  <span>{h.id}</span>
+                </>
+              ) : (
+                label
+              )}
+            </span>
             {showLiteralInput && (
               <SlotLiteralPopover
                 handleId={h.id}
@@ -232,7 +259,7 @@ export function SocketList({
                 value={literalValue}
               />
             )}
-            {!isInput && <SocketDot handle={h} tone={tone} />}
+            {!isInput && <SocketDot handle={h} tone={tone} isSection={isSection} title={tooltip} />}
           </div>
         )
       })}
@@ -266,7 +293,7 @@ export function Sockets({
         readOnly={readOnly}
         wiredSockets={wiredSockets}
       />
-      <SocketList handles={outputHandles(handles)} tone={tone} />
+      <SocketList handles={outputHandles(handles)} tone={tone} node={node} />
     </div>
   )
 }

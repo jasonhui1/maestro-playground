@@ -15,7 +15,7 @@ export default function InterfacePopover({ nodes, inputs, outputs, onChange }: {
         Interface{count ? ` (${count})` : ''} ▾
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-[460px] bg-white border border-zinc-200 rounded-md shadow-lg">
+        <div className="absolute right-0 z-30 mt-1 w-[460px] bg-white border border-zinc-200 rounded-lg shadow-lg">
           <InterfacePanel nodes={nodes} inputs={inputs} outputs={outputs} onChange={onChange} />
         </div>
       )}

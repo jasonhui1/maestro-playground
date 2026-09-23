@@ -167,14 +167,13 @@ function WorkspaceContent() {
                 id="workspace-model-override"
                 value={modelOverride}
                 onChange={(m) => setModelOverride(currentFileKey, m)}
-                className="w-36 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300 font-mono bg-white"
               />
             </div>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Parallel</label>
               <input type="number" min={1} max={10} value={parallel}
                 onChange={(e) => setParallel(currentFileKey, parseInt(e.target.value) || 1)}
-                className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-zinc-300" />
+                className="w-12 px-2 py-1 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-300" />
             </div>
             <button onClick={handleRun} disabled={loading || running}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-md hover:bg-zinc-800 disabled:opacity-50">

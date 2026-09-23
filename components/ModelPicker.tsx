@@ -48,7 +48,7 @@ export function ModelPicker({
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className={className ?? `${CONTROL.field} text-xs font-mono`}
+      className={className ?? `${CONTROL.field} text-xs font-mono min-w-[160px] max-w-[240px]`}
     >
       <option value="">{defaultLabel}</option>
       {catalogue.map(m => (

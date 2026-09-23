@@ -50,7 +50,7 @@ export default function QuickAddMenu({
           type="button"
           onMouseEnter={() => setActiveCategory('agents')}
           onClick={() => setActiveCategory('agents')}
-          className={`flex items-center justify-between px-2 py-1.5 rounded text-left transition-colors ${
+          className={`flex items-center justify-between px-2 py-1.5 rounded-md text-left transition-colors ${
             activeCategory === 'agents' ? 'bg-zinc-200 text-zinc-900 font-semibold' : 'text-zinc-600 hover:bg-zinc-100'
           }`}
         >
@@ -61,7 +61,7 @@ export default function QuickAddMenu({
           type="button"
           onMouseEnter={() => setActiveCategory('sources')}
           onClick={() => setActiveCategory('sources')}
-          className={`flex items-center justify-between px-2 py-1.5 rounded text-left transition-colors ${
+          className={`flex items-center justify-between px-2 py-1.5 rounded-md text-left transition-colors ${
             activeCategory === 'sources' ? 'bg-zinc-200 text-zinc-900 font-semibold' : 'text-zinc-600 hover:bg-zinc-100'
           }`}
         >
@@ -72,7 +72,7 @@ export default function QuickAddMenu({
           type="button"
           onMouseEnter={() => setActiveCategory('control')}
           onClick={() => setActiveCategory('control')}
-          className={`flex items-center justify-between px-2 py-1.5 rounded text-left transition-colors ${
+          className={`flex items-center justify-between px-2 py-1.5 rounded-md text-left transition-colors ${
             activeCategory === 'control' ? 'bg-zinc-200 text-zinc-900 font-semibold' : 'text-zinc-600 hover:bg-zinc-100'
           }`}
         >
@@ -91,7 +91,7 @@ export default function QuickAddMenu({
                   key={a.slug}
                   type="button"
                   onClick={() => onSelect({ type: 'agent', slug: a.slug })}
-                  className="px-2 py-1.5 rounded text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 truncate font-mono text-xs"
+                  className="px-2 py-1.5 rounded-md text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 truncate font-mono text-xs"
                   title={label}
                 >
                   {label}
@@ -108,14 +108,14 @@ export default function QuickAddMenu({
             <button
               type="button"
               onClick={() => onSelect({ type: 'source-seed' })}
-              className="px-2 py-1.5 rounded text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
+              className="px-2 py-1.5 rounded-md text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
             >
               Seed Node
             </button>
             <button
               type="button"
               onClick={() => onSelect({ type: 'source-context', file: contextFiles[0]?.slug })}
-              className="px-2 py-1.5 rounded text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
+              className="px-2 py-1.5 rounded-md text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
             >
               Context File
             </button>
@@ -126,7 +126,7 @@ export default function QuickAddMenu({
                     key={f.slug}
                     type="button"
                     onClick={() => onSelect({ type: 'source-context', file: f.slug })}
-                    className="px-2 py-1 rounded text-left text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 text-xs truncate"
+                    className="px-2 py-1 rounded-md text-left text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 text-xs truncate"
                     title={f.name}
                   >
                     ↳ {f.name}
@@ -142,14 +142,14 @@ export default function QuickAddMenu({
             <button
               type="button"
               onClick={() => onSelect({ type: 'control-loop' })}
-              className="px-2 py-1.5 rounded text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
+              className="px-2 py-1.5 rounded-md text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
             >
               Loop Zone
             </button>
             <button
               type="button"
               onClick={() => onSelect({ type: 'control-gate' })}
-              className="px-2 py-1.5 rounded text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
+              className="px-2 py-1.5 rounded-md text-left text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs"
             >
               Gate Node
             </button>

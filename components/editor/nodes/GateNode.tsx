@@ -17,7 +17,7 @@ function GateNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'gate'>>>)
           <button
             onClick={() => data.onRunFromHere?.(node.id)}
             title="Run up to here"
-            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded px-1.5 py-0.5 transition-colors"
+            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-md px-1.5 py-0.5 transition-colors"
           >
             ▶ Run To
           </button>
@@ -29,7 +29,7 @@ function GateNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'gate'>>>)
           onChange={e => data.onChange({ condition: e.target.value })}
           placeholder='e.g. {x.output} contains "OK"'
           disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
+          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500"
         />
         <Sockets handles={data.sockets} />
       </div>
