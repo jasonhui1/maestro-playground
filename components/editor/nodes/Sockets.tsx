@@ -49,7 +49,6 @@ export function SocketDot({ handle, tone = 'default' }: { handle: SocketHandle; 
   )
 }
 
-// Slot literal popover editor (#141)
 function SlotLiteralPopover({
   handleId,
   node,
