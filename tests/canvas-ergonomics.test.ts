@@ -30,10 +30,7 @@ test('markdown section sockets render ## prefix and contract tooltip (#146)', ()
     )
   )
 
-  // Standard output retains dot label
   assert.ok(html.includes('.output'), 'standard output is .output')
-
-  // Section sockets show ## prefix and contract tooltip (#146)
   assert.ok(html.includes('## '), 'section socket has ## prefix')
   assert.ok(html.includes('summary'), 'summary handle rendered')
   assert.ok(html.includes('act-1'), 'act-1 handle rendered')
@@ -67,6 +64,33 @@ test('loop state outputs do not format as markdown sections (#146)', () => {
 
   assert.ok(!html.includes('## draft'), 'loop state does not get ## prefix')
   assert.ok(html.includes('.draft'), 'loop state renders as .draft')
+  assert.ok(!html.includes('title="Extracts ## draft from output"'), 'loop state does not have section extraction tooltip')
+})
+
+// Branch outputs do not render markdown section extraction tooltips (#146).
+test('branch and muted output sockets do not format as markdown sections (#146)', () => {
+  const caseHandle: SocketHandle = { id: 'urgent', side: 'output' }
+  const defaultHandle: SocketHandle = { id: 'default', side: 'output' }
+
+  const caseHtml = renderToStaticMarkup(
+    React.createElement(
+      ReactFlowProvider,
+      null,
+      React.createElement(SocketDot, { handle: caseHandle })
+    )
+  )
+  const defaultHtml = renderToStaticMarkup(
+    React.createElement(
+      ReactFlowProvider,
+      null,
+      React.createElement(SocketDot, { handle: defaultHandle, tone: 'muted' })
+    )
+  )
+
+  assert.ok(caseHtml.includes('title="urgent"'), 'branch case dot tooltip is plain identifier')
+  assert.ok(!caseHtml.includes('Extracts ##'), 'branch case has no extraction tooltip')
+  assert.ok(defaultHtml.includes('title="default"'), 'branch default dot tooltip is plain identifier')
+  assert.ok(!defaultHtml.includes('Extracts ##'), 'branch default has no extraction tooltip')
 })
 
 // ModelPicker default styling uses flexible auto-fit width (#146).

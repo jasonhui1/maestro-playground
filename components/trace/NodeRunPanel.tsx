@@ -79,7 +79,6 @@ export function NodeRunPanel({ nodeId, state, fork }: {
               <ModelPicker
                 value={forkModel}
                 onChange={setForkModel}
-                className="text-xs font-mono border border-zinc-200 rounded-md px-1.5 py-0.5 min-w-[160px] max-w-[240px]"
               />
               <button
                 type="button"

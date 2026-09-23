@@ -167,7 +167,6 @@ function WorkspaceContent() {
                 id="workspace-model-override"
                 value={modelOverride}
                 onChange={(m) => setModelOverride(currentFileKey, m)}
-                className="min-w-[160px] max-w-[240px] px-2 py-1 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-300 font-mono bg-white"
               />
             </div>
             <div className="flex items-center gap-1.5">
