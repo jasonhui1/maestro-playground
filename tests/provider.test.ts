@@ -27,10 +27,37 @@ test('AI_PROVIDER=openrouter reads the OPENROUTER_* vars', () => {
   })
 })
 
+test('AI_PROVIDER=explabs reads the EXPLABS_* vars and defaults base URL', () => {
+  expect(resolveProvider({
+    AI_PROVIDER: 'explabs',
+    EXPLABS_API_KEY: 'ex-key',
+    EXPLABS_MODEL: 'gpt-6-luna',
+  })).toEqual({
+    name: 'explabs',
+    baseURL: 'https://api.experientiallabs.ai/v1',
+    apiKey: 'ex-key',
+    model: 'gpt-6-luna',
+  })
+})
+
+test('AI_PROVIDER=explabs supports custom EXPLABS_BASE_URL', () => {
+  expect(resolveProvider({
+    AI_PROVIDER: 'explabs',
+    EXPLABS_BASE_URL: 'https://custom.explabs.ai/v1/',
+    EXPLABS_API_KEY: 'ex-key',
+  })).toEqual({
+    name: 'explabs',
+    baseURL: 'https://custom.explabs.ai/v1',
+    apiKey: 'ex-key',
+    model: undefined,
+  })
+})
+
 test('an unknown provider fails loudly', () => {
-  expect(() => resolveProvider({ AI_PROVIDER: 'gemini' })).toThrow(/AI_PROVIDER/)
+  expect(() => resolveProvider({ AI_PROVIDER: 'gemini' })).toThrow(/AI_PROVIDER must be "google", "openrouter", or "explabs"/)
 })
 
 test('no model set leaves the agent file in charge', () => {
   expect(resolveProvider({ AI_PROVIDER: 'openrouter' }).model).toBeUndefined()
+  expect(resolveProvider({ AI_PROVIDER: 'explabs' }).model).toBeUndefined()
 })
