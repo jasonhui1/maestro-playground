@@ -5,6 +5,7 @@ import { handleNamed } from '@/lib/nodeSockets'
 import { zoneStateName } from '@/lib/nodeKinds'
 import type { EditorNodeDataOf } from '../nodeData'
 import { SocketDot } from './Sockets'
+import ZoneBadge from './ZoneBadge'
 
 function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-start'>>>) {
   const { node, issues } = data
@@ -27,9 +28,12 @@ function LoopStartNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop
       </div>
       <div className="px-4 py-2">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">zone</label>
-        <input value={node.zone ?? ''} onChange={e => data.onChange({ zone: e.target.value })}
-          disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+        <ZoneBadge
+          zone={node.zone}
+          onChange={zone => data.onChange({ zone })}
+          readOnly={data.readOnly}
+          availableZones={data.availableZones}
+        />
 
         <div className="space-y-1">
           {/* Using index as key is necessary because items are editable strings; using the value as key would cause text inputs to lose focus on every keystroke. */}

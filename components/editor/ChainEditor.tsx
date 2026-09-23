@@ -235,6 +235,14 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedIds, clipboard, run])
 
+  const availableZones = useMemo(() => {
+    const set = new Set<string>()
+    for (const n of nodes) {
+      if (n.zone && n.zone.trim()) set.add(n.zone.trim())
+    }
+    return Array.from(set)
+  }, [nodes])
+
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
     sockets: socketHandles(node, { chain, agents, chains }),
@@ -247,7 +255,8 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     onRunFromHere: (id: string) => { setSelectedIds([id]); runUpTo(id) },
     chains: chains.map(c => ({ slug: c.slug, name: c.name })),
     wiredSockets: new Set(edges.filter(e => e.toNode === node.id).map(e => e.toSocket)),
-  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges])
+    availableZones,
+  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges, availableZones])
 
   return (
     <div className="h-full flex flex-col">

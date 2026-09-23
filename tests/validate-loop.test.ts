@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { validateChain } from '../lib/chainGraph'
+import { validateChain, issuesByNode } from '../lib/chainGraph'
 import { ChainDef, AgentDef, ZoneStateEntry } from '../lib/types'
 
 test('validate-loop', () => {
@@ -34,9 +34,34 @@ test('validate-loop', () => {
   )
   assert.strictEqual(validateChain(good, { agents }).valid, true)
 
-  // missing loop-end
   const noEnd = chain(good.nodes.filter(n => n.id !== 'le'), good.edges.filter(e => e.toNode !== 'le' && e.fromNode !== 'le'))
-  assert.ok(validateChain(noEnd, { agents }).errors.some(e => /loop-end/i.test(e)))
+  const noEndRes = validateChain(noEnd, { agents })
+  assert.ok(noEndRes.errors.some(e => /loop-end/i.test(e)))
+  assert.ok(noEndRes.issues.some(i => i.nodeId === 'ls' && i.message === 'Loop start "ls" in zone "r" is missing a paired loop-end'))
+  assert.ok(issuesByNode(noEndRes.issues).has('ls'), 'issuesByNode maps orphan loop-start for border warning')
+
+  const noStart = chain(good.nodes.filter(n => n.id !== 'ls'), good.edges.filter(e => e.toNode !== 'ls' && e.fromNode !== 'ls'))
+  const noStartRes = validateChain(noStart, { agents })
+  assert.ok(noStartRes.issues.some(i => i.nodeId === 'le' && i.message === 'Loop end "le" in zone "r" is missing a paired loop-start'))
+  assert.ok(issuesByNode(noStartRes.issues).has('le'), 'issuesByNode maps orphan loop-end for border warning')
+
+  const emptyZone = chain(
+    good.nodes.map(n => n.id === 'ls' ? { ...n, zone: '' } : n.id === 'le' ? { ...n, zone: undefined } : n),
+    good.edges,
+  )
+  const emptyRes = validateChain(emptyZone, { agents })
+  assert.ok(emptyRes.issues.some(i => i.nodeId === 'ls' && i.message === 'Node "ls": loop-start has no zone'))
+  assert.ok(emptyRes.issues.some(i => i.nodeId === 'le' && i.message === 'Node "le": loop-end has no zone'))
+  assert.ok(issuesByNode(emptyRes.issues).has('ls') && issuesByNode(emptyRes.issues).has('le'))
+
+  const dupStarts = chain(
+    [...good.nodes, { id: 'ls2', kind: 'loop-start', zone: 'r', state: [] }],
+    good.edges,
+  )
+  const dupRes = validateChain(dupStarts, { agents })
+  assert.ok(dupRes.issues.some(i => i.nodeId === 'ls' && /duplicate loop-start/i.test(i.message)))
+  assert.ok(dupRes.issues.some(i => i.nodeId === 'ls2' && /duplicate loop-start/i.test(i.message)))
+  assert.ok(issuesByNode(dupRes.issues).has('ls') && issuesByNode(dupRes.issues).has('ls2'))
 
   // bad maxIterations
   const badMax = chain(good.nodes.map(n => n.id === 'le' ? { ...n, maxIterations: 0 } : n), good.edges)

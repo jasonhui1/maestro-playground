@@ -51,11 +51,31 @@ export function deleteEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
   )
 }
 
+export function renameZone(
+  nodes: ChainNode[],
+  oldZone: string,
+  newZone: string,
+): ChainNode[] {
+  if (!oldZone || oldZone === newZone) return nodes
+  return nodes.map(n => (n.zone === oldZone ? { ...n, zone: newZone } : n))
+}
+
 export function updateNode(
   nodes: ChainNode[],
   id: string,
   patch: Partial<ChainNode>,
 ): ChainNode[] {
+  const target = nodes.find(n => n.id === id)
+  if (
+    target &&
+    (target.kind === 'loop-start' || target.kind === 'loop-end') &&
+    patch.zone !== undefined &&
+    target.zone &&
+    patch.zone !== target.zone
+  ) {
+    const renamed = renameZone(nodes, target.zone, patch.zone)
+    return renamed.map(n => (n.id === id ? { ...n, ...patch } : n))
+  }
   return nodes.map(n => (n.id === id ? { ...n, ...patch } : n))
 }
 
@@ -146,6 +166,7 @@ export type EditorOpType =
   | 'moveNode'
   | 'moveMany'
   | 'updateNode'
+  | 'renameZone'
   | 'setSelection'
   | 'copy'
   | 'paste'
@@ -208,6 +229,13 @@ export const editorOps = {
     apply: g => ({
       ...g,
       nodes: updateNode(g.nodes, id, patch),
+    }),
+  }),
+  renameZone: (oldZone: string, newZone: string): EditorOp => ({
+    type: 'renameZone',
+    apply: g => ({
+      ...g,
+      nodes: renameZone(g.nodes, oldZone, newZone),
     }),
   }),
   setSelection: (ids: string[]): EditorOp => ({
