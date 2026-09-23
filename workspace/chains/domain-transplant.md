@@ -1,13 +1,8 @@
 ---
 name: domain-transplant
-description: "any text becomes another domain's operating manual, then comes back as software"
-view: timeline
-purpose: insight
-moment: a design feels done but you cannot tell if the shape is real or just familiar
-parameter:
-  name: target domain
-  options: [a restaurant kitchen, a legal contract, a band rehearsal]
-  node: domain
+description: >-
+  any text becomes another domain's operating manual, then comes back as
+  software
 nodes:
   - id: source
     kind: seed
@@ -57,8 +52,15 @@ outputs:
     node: kitchen
   - name: translated back
     node: returned
+view: timeline
+moment: a design feels done but you cannot tell if the shape is real or just familiar
+purpose: insight
+parameter:
+  name: target domain
+  options:
+    - a restaurant kitchen
+    - a legal contract
+    - a band rehearsal
+  node: domain
 ---
 
-Read `returned` against the source text. The gap is what only survived because
-of the words it was written in. `manual` is kept because the **[invented]**
-roles are usually the good part.

@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import { diff_match_patch } from 'diff-match-patch'
 import type { RunMeta } from './types'
-import { parseVersionKey, type TouchedFile } from './runVersions'
+import { parseVersionKey, type TouchedFile } from './runVersionModel'
 
 export type VersionChangeStatus = 'changed' | 'added' | 'removed' | 'same'
 

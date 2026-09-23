@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadRunFor } from '@/lib/loadRun'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
-import { parseVersionKey } from '@/lib/runVersions'
+import { parseVersionKey } from '@/lib/runVersionModel'
 import { getVersionContent } from '@/lib/fs/versions'
 import { changedSince, findPreviousRun } from '@/lib/changedSince'
 

@@ -54,3 +54,5 @@ workspace/.versions
 .superpowers/
 docs/maestro/
 .impeccable/
+.agents
+.claude

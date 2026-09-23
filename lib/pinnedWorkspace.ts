@@ -6,7 +6,7 @@ import { parseAgentFile } from './fs/parseAgent'
 import { parseSkill } from './fs/parseSkill'
 import { parseTool } from './fs/parseTool'
 import { parseChain } from './fs/parseChain'
-import { parseVersionKey } from './runVersions'
+import { parseVersionKey } from './runVersionModel'
 import type { RunDefinitions } from './runDefinitions'
 import type { Refusal } from './types'
 

@@ -9,7 +9,7 @@ import {
   RefHit, refSitesFor, parseFile, typeDir, inboundRefs, rewriteRefs,
   variantIndex, VariantSource,
 } from './entityRefs'
-import { parseVersionKey, versionKey, TouchedFile } from '../runVersions'
+import { parseVersionKey, versionKey, TouchedFile } from '../runVersionModel'
 import { scanTokens, proseRef, ProseRef } from '../tokens'
 
 /**

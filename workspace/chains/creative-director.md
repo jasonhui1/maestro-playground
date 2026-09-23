@@ -1,18 +1,8 @@
 ---
 name: creative-director
-description: 'A game seed through a brief, four departments and a devil''s advocate, cut by a creative director, held for your Direction, then built into a greenlight pitch'
-view: columns
-purpose: production
-moment: you have a mood, or nothing
-parameter:
-  name: experimental
-  options:
-    - '1 - genre-true: familiar beats, executed well'
-    - '2 - one twist: a familiar frame with one surprising rule'
-    - '3 - fresh: the premise bent somewhere players have not been'
-    - '4 - strange: keep the core image, question everything else'
-    - '5 - unrecognisable: the seed is a spark, not a spec'
-  node: experimental
+description: >-
+  A game seed through a brief, four departments and a devil's advocate, cut by a
+  creative director, held for your Direction, then built into a greenlight pitch
 nodes:
   - id: seed
     kind: seed
@@ -35,9 +25,9 @@ nodes:
     pos:
       - 320
       - 160
-    agent: idea-maker
     inputs:
       instructions: three one-line video game concepts with core mechanics and high tension
+    agent: idea-maker
   - id: hold-idea
     kind: hold
     pos:
@@ -96,7 +86,7 @@ nodes:
     pos:
       - 2280
       - 160
-    prompt: read the columns and the verdict, then write a Direction
+    prompt: 'read the columns and the verdict, then write a Direction'
   - id: greenlight
     kind: agent
     pos:
@@ -208,10 +198,17 @@ outputs:
   - name: pitch
     node: greenlight
     role: join
+view: columns
+moment: 'you have a mood, or nothing'
+purpose: production
+parameter:
+  name: experimental
+  options:
+    - '1 - genre-true: familiar beats, executed well'
+    - '2 - one twist: a familiar frame with one surprising rule'
+    - '3 - fresh: the premise bent somewhere players have not been'
+    - '4 - strange: keep the core image, question everything else'
+    - '5 - unrecognisable: the seed is a spark, not a spec'
+  node: experimental
 ---
 
-The run stops at `hold-idea`: pick an idea from the menu or write your own.
-The run then proceeds to `hold`: read the columns and the verdict, write a Direction,
-then resume and greenlight builds the pitch. Canon lives in
-`context/canon-anime-game.md`; only a human writes it, every proposer ends with
-`## Proposed canon` lines to tick.
