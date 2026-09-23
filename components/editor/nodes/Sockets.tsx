@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { inputHandles, outputHandles, type SocketHandle } from '@/lib/nodeSockets'
 import type { ChainNode } from '@/lib/types'
@@ -49,6 +49,146 @@ export function SocketDot({ handle, tone = 'default' }: { handle: SocketHandle; 
   )
 }
 
+// Slot literal popover editor (#141)
+function SlotLiteralPopover({
+  handleId,
+  node,
+  onChange,
+  readOnly,
+  isSet,
+  value,
+}: {
+  handleId: string
+  node?: ChainNode
+  onChange?: (patch: Partial<ChainNode>) => void
+  readOnly?: boolean
+  isSet: boolean
+  value: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) setDraft(value)
+  }, [open, value])
+
+  useEffect(() => {
+    if (!open) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as HTMLElement)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [open])
+
+  const handleSave = () => {
+    const next = { ...(node?.inputs ?? {}), [handleId]: draft }
+    onChange?.({ inputs: next })
+    setOpen(false)
+  }
+
+  const handleClear = () => {
+    const next = { ...(node?.inputs ?? {}) }
+    delete next[handleId]
+    onChange?.({ inputs: Object.keys(next).length > 0 ? next : undefined })
+    setOpen(false)
+  }
+
+  const handleCancel = () => {
+    setOpen(false)
+  }
+
+  const displayValue = value.length > 10 ? `${value.slice(0, 10)}…` : value
+
+  return (
+    <div className="relative ml-1.5 flex items-center min-w-0">
+      {!isSet ? (
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() => {
+            setDraft(value)
+            setOpen(true)
+          }}
+          className="nodrag text-xs font-mono text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+        >
+          + literal
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() => {
+            setDraft(value)
+            setOpen(true)
+          }}
+          title={value}
+          className="nodrag inline-flex items-center text-xs font-mono text-zinc-700 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded px-1.5 py-0.5 transition-colors max-w-[120px] disabled:opacity-50"
+        >
+          <span className="truncate">{`["${displayValue}" ✎]`}</span>
+        </button>
+      )}
+
+      {open && (
+        <div
+          ref={popoverRef}
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              e.stopPropagation()
+              handleCancel()
+            }
+          }}
+          className="nodrag nopan absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-zinc-200 rounded-lg shadow-xl p-3 text-left font-sans"
+        >
+          <div className="text-xs font-semibold text-zinc-700 mb-1.5 flex items-center justify-between">
+            <span>Literal for <span className="font-mono text-zinc-900">{handleId}</span></span>
+          </div>
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault()
+                handleSave()
+              }
+            }}
+            placeholder="Enter literal value…"
+            rows={3}
+            className="nodrag w-full text-xs font-mono border border-zinc-200 focus:border-zinc-400 rounded p-1.5 mb-2 focus:outline-none focus:ring-1 focus:ring-zinc-400 resize-y text-zinc-900 bg-white"
+          />
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="nodrag px-2.5 py-1 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded transition-colors"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="nodrag px-2.5 py-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="nodrag ml-auto px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-800 rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** One labelled column of sockets — inputs read `name`, outputs read `.name`. */
 export function SocketList({
   handles,
@@ -84,37 +224,14 @@ export function SocketList({
             {isInput && <SocketDot handle={h} tone={tone} />}
             <span className="truncate max-w-[80px]" title={isInput ? dotTitle(h) : label}>{label}</span>
             {showLiteralInput && (
-              <div className="ml-1.5 flex items-center gap-1 flex-1 min-w-0">
-                <input
-                  type="text"
-                  value={literalValue}
-                  onChange={e => {
-                    const next = { ...(node?.inputs ?? {}), [h.id]: e.target.value }
-                    onChange({ inputs: next })
-                  }}
-                  disabled={readOnly}
-                  placeholder="unset"
-                  className={`w-full nodrag px-1.5 py-0.5 text-[10px] font-sans rounded border transition-colors ${
-                    isSet
-                      ? 'border-zinc-300 bg-white text-zinc-900 focus:border-zinc-800'
-                      : 'border-zinc-200 border-dashed bg-zinc-50/50 text-zinc-400 placeholder:text-zinc-300'
-                  }`}
-                />
-                {isSet && !readOnly && (
-                  <button
-                    type="button"
-                    title="Unset literal"
-                    onClick={() => {
-                      const next = { ...(node?.inputs ?? {}) }
-                      delete next[h.id]
-                      onChange({ inputs: Object.keys(next).length > 0 ? next : undefined })
-                    }}
-                    className="nodrag text-zinc-400 hover:text-zinc-700 text-[10px] px-0.5 font-sans"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+              <SlotLiteralPopover
+                handleId={h.id}
+                node={node}
+                onChange={onChange}
+                readOnly={readOnly}
+                isSet={isSet}
+                value={literalValue}
+              />
             )}
             {!isInput && <SocketDot handle={h} tone={tone} />}
           </div>
@@ -141,7 +258,7 @@ export function Sockets({
   wiredSockets?: Set<string>
 }) {
   return (
-    <div className="flex justify-between gap-4 text-[9px] font-mono text-zinc-400">
+    <div className="flex justify-between gap-4 text-xs font-mono text-zinc-500">
       <SocketList
         handles={inputHandles(handles)}
         tone={tone}

@@ -10,7 +10,7 @@ function ZoneFrame({ data }: NodeProps<Node<ZoneFrameData>>) {
       style={{ width: data.width, height: data.height }}
       className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-100/20 pointer-events-none"
     >
-      <span className="absolute -top-2 left-3 px-1.5 bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-widest rounded">
+      <span className="absolute -top-2 left-3 px-1.5 bg-amber-100 text-amber-700 text-xs font-semibold uppercase tracking-wider rounded">
         loop: {data.zone}
       </span>
     </div>

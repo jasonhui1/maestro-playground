@@ -13,17 +13,17 @@ function JoinNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'join'>>>)
       <div className="px-4 py-2 border-b border-zinc-100 bg-zinc-50/50 rounded-t-lg flex items-center gap-2">
         <div className={`w-2.5 h-2.5 rounded-full ${statusDotClass(run)}`} />
         <GitMerge className="w-3.5 h-3.5 text-zinc-400" />
-        <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Join</span>
+        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Join</span>
         <span className="text-xs font-bold text-zinc-900 ml-1">{node.id}</span>
-        {issues.length > 0 && <span className="ml-auto text-[9px] font-bold text-red-500">{issues.length}!</span>}
+        {issues.length > 0 && <span className="ml-auto text-xs font-bold text-red-500">{issues.length}!</span>}
       </div>
       <div className="px-4 py-2">
         {run?.output ? (
-          <div className="text-[10px] text-zinc-600 font-mono line-clamp-4 break-all bg-zinc-50 p-1.5 rounded border border-zinc-100">
+          <div className="text-xs text-zinc-600 font-mono line-clamp-4 break-all bg-zinc-50 p-1.5 rounded border border-zinc-100">
             {run.output}
           </div>
         ) : (
-          <div className="text-[10px] text-zinc-400 italic">Merges all inputs, labeled</div>
+          <div className="text-xs text-zinc-400 italic">Merges all inputs, labeled</div>
         )}
         <div className="mt-2">
           <Sockets handles={data.sockets} />

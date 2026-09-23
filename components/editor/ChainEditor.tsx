@@ -187,8 +187,15 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     dispatch(editorOps.updateNode(id, { pos, zone }))
   }, [nodes])
   const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch(editorOps.moveMany(updates)), [])
-  const addNodeOfKind = useCallback((kind: ChainNodeKind) => dispatch(editorOps.addNode({ id: uniqueNodeId(kind, nodes.map(n => n.id)), kind, pos: [80, 80] })), [nodes])
-  const addLoopZone = useCallback(() => dispatch(editorOps.addLoopZone([120, 120])), [])
+  const addNodeOfKind = useCallback((kind: ChainNodeKind, pos: [number, number] = [80, 80], extra?: Partial<ChainNode>) => {
+    dispatch(editorOps.addNode({
+      id: uniqueNodeId(kind, nodes.map(n => n.id)),
+      kind,
+      pos,
+      ...extra,
+    }))
+  }, [nodes])
+  const addLoopZone = useCallback((pos: [number, number] = [120, 120]) => dispatch(editorOps.addLoopZone(pos)), [])
   const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge)), [])
   const deleteNode = useCallback((id: string) => dispatch(editorOps.deleteNode(id)), [])
   const deleteEdge = useCallback((edge: ChainEdge) => dispatch(editorOps.deleteEdge(edge)), [])
@@ -264,6 +271,10 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
                   instanceCount={instanceCount}
                   currentInstance={currentInstance}
                   onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
+                  onAddNode={addNodeOfKind}
+                  onAddLoopZone={addLoopZone}
+                  agents={agents}
+                  contextFiles={contextFiles}
                 />
               </Panel>
               <Separator className="w-1 border-x border-zinc-200 bg-zinc-100 hover:bg-zinc-200 transition-colors" />
@@ -292,6 +303,10 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
               instanceCount={instanceCount}
               currentInstance={currentInstance}
               onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
+              onAddNode={addNodeOfKind}
+              onAddLoopZone={addLoopZone}
+              agents={agents}
+              contextFiles={contextFiles}
             />
           )}
         </div>
