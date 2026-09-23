@@ -283,7 +283,7 @@ test('end to end: the run stops, resumes with a Direction, and the pitch lands i
   assert.ok(logs.some(f => f.endsWith('-report.md')))
   const log = matter(fs.readFileSync(path.join(dir, greenlightLog), 'utf-8'))
   assert.ok(log.content.includes('Greenlight Pitch body'), 'pitch is in the greenlight log')
-  assert.ok((log.data.system_prompt as string).includes(`<direction>\n${holdText}`), 'greenlight reads the pick first')
+  assert.ok((log.data.system_prompt as string).replace(/\r\n/g, '\n').includes(`<direction>\n${holdText}`), 'greenlight reads the pick first')
 
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8')) as RunMeta
   assert.strictEqual(meta.status, 'complete')

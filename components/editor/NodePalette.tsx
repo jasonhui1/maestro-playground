@@ -54,7 +54,7 @@ export default function NodePalette({ onAdd, onAddLoopZone }: {
         value={query}
         onChange={e => setQuery(e.target.value)}
         placeholder="Search nodes…"
-        className="w-full text-xs border border-zinc-200 rounded px-2 py-1 mb-3"
+        className="w-full text-xs border border-zinc-200 rounded-md px-2 py-1 mb-3"
       />
       {GROUPS.map(group => {
         const items = visible.filter(i => i.group === group)
@@ -67,7 +67,7 @@ export default function NodePalette({ onAdd, onAddLoopZone }: {
                 <button
                   key={item.kind}
                   onClick={() => click(item)}
-                  className="text-left text-xs px-2 py-1 rounded border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+                  className="text-left text-xs px-2 py-1 rounded-md border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
                 >
                   {item.label}
                 </button>

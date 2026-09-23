@@ -19,7 +19,7 @@ function ReportNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'report'
           <button
             onClick={() => data.onRunFromHere?.(node.id)}
             title="Run up to here"
-            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded px-1.5 py-0.5 transition-colors"
+            className="nodrag ml-auto text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-md px-1.5 py-0.5 transition-colors"
           >
             ▶ Run To
           </button>
@@ -27,7 +27,7 @@ function ReportNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'report'
       </div>
       <div className="px-4 py-2">
         {run?.output ? (
-          <div className="text-xs text-zinc-600 font-mono line-clamp-4 break-all bg-zinc-50 p-1.5 rounded border border-zinc-100">
+          <div className="text-xs text-zinc-600 font-mono line-clamp-4 break-all bg-zinc-50 p-1.5 rounded-md border border-zinc-100">
             {run.output}
           </div>
         ) : (

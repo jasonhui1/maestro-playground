@@ -18,13 +18,13 @@ function PortRow({ port, nodeOptions, onUpdate, onRemove }: {
         value={port.name}
         onChange={e => onUpdate({ name: e.target.value })}
         placeholder="socket name"
-        className="w-24 text-[11px] border border-zinc-200 rounded px-1.5 py-0.5"
+        className="w-24 text-[11px] border border-zinc-200 rounded-md px-1.5 py-0.5"
       />
       <span className="text-[10px] text-zinc-400">→</span>
       <select
         value={port.node}
         onChange={e => onUpdate({ node: e.target.value })}
-        className="flex-1 text-[11px] border border-zinc-200 rounded px-1.5 py-0.5"
+        className="flex-1 text-[11px] border border-zinc-200 rounded-md px-1.5 py-0.5"
       >
         <option value="">— node —</option>
         {nodeOptions.map(n => <option key={n.id} value={n.id}>{n.id}</option>)}

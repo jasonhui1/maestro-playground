@@ -18,17 +18,17 @@ function LoopEndNode({ data, selected }: NodeProps<Node<EditorNodeDataOf<'loop-e
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">zone</label>
         <input value={node.zone ?? ''} onChange={e => data.onChange({ zone: e.target.value })}
           disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">until</label>
         <input value={node.until ?? ''} onChange={e => data.onChange({ until: e.target.value })}
           placeholder='e.g. {ls.draft} contains "DONE"'
           disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">max iterations</label>
         <input type="number" min={1} value={node.maxIterations ?? 1}
           onChange={e => data.onChange({ maxIterations: parseInt(e.target.value) || 1 })}
           disabled={data.readOnly}
-          className="w-full text-xs font-mono border border-zinc-200 rounded px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
+          className="w-full text-xs font-mono border border-zinc-200 rounded-md px-2 py-1 nodrag mb-2 disabled:bg-zinc-50 disabled:text-zinc-500" />
 
         <Sockets handles={data.sockets} tone="loop" />
       </div>
