@@ -16,6 +16,8 @@ export const CAPABILITIES = {
   /** `POST /api/runs/:id/fork` takes `{ from?, revisions?, versions? }` and streams the new run;
    *  `/api/run` no longer takes `branchOutputs` (#103). */
   runFork: true,
+  /** A resume with `fork: true` leaves its source hold open and starts a separate run (#76). */
+  resumeFork: true,
   /** Grouped launches and summaries are exposed by `/api/variance` (#133). */
   varianceGroups: true,
   /** `PATCH /api/runs/:id/holds/:holdId` takes `{ feedback }` and saves it on the open hold; `""` clears it (#134). */

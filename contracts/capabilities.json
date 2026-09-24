@@ -3,6 +3,7 @@
   "runStartEvent": true,
   "runFailureFrame": true,
   "runFork": true,
+  "resumeFork": true,
   "varianceGroups": true,
   "holdFeedback": true,
   "holdReroll": true

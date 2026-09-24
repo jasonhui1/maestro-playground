@@ -156,6 +156,28 @@ test('resume writes the hold log, runs what follows in the same folder, and comp
   assert.ok(meta.holds![0].resolvedAt)
 })
 
+test('independent picks fork from one waiting hold and run together', async () => {
+  newWorkspace(oneHold)
+  const source = await startRun()
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const hold = (await readMeta(source)).holds![0]!
+  runs.update(source, { holds: [{ ...hold, candidates: [...hold.candidates, { heading: 'Candidate 3', body: 'third route' }] }] })
+  const first = await resume(source, { holdId: 'hold', chosen: 'Candidate 1', direction: 'go', fork: true })
+  const second = await resume(source, { holdId: 'hold', chosen: 'Candidate 2', direction: 'go', fork: true })
+  const third = await resume(source, { holdId: 'hold', chosen: 'Candidate 3', direction: 'go', fork: true })
+  assert.strictEqual(first.status, 200)
+  assert.strictEqual(second.status, 200)
+  assert.strictEqual(third.status, 200)
+  const streams = await Promise.all([sse(first), sse(second), sse(third)])
+  const ids = streams.map(events => events[0]!.runId as string)
+  assert.strictEqual(new Set(ids).size, 3)
+  assert.ok(ids.every(id => id !== source))
+  assert.strictEqual((await readMeta(source)).status, 'waiting')
+  assert.strictEqual((await readMeta(source)).holds?.[0]?.resolvedAt, undefined)
+  assert.deepStrictEqual(await Promise.all(ids.map(async id => (await readMeta(id)).holds?.[0]?.chosen)),
+    ['Candidate 1', 'Candidate 2', 'Candidate 3'])
+})
+
 test('resume is refused while the run is running, or when it has no hold', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
@@ -172,6 +194,14 @@ test('resume without a direction is a bad request; an unknown run is not found',
   assert.strictEqual((await resume(runId, {})).status, 400)
   assert.strictEqual((await readMeta(runId)).status, 'waiting', 'a refused resume changes nothing')
   assert.strictEqual((await resume('no-such-run', { direction: 'x' })).status, 404)
+})
+
+test('independent resume requires a named hold and a pick', async () => {
+  newWorkspace(oneHold)
+  const source = await startRun()
+  assert.strictEqual((await resume(source, { direction: 'go', fork: true })).status, 400)
+  assert.strictEqual((await resume(source, { direction: 'go', chosen: 'Candidate 1', fork: 'yes' })).status, 400)
+  assert.strictEqual((await readMeta(source)).status, 'waiting')
 })
 
 test('resume keeps the version pins and the pre-hold logs the run started with', async () => {

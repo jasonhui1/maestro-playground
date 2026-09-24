@@ -42,7 +42,7 @@ export function continueRun(
 
 function answer(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta,
-  { holdId, direction, chosen, custom, modelOverride, revision }: AnswerRequest,
+  { holdId, direction, chosen, custom, modelOverride, revision, fork }: AnswerRequest,
   context: Record<string, string>,
 ): Response | Refusal {
   const hold = selectHold(meta, holdId)
@@ -56,7 +56,7 @@ function answer(
   const effectiveOverride = resolveContinuationModelOverride(meta.modelOverride, modelOverride)
 
   const answered = answerHold(meta.holds ?? [], hold, direction, pick)
-  if (answered.mode === 'fork') {
+  if (fork || answered.mode === 'fork') {
     return forkRun(ws, workspace, meta, { anchors: [hold.nodeId], outputs: [answered.output], hold: answered.record, modelOverride: effectiveOverride }, context)
   }
   if (meta.status !== 'waiting') return conflict(`Run is ${meta.status}, not waiting`)

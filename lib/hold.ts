@@ -43,10 +43,12 @@ export interface AnswerRequest {
   modelOverride?: string | null
   /** The candidate set the pick was made from (#134). */
   revision?: number
+  /** Leave the source hold open and continue in a new run (#76). */
+  fork?: boolean
 }
 
 /** A resume body's shape, before it meets a run; a null field is an absent one. */
-export function readAnswerRequest({ holdId, direction, chosen, custom, modelOverride, revision }: Record<string, unknown>): AnswerRequest | Refusal {
+export function readAnswerRequest({ holdId, direction, chosen, custom, modelOverride, revision, fork }: Record<string, unknown>): AnswerRequest | Refusal {
   const dir = typeof direction === 'string' ? direction : ''
   const hasPick = (chosen != null && typeof chosen === 'string' && chosen.trim() !== '') ||
                   (custom != null && typeof custom === 'string' && custom.trim() !== '')
@@ -54,6 +56,8 @@ export function readAnswerRequest({ holdId, direction, chosen, custom, modelOver
   if (holdId != null && typeof holdId !== 'string') return badRequest('holdId must be a node id')
   if (chosen != null && typeof chosen !== 'string') return badRequest('chosen must be a candidate heading')
   if (custom != null && typeof custom !== 'string') return badRequest('custom must be non-empty text')
+  if (fork != null && typeof fork !== 'boolean') return badRequest('fork must be a boolean')
+  if (fork && (holdId == null || !hasPick)) return badRequest('fork requires holdId and a candidate selection')
   const parsedOverride = parseModelOverride(modelOverride)
   if (!parsedOverride.valid) return badRequest(parsedOverride.error)
   const rev = readRevision(revision)
@@ -65,6 +69,7 @@ export function readAnswerRequest({ holdId, direction, chosen, custom, modelOver
     custom: custom ?? undefined,
     ...(parsedOverride.value !== undefined ? { modelOverride: parsedOverride.value } : {}),
     ...(rev !== undefined ? { revision: rev } : {}),
+    ...(fork ? { fork: true } : {}),
   }
 }
 
