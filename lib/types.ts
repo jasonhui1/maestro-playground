@@ -243,7 +243,8 @@ export interface AgentOutput {
   reroll?: { holdId: string; feedback?: string }  // a fresh candidate set asked for at a hold, and the feedback it ran with (#134)
 }
 
-export type HoldCandidate = MarkdownSection
+/** `images` are lifted out of `body`. */
+export type HoldCandidate = MarkdownSection & { images?: string[] }
 
 /** Why a request is refused, and the HTTP status it answers with. */
 export interface Refusal { error: string; status: number; errors?: unknown[] }

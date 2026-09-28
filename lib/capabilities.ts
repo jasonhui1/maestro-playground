@@ -31,6 +31,9 @@ export const CAPABILITIES = {
   /** A tool's saved image is linked in node output as `/api/runs/:id/images/:name` and served there; `/api/run`
    *  takes `imageOverride: { size?, quality?, negative? }`, which the run's continuations carry on (#148). */
   runImages: true,
+  /** A hold candidate carries `images`: the engine image URLs its decider linked inside it, lifted out of its
+   *  `body`; an image linked in no candidate stays in the hold input's `## Images`. */
+  holdCandidateImages: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

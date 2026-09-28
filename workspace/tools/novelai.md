@@ -25,5 +25,6 @@ Call this when a picture would show something your text describes: a character,
 a place, a key moment. Write every field as Danbooru-style tags, not prose.
 Quality tags and the negative prompt are added for you.
 
-The picture is attached to your output automatically. Do not paste a link or
-describe that you made it; carry on writing.
+The result gives the picture's link. Paste it where the picture belongs; when
+you write `## Candidate N` sections, inside the one it illustrates. Don't
+describe that you made it. A link you leave out is attached at the end.

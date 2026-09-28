@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import {
   answerHold, checkRevision, hasAnsweredHold, holdsKeptByFork, mergeHolds, openHold, readAnswerRequest, readFeedback, readPick,
-  rerollHold, selectHold, selectOpenHold, withFeedback,
+  rerollHold, selectHold, selectOpenHold, sliceCandidates, withFeedback,
 } from '../lib/hold'
 import type { HoldRecord, RunMeta } from '../lib/types'
 
@@ -141,6 +141,26 @@ test('answerHold: pure candidate selection with empty direction produces clean o
   assert.strictEqual(answer.output.output, 'PICK: Candidate 1\nA')
 })
 
+
+const PIC = (name: string) => `/api/runs/r1/images/${name}.webp`
+
+test('sliceCandidates: engine image links in a candidate are lifted onto it, in order', () => {
+  const input = [
+    '## Candidate 1', 'Knight', `![](${PIC('a')})`, `![knight, back](${PIC('b')})`, '',
+    '## Candidate 2', 'Thief ![](https://example.com/x.png)', '',
+    '## Images', '', `![](${PIC('c')})`,
+  ].join('\n')
+  assert.deepStrictEqual(sliceCandidates(input), [
+    { heading: 'Candidate 1', body: 'Knight', images: [PIC('a'), PIC('b')] },
+    { heading: 'Candidate 2', body: 'Thief ![](https://example.com/x.png)' },
+  ])
+})
+
+test('answerHold: a picked candidate carries its pictures downstream', () => {
+  const open = hold('gate', { candidates: [{ heading: 'Candidate 1', body: 'A', images: [PIC('a')] }] })
+  const answer = answerHold([open], open, 'go', { candidate: open.candidates[0] })
+  assert.strictEqual(answer.output.output, `PICK: Candidate 1\nA\n\n![](${PIC('a')})\n\ngo`)
+})
 
 test('openHold: a new record is revision 1 with no feedback', () => {
   const { record } = openHold('gate', DECIDER)

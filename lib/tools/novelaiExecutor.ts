@@ -192,7 +192,9 @@ export function createNovelaiExecutor(fetchFn?: typeof fetch, env: Env = process
     const url = ctx.images.save(`img-${nanoid(10)}.webp`, webp)
     const { width, height } = body.parameters
     return {
-      result: `Image generated (${width}×${height}, ${settings.model}, seed ${seed}). It is attached to your output automatically; do not paste a link to it.`,
+      result: `Image generated (${width}×${height}, ${settings.model}, seed ${seed}). Its link is ![](${url}) — paste it `
+        + 'where the picture belongs; when you write `## Candidate N` sections, inside the one it illustrates. '
+        + 'A link you leave out is attached at the end of your output.',
       images: [url],
     }
   }

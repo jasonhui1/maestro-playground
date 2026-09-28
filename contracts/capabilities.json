@@ -8,5 +8,6 @@
   "holdFeedback": true,
   "holdReroll": true,
   "holdRerollFork": true,
-  "runImages": true
+  "runImages": true,
+  "holdCandidateImages": true
 }

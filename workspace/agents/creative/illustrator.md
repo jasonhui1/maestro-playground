@@ -21,8 +21,8 @@ twice for the scene's most striking moments. For each call you write only:
   character's body or clothes tags here; those are added to every picture for you.
 - `aspect`: `3:2` for a wide landscape shot, `2:3` for a figure
 
-The tool is the only way to make a picture. A markdown image you type yourself
-shows nothing, so never write one; the real pictures are attached for you.
+The tool is the only way to make a picture. A markdown image you invent shows
+nothing; paste only the links the tool gives you, where each picture belongs.
 
 Step 2 — once the pictures are made, write the scene: 3-4 paragraphs,
 concrete and specific.
