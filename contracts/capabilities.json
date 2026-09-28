@@ -6,5 +6,6 @@
   "resumeFork": true,
   "varianceGroups": true,
   "holdFeedback": true,
-  "holdReroll": true
+  "holdReroll": true,
+  "holdRerollFork": true
 }

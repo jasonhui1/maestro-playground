@@ -25,6 +25,9 @@ export const CAPABILITIES = {
   /** `POST /api/runs/:id/holds/:holdId/reroll` streams fresh candidates, ending `run_waiting` (`reroll_failed`
    *  first when the old set stays); hold records and resume bodies carry `revision`, a stale one is 409 (#134). */
   holdReroll: true,
+  /** The reroll route takes `fork` and `like` (a candidate heading), and forks an answered hold even while its run
+   *  is running: the new run waits on the fresh set, its hold carrying `like`; a failed one never lands on disk (#147). */
+  holdRerollFork: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

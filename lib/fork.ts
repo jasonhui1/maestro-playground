@@ -1,6 +1,6 @@
 import { runLog, recordKey } from './partialRun'
 import { badRequest, notFound, unprocessable } from './refusal'
-import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace } from './runSession'
+import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace, type StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -75,6 +75,14 @@ export function planFork(source: RunMeta, { from, revisions, versions, modelOver
 export function forkRun(
   ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
 ): Response | Refusal {
+  const start = forkStart(ws, workspace, source, fork, context)
+  return 'error' in start ? start : startRun(ws, start)
+}
+
+/** What a fork's new run starts from, before anything in it runs. */
+export function forkStart(
+  ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
+): StartRunInput | Refusal {
   const continuation = loadContinuation(ws.root, workspace, source, fork.versions)
   if ('error' in continuation) return continuation
   const kept = runLog(source).replayFor(fork.anchors)
@@ -83,7 +91,7 @@ export function forkRun(
   const replayedNodeIds = [...new Set(kept.replay.map(o => o.nodeId).filter((id): id is string => Boolean(id)))]
   const replayedSlots = kept.replay.map(o => recordKey(o)).filter(Boolean)
   const sourceOutputs = runLog(source).current()
-  return startRun(ws, {
+  return {
     chain,
     workspace: defs,
     title: source.chainName,
@@ -103,7 +111,7 @@ export function forkRun(
     sourceOutputs,
     chainSlug: source.chainSlug,
     entrypoint: source.entrypoint,
-  })
+  }
 }
 
 function isTextMap(value: unknown): value is Record<string, string> {

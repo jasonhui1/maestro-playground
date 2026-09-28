@@ -201,7 +201,21 @@ export interface StartRunInput {
 export function startRun(ws: Workspace, run: StartRunInput): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
-  ws.runs.create({
+  ws.runs.create(newRunMeta(runId, run))
+  return streamChainRun({
+    ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
+    context: { ...run.pinnedContext, ...contextOverrides(run.context) },
+    paramValue: parameter?.value ?? '',
+    replay: { logged: [], fresh: run.replay ?? [] },
+    firstStep: 0,
+    modelOverride: run.modelOverride,
+  })
+}
+
+/** The meta.json a new run folder starts with, running and with nothing logged yet. */
+export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
+  const { chain, seedPrompt, parameter, versionNumber, holds } = run
+  return {
     runId,
     chainName: run.title,
     seedPrompt,
@@ -222,13 +236,5 @@ export function startRun(ws: Workspace, run: StartRunInput): Response {
     ...(run.chainSlug ? { chainSlug: run.chainSlug } : {}),
     ...(run.entrypoint ? { entrypoint: run.entrypoint } : {}),
     ...(run.variance ? { variance: run.variance } : {}),
-  })
-  return streamChainRun({
-    ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
-    context: { ...run.pinnedContext, ...contextOverrides(run.context) },
-    paramValue: parameter?.value ?? '',
-    replay: { logged: [], fresh: run.replay ?? [] },
-    firstStep: 0,
-    modelOverride: run.modelOverride,
-  })
+  }
 }

@@ -16,6 +16,7 @@ import {
   runPromoteScenario,
   runRerollScenario,
   runRerollFailedScenario,
+  runRerollForkScenario,
   runForkScenario,
   runErrorScenario,
   runCapabilitiesScenario,
@@ -160,6 +161,27 @@ test('contract: a failed reroll keeps the candidates and reports reroll_failed b
   assert.strictEqual((result.metadata as { status: string }).status, 'waiting')
 })
 
+test('contract: rerolling an answered hold forks a run waiting on the fresh set; the source is unchanged (#147)', async () => {
+  freshWorkspace()
+  const result = await runRerollForkScenario(context)
+
+  assert.strictEqual(result.events[0].runId, 'contract-run-reroll-fork')
+  const waiting = result.events.at(-1)!
+  assert.strictEqual(waiting.type, 'run_waiting')
+  const hold = waiting.hold as { revision: number; resolvedAt?: string; feedback?: string; like?: { candidate: { heading: string }; revision: number } }
+  assert.strictEqual(hold.revision, 2)
+  assert.strictEqual(hold.resolvedAt, undefined)
+  assert.strictEqual(hold.feedback, 'Warmer')
+  assert.deepStrictEqual([hold.like?.candidate.heading, hold.like?.revision], ['Candidate 2', 1])
+
+  const meta = result.metadata as { status: string; branchedFromRunId?: string; branchedFromNode?: string }
+  assert.strictEqual(meta.status, 'waiting')
+  assert.strictEqual(meta.branchedFromRunId, 'contract-run-reroll-source')
+  assert.strictEqual(meta.branchedFromNode, 'hold')
+  assert.ok(result.sourceMetadata)
+  assert.deepStrictEqual(result.sourceMetadata.after, result.sourceMetadata.before)
+})
+
 test('contract: fork run forks from second node, preserving first output and leaving source run unchanged (#136)', async () => {
   freshWorkspace()
   const result = await runForkScenario(context)
@@ -254,6 +276,9 @@ test('contract: fixtures check and update harness (#136)', async () => {
   const rerollFailed = await runRerollFailedScenario(context)
 
   freshWorkspace()
+  const rerollFork = await runRerollForkScenario(context)
+
+  freshWorkspace()
   const fork = await runForkScenario(context)
 
   freshWorkspace()
@@ -267,7 +292,7 @@ test('contract: fixtures check and update harness (#136)', async () => {
   generatedFiles.set('manifest.json', formatJson(manifest))
   generatedFiles.set('capabilities.json', formatJson(capabilities))
 
-  for (const sc of [fresh, hold, resume, promote, reroll, rerollFailed, fork, error]) {
+  for (const sc of [fresh, hold, resume, promote, reroll, rerollFailed, rerollFork, fork, error]) {
     for (const [file, content] of Object.entries(sc.files)) {
       generatedFiles.set(`${sc.scenario}/${file}`, content)
     }

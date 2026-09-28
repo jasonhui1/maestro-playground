@@ -29,7 +29,8 @@ export function continueRun(
   plan: ContinuePlan,
   requestContext?: unknown,
 ): Response {
-  const meta = loadRunFor(ws.runs, runId, { mustNotBeRunning: true })
+  // A reroll fork only reads its source, so it may run beside it (#147).
+  const meta = loadRunFor(ws.runs, runId, { mustNotBeRunning: !('reroll' in plan) })
   if ('error' in meta) return toResponse(meta)
   const context = contextOverrides(requestContext)
   const workspace = ws.definitions()

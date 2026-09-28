@@ -61,6 +61,12 @@ contracts/
     stream.sse
     run.json
     layout.json
+  reroll-fork/         # Rerolling an answered hold for more like a candidate: a new run waits on the fresh set (#147)
+    request.json       # POST /api/runs/:id/holds/:holdId/reroll body with like and feedback
+    response.json
+    stream.sse
+    run.json           # the new run's metadata
+    layout.json
   fork/                # Forking a completed run from an upstream anchor node
     request.json       # POST /api/runs/:id/fork request body
     response.json

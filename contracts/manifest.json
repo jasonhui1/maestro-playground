@@ -244,6 +244,37 @@
         }
       ]
     },
+    "reroll-fork": {
+      "description": "Rerolling an answered hold for more like one of its candidates: a new run waits on the fresh set, the source is unchanged (#147)",
+      "setup": "Held chain resumed in place with Candidate 1 to completion; the reroll names Candidate 2 as like, with feedback",
+      "request": {
+        "method": "POST",
+        "path": "/api/runs/:id/holds/:holdId/reroll",
+        "file": "reroll-fork/request.json"
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "descriptorFile": "reroll-fork/response.json",
+        "streamFile": "reroll-fork/stream.sse"
+      },
+      "observations": [
+        {
+          "method": "GET",
+          "path": "/api/runs/:id",
+          "status": 200,
+          "contentType": "application/json",
+          "file": "reroll-fork/run.json"
+        },
+        {
+          "method": "GET",
+          "path": "/api/runs/:id/layout",
+          "status": 200,
+          "contentType": "application/json",
+          "file": "reroll-fork/layout.json"
+        }
+      ]
+    },
     "error": {
       "description": "Terminal stream failure after persistence fault, plus HTTP refusal",
       "setup": "Held chain executed with one-shot fault on runs.update persisting status: waiting",

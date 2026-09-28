@@ -345,6 +345,27 @@ export async function runRerollFailedScenario({ setRunId, setTime }: ScenarioCon
   }
 }
 
+export async function runRerollForkScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
+  const sourceId = 'contract-run-reroll-source'
+  setRunId(sourceId)
+  setTime('2026-09-21T10:00:00.000Z')
+  const { POST: startRun } = await import('../../app/api/run/route')
+  await drainSse(await startRun({ json: async () => ({ chainName: 'held-chain', seedPrompt: 'Setup reroll fork' }) } as NextRequest))
+  const { POST: resumeRoute } = await import('../../app/api/runs/[runId]/resume/route')
+  await drainSse(await resumeRoute(
+    { json: async () => ({ chosen: 'Candidate 1', revision: 1 }) } as NextRequest,
+    { params: Promise.resolve({ runId: sourceId }) },
+  ))
+  const before = await runGetRun(sourceId)
+
+  setTime('2026-09-21T10:01:00.000Z')
+  const forkId = 'contract-run-reroll-fork'
+  setRunId(forkId)
+  const requestBody = { like: 'Candidate 2', feedback: 'Warmer', revision: 1 }
+  const result = await recordScenarioRun({ scenario: 'reroll-fork', runId: forkId, requestBody, response: await rerollRoute(sourceId, requestBody) })
+  return { ...result, sourceMetadata: { before, after: await runGetRun(sourceId) } }
+}
+
 export async function runPromoteScenario({ setRunId, setTime }: ScenarioContext): Promise<ScenarioResult> {
   const runId = 'contract-run-promote'
   setRunId(runId)
@@ -712,6 +733,37 @@ export function getContractManifest(): Record<string, unknown> {
             status: 200,
             contentType: 'application/json',
             file: 'reroll-failed/layout.json',
+          },
+        ],
+      },
+      'reroll-fork': {
+        description: 'Rerolling an answered hold for more like one of its candidates: a new run waits on the fresh set, the source is unchanged (#147)',
+        setup: 'Held chain resumed in place with Candidate 1 to completion; the reroll names Candidate 2 as like, with feedback',
+        request: {
+          method: 'POST',
+          path: '/api/runs/:id/holds/:holdId/reroll',
+          file: 'reroll-fork/request.json',
+        },
+        response: {
+          status: 200,
+          contentType: 'text/event-stream',
+          descriptorFile: 'reroll-fork/response.json',
+          streamFile: 'reroll-fork/stream.sse',
+        },
+        observations: [
+          {
+            method: 'GET',
+            path: '/api/runs/:id',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll-fork/run.json',
+          },
+          {
+            method: 'GET',
+            path: '/api/runs/:id/layout',
+            status: 200,
+            contentType: 'application/json',
+            file: 'reroll-fork/layout.json',
           },
         ],
       },

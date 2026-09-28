@@ -244,6 +244,9 @@ export interface HoldRecord {
   revision?: number
   /** When this open hold was last rerolled; a refresh keeps it (#134). */
   rerolledAt?: string
+  /** The source hold's candidate a reroll fork asked for more like, and that set's revision;
+   *  later rerolls of this hold keep asking for it (#147). */
+  like?: { candidate: HoldCandidate; revision: number }
 }
 
 export interface RunMeta {

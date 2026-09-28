@@ -129,12 +129,17 @@ export type HoldPick = { candidate: HoldCandidate } | { custom: string }
 
 const normalize = (heading: string) => heading.trim().replace(/\s+/g, ' ').toLowerCase()
 
-/** A request's pick, forgiving case and spacing in a heading; neither field given is no pick (#96). */
+/** The hold's candidate a request names, forgiving case and spacing in its heading. */
+export function findCandidate(hold: HoldRecord, heading: string): HoldCandidate | undefined {
+  return hold.candidates.find(c => normalize(c.heading) === normalize(heading))
+}
+
+/** A request's pick; neither field given is no pick (#96). */
 export function readPick(hold: HoldRecord, chosen?: string, custom?: string): HoldPick | undefined | Refusal {
   if (chosen !== undefined && custom !== undefined) return badRequest('send chosen or custom, not both')
   if (custom !== undefined) return custom.trim() ? { custom: custom.trim() } : badRequest('custom must be non-empty text')
   if (chosen === undefined) return undefined
-  const candidate = hold.candidates.find(c => normalize(c.heading) === normalize(chosen))
+  const candidate = findCandidate(hold, chosen)
   return candidate ? { candidate } : badRequest(`chosen names no candidate of hold ${hold.nodeId}`)
 }
 
@@ -156,12 +161,18 @@ const sameHold = (a: HoldRecord, b: HoldRecord) => a.nodeId === b.nodeId && a.re
 const replaceHold = (holds: HoldRecord[], hold: HoldRecord, record: HoldRecord) =>
   holds.map(h => (sameHold(h, hold) ? record : h))
 
+/** `hold` as it stood before it was answered: a reroll fork reopens it (#147). */
+export function reopenHold(hold: HoldRecord): HoldRecord {
+  const open: HoldRecord = { ...hold }
+  delete open.chosen; delete open.custom; delete open.direction; delete open.resolvedAt
+  return open
+}
+
 /** Answers `hold`, one of `holds` (#94, #96). */
 export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: string, pick?: HoldPick): HoldAnswer {
   const at = new Date().toISOString()
   // A re-answered hold drops the earlier answer before taking the new one.
-  const open: HoldRecord = { ...hold }
-  delete open.chosen; delete open.custom; delete open.direction; delete open.resolvedAt
+  const open = reopenHold(hold)
   const chosen = pick && 'candidate' in pick ? { chosen: pick.candidate.heading } : {}
   const recorded = pick && 'custom' in pick ? { custom: pick.custom } : chosen
   const lead = !pick ? undefined
@@ -193,15 +204,15 @@ export function holdsKeptByFork(holds: HoldRecord[] | undefined, dropped: Set<st
 
 /**
  * A hold reached again while still open refreshes its record rather than adding one:
- * a new candidate set that keeps the hold's feedback (#134).
+ * a new candidate set that keeps the hold's feedback (#134) and `like` (#147).
  */
 export function mergeHolds(existing: HoldRecord[], reached: HoldRecord[]): HoldRecord[] {
   const merged = [...existing]
   for (const hold of reached) {
     const i = merged.findLastIndex(h => h.nodeId === hold.nodeId && !h.resolvedAt)
     if (i === -1) { merged.push(hold); continue }
-    const { feedback, rerolledAt } = merged[i]
-    merged[i] = { ...hold, ...(feedback ? { feedback } : {}), ...(rerolledAt ? { rerolledAt } : {}), revision: revisionOf(merged[i]) + 1 }
+    const { feedback, rerolledAt, like } = merged[i]
+    merged[i] = { ...hold, ...(feedback ? { feedback } : {}), ...(rerolledAt ? { rerolledAt } : {}), ...(like ? { like } : {}), revision: revisionOf(merged[i]) + 1 }
   }
   return merged
 }

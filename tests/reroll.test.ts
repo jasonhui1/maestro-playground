@@ -77,3 +77,20 @@ test('readRerollRequest: feedback and revision are optional and typed', () => {
   assert.strictEqual((readRerollRequest('hold', { revision: 0 }) as { status: number }).status, 400)
   assert.strictEqual((readRerollRequest('hold', { feedback: 1 }) as { status: number }).status, 400)
 })
+
+test('readRerollRequest: fork is a boolean and like a heading that cannot stay in place (#147)', () => {
+  assert.deepStrictEqual(readRerollRequest('hold', { fork: true, like: 'Candidate 1' }), { holdId: 'hold', fork: true, like: 'Candidate 1' })
+  assert.deepStrictEqual(readRerollRequest('hold', { fork: null, like: null }), { holdId: 'hold' })
+  assert.strictEqual((readRerollRequest('hold', { fork: 'yes' }) as { status: number }).status, 400)
+  assert.strictEqual((readRerollRequest('hold', { like: ' ' }) as { status: number }).status, 400)
+  assert.strictEqual((readRerollRequest('hold', { like: 'Candidate 1', fork: false }) as { status: number }).status, 400)
+})
+
+test('rerollPrompt: a like candidate is added once, before any feedback (#147)', () => {
+  const like = { heading: 'Candidate 2', body: 'the ferry' }
+  const prompt = rerollPrompt('base', 'darker', like)
+  assert.ok(prompt.startsWith('base\n'))
+  assert.strictEqual(prompt.split('the ferry').length, 2)
+  assert.ok(prompt.indexOf('the ferry') < prompt.indexOf('darker'))
+  assert.ok(rerollPrompt('base', undefined, like).includes('Candidate 2:\nthe ferry'))
+})
