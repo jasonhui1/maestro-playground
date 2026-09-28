@@ -188,8 +188,13 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
     },
     record,
     holds: replaceHold(holds, hold, record),
-    mode: hold.resolvedAt ? 'fork' : 'resume',
+    mode: forksAt(hold, false) ? 'fork' : 'resume',
   }
+}
+
+/** Whether a continuation at `hold` forks: when asked to, or when the hold is already answered (#99, #76, #147). */
+export function forksAt(hold: HoldRecord, asked: boolean): boolean {
+  return asked || hold.resolvedAt !== undefined
 }
 
 /** Whether any of `nodeIds` is a hold already answered: rerunning it in place would ask it again (#99). */

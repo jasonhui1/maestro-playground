@@ -365,7 +365,6 @@ test('a fork reroll does not wait for the source to finish running (#147)', asyn
   const inFlight = drainSse(await resume(runId, { chosen: 'Candidate 2', revision: 1 }))
   assert.strictEqual(meta(runId).status, 'running')
 
-  assert.strictEqual((await reroll(runId, { fork: false })).status, 409)
   const { events } = await drainSse(await reroll(runId, { like: 'Candidate 1', revision: 1 }))
   assert.strictEqual(events.at(-1)!.type, 'run_waiting')
   const forkId = forkedId(events)
@@ -375,4 +374,28 @@ test('a fork reroll does not wait for the source to finish running (#147)', asyn
   await inFlight
   assert.strictEqual(meta(runId).status, 'complete')
   assert.strictEqual(meta(runId).holds![0].chosen, 'Candidate 2')
+})
+
+test('a fork of a hold rerolled in place starts from the original record, takes only the request feedback, and refuses a stale like (#147)', async () => {
+  const runId = await startWaiting()
+  await drainSse(await reroll(runId, { feedback: 'darker', revision: 1 }))
+  fake.reset()
+
+  // `Candidate 1` now means set 2's; without a revision it could land on the wrong set.
+  assert.strictEqual((await reroll(runId, { like: 'Candidate 1' })).status, 409)
+  const { events } = await drainSse(await reroll(runId, { like: 'Candidate 1', revision: 2 }))
+  const forkId = forkedId(events)
+  const prompt = deciderPrompts()[0]
+  assert.ok(prompt.includes('set 2 one'))
+  assert.ok(!prompt.includes('darker'))
+
+  const hold = openHold(forkId)
+  assert.strictEqual(hold.feedback, undefined)
+  assert.strictEqual(hold.revision, 3)
+  assert.deepStrictEqual(hold.like, { candidate: { heading: 'Candidate 1', body: 'set 2 one' }, revision: 2 })
+  const outputs = meta(forkId).agentOutputs
+  assert.deepStrictEqual(outputs.map(o => o.nodeId), ['proposer', 'decider', 'decider'])
+  assert.strictEqual(outputs[1].reroll, undefined)
+  assert.ok(outputs[1].output.includes('set 1 one'))
+  assert.strictEqual(openHold(runId).revision, 2)
 })

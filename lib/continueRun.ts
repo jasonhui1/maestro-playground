@@ -1,4 +1,4 @@
-import { answerHold, checkRevision, readPick, selectHold, type AnswerRequest } from './hold'
+import { answerHold, checkRevision, forksAt, readPick, selectHold, type AnswerRequest } from './hold'
 import { reroll, type RerollRequest } from './reroll'
 import { planPromotion, type PromoteRequest } from './promote'
 import { forkRun, planFork, type ForkRequest } from './fork'
@@ -20,8 +20,8 @@ export type ContinuePlan =
 
 /**
  * Continues run `runId` by `plan`, in place or as a fork (#99, #107); refusals come back as JSON.
- * A running run is refused (#104). In place, earlier records replay as the objects in
- * `meta.agentOutputs` and keep their logs (ADR-0011).
+ * A running run is refused (#104), bar a reroll fork (#147). In place, earlier records replay as
+ * the objects in `meta.agentOutputs` and keep their logs (ADR-0011).
  */
 export function continueRun(
   ws: Workspace,
@@ -29,7 +29,7 @@ export function continueRun(
   plan: ContinuePlan,
   requestContext?: unknown,
 ): Response {
-  // A reroll fork only reads its source, so it may run beside it (#147).
+  // A reroll decides whether it forks from the hold; in place, it claims the run itself.
   const meta = loadRunFor(ws.runs, runId, { mustNotBeRunning: !('reroll' in plan) })
   if ('error' in meta) return toResponse(meta)
   const context = contextOverrides(requestContext)
@@ -57,7 +57,7 @@ function answer(
   const effectiveOverride = resolveContinuationModelOverride(meta.modelOverride, modelOverride)
 
   const answered = answerHold(meta.holds ?? [], hold, direction, pick)
-  if (fork || answered.mode === 'fork') {
+  if (forksAt(hold, fork === true)) {
     return forkRun(ws, workspace, meta, { anchors: [hold.nodeId], outputs: [answered.output], hold: answered.record, modelOverride: effectiveOverride }, context)
   }
   if (meta.status !== 'waiting') return conflict(`Run is ${meta.status}, not waiting`)

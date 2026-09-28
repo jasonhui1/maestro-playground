@@ -75,13 +75,13 @@ export function planFork(source: RunMeta, { from, revisions, versions, modelOver
 export function forkRun(
   ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
 ): Response | Refusal {
-  const start = forkStart(ws, workspace, source, fork, context)
-  return 'error' in start ? start : startRun(ws, start)
+  const input = forkInput(ws, workspace, source, fork, context)
+  return 'error' in input ? input : startRun(ws, input)
 }
 
 /** What a fork's new run starts from, before anything in it runs. */
-export function forkStart(
-  ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string>,
+export function forkInput(
+  ws: Workspace, workspace: LiveWorkspace, source: RunMeta, fork: Fork, context: Record<string, string> = {},
 ): StartRunInput | Refusal {
   const continuation = loadContinuation(ws.root, workspace, source, fork.versions)
   if ('error' in continuation) return continuation

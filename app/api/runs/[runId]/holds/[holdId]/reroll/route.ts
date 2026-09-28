@@ -4,7 +4,7 @@ import { requestWorkspace } from '@/lib/requestWorkspace'
 import { readRerollRequest } from '@/lib/reroll'
 import { toResponse } from '@/lib/refusal'
 
-// Fresh candidates at an open hold: only its producer reruns, and the run stays waiting (#134).
+// Fresh candidates at a hold: only its producer reruns, in place (#134) or in a fork (#147).
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string; holdId: string }> },
