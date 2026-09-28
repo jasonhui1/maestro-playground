@@ -43,6 +43,11 @@ In Obsidian the output note becomes:
 | negative prompt    | global, plugin may override        | `IMAGE_NEGATIVE`                             |
 | sampler            | global                             | `IMAGE_SAMPLER` (default `k_euler_ancestral`) |
 | noise schedule     | global                             | `IMAGE_NOISE_SCHEDULE` (default `karras`)    |
+| steps              | global                             | `IMAGE_STEPS` (default `28`, 1-50)           |
+| guidance           | global                             | `IMAGE_GUIDANCE` (default `5`, 0-10)         |
+| cfg rescale        | global                             | `IMAGE_CFG_RESCALE` (default `0`, 0-1)       |
+| Variety+           | global (none on v5)                | `IMAGE_VARIETY` (default `false`)            |
+| seed               | tool file                          | `config.seed`, else random per call          |
 
 Sizes (all within NovelAI's Opus free-generation limit):
 

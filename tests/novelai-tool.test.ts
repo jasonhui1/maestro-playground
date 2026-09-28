@@ -9,7 +9,7 @@ import { requestEntry } from './helpers/requestWorkspace'
 import { answer, fakeModel } from './helpers/fakeModel'
 import { parseTool } from '../lib/fs/parseTool'
 import { paramsToJsonSchema } from '../lib/tools/spec'
-import { createNovelaiExecutor, imageSettings, novelaiRequest } from '../lib/tools/novelaiExecutor'
+import { createNovelaiExecutor, imageSettings, novelaiRequest, varietySigma } from '../lib/tools/novelaiExecutor'
 import { attachImages, imageUrl, type ToolContext } from '../lib/tools/context'
 import { parseImageOverride } from '../lib/imageOverride'
 import { memoryRunFolders } from '../lib/runFolders'
@@ -67,10 +67,31 @@ test('settings: tool file model beats env; run override beats env per field', ()
   assert.deepStrictEqual(s, {
     apiKey: 'k', baseUrl: 'https://image.novelai.net', model: 'nai-diffusion-5-full',
     size: 'small', quality: 'masterpiece', negative: '',
-    sampler: 'k_euler_ancestral', noiseSchedule: 'karras',
+    sampler: 'k_euler_ancestral', noiseSchedule: 'karras', steps: 28, guidance: 5, cfgRescale: 0, variety: false,
   })
   const tuned = imageSettings({}, undefined, { IMAGE_SAMPLER: 'k_euler', IMAGE_NOISE_SCHEDULE: 'native' })
   assert.deepStrictEqual([tuned.sampler, tuned.noiseSchedule], ['k_euler', 'native'])
+  const knobs = imageSettings({}, undefined, { IMAGE_STEPS: '23', IMAGE_GUIDANCE: '6.5', IMAGE_CFG_RESCALE: '0.2' })
+  assert.deepStrictEqual([knobs.steps, knobs.guidance, knobs.cfgRescale], [23, 6.5, 0.2])
+  const body = novelaiRequest('x', '1:1', knobs, 1).parameters
+  assert.deepStrictEqual([body.steps, body.scale, body.cfg_rescale], [23, 6.5, 0.2])
+  assert.throws(() => imageSettings({}, undefined, { IMAGE_STEPS: '28.5' }), /IMAGE_STEPS must be a whole number from 1 to 50/)
+  assert.throws(() => imageSettings({}, undefined, { IMAGE_CFG_RESCALE: '2' }), /IMAGE_CFG_RESCALE/)
+  assert.throws(() => imageSettings({}, undefined, { IMAGE_VARIETY: 'yes' }), /IMAGE_VARIETY/)
+  assert.strictEqual(imageSettings({ seed: 42 }, undefined, {}).seed, 42)
+  assert.throws(() => imageSettings({ seed: 1.5 }, undefined, {}), /config.seed/)
+})
+
+test('variety: per model and size; none for v5, none when off', () => {
+  assert.strictEqual(varietySigma('nai-diffusion-4-full', 'k_euler_ancestral', 832, 1216), 19)
+  assert.strictEqual(varietySigma('nai-diffusion-4-full', 'k_euler_ancestral', 1024, 1024), 19.343056794463642)
+  assert.strictEqual(varietySigma('nai-diffusion-4-5-full', 'k_euler_ancestral', 832, 1216), 58)
+  assert.strictEqual(varietySigma('nai-diffusion-4-5-full', 'k_euler_ancestral', 1024, 1024), 59.04722600415217)
+  assert.strictEqual(varietySigma('nai-diffusion-4-5-full', 'k_dpmpp_2s_ancestral', 832, 1216), 19.69230769230769)
+  assert.strictEqual(varietySigma('nai-diffusion-5-full', 'k_euler_ancestral', 832, 1216), null)
+  const on = imageSettings({ model: 'nai-diffusion-4-5-full' }, undefined, { IMAGE_VARIETY: 'true' })
+  assert.strictEqual(novelaiRequest('x', '2:3', on, 1).parameters.skip_cfg_above_sigma, 58)
+  assert.strictEqual(novelaiRequest('x', '2:3', { ...on, variety: false }, 1).parameters.skip_cfg_above_sigma, null)
   assert.strictEqual(imageSettings({}, undefined, { IMAGE_MODEL: 'nai-diffusion-4-full\r' }).model, 'nai-diffusion-4-full')
   assert.throws(() => imageSettings({}, undefined, { IMAGE_SIZE: 'huge' }), /IMAGE_SIZE/)
 })

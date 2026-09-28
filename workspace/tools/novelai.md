@@ -16,6 +16,7 @@ parts:
     description: Pose, action and setting only, as tags (e.g. "standing on a cliff, wind, storm, night, dramatic lighting"). Never repeat the character or clothes.
 config:
   model: nai-diffusion-4-5-full
+  # seed: 12345   # fixes the seed for every picture; without it each call is random
 ---
 
 Draw a picture with NovelAI's anime image model.

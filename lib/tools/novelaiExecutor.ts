@@ -23,6 +23,12 @@ export interface ImageSettings {
   negative: string
   sampler: string
   noiseSchedule: string
+  steps: number
+  guidance: number
+  cfgRescale: number
+  variety: boolean
+  /** Fixed by the tool file; absent draws a fresh seed per call. */
+  seed?: number
 }
 
 type Env = Record<string, string | undefined>
@@ -30,12 +36,40 @@ type Env = Record<string, string | undefined>
 const read = (env: Env, key: string) => env[key]?.trim() || undefined
 const text = (value: unknown) => typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
-/** Tool file config > env for the model; run override > env for the rest (#148). */
+function number(env: Env, key: string, fallback: number, min: number, max: number, integer = false): number {
+  const raw = read(env, key)
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+    throw new Error(`${key} must be ${integer ? 'a whole number' : 'a number'} from ${min} to ${max}, got "${raw}"`)
+  }
+  return value
+}
+
+function flag(env: Env, key: string): boolean {
+  const raw = read(env, key)?.toLowerCase()
+  if (raw === undefined || raw === 'false') return false
+  if (raw === 'true') return true
+  throw new Error(`${key} must be "true" or "false", got "${raw}"`)
+}
+
+const MAX_SEED = 4_294_967_295
+
+function configSeed(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw > MAX_SEED) {
+    throw new Error(`config.seed must be a whole number from 0 to ${MAX_SEED}`)
+  }
+  return raw
+}
+
+/** Tool file config > env for the model and seed; run override > env for the rest (#148). */
 export function imageSettings(config: Record<string, unknown>, override: ImageOverride | undefined, env: Env = process.env): ImageSettings {
   const envSize = read(env, 'IMAGE_SIZE')
   if (envSize !== undefined && envSize !== 'normal' && envSize !== 'small') {
     throw new Error(`IMAGE_SIZE must be "normal" or "small", got "${envSize}"`)
   }
+  const seed = configSeed(config.seed)
   return {
     apiKey: read(env, 'IMAGE_API_KEY'),
     baseUrl: (read(env, 'IMAGE_BASE_URL') ?? 'https://image.novelai.net').replace(/\/+$/, ''),
@@ -45,7 +79,22 @@ export function imageSettings(config: Record<string, unknown>, override: ImageOv
     negative: override?.negative ?? read(env, 'IMAGE_NEGATIVE') ?? '',
     sampler: read(env, 'IMAGE_SAMPLER') ?? 'k_euler_ancestral',
     noiseSchedule: read(env, 'IMAGE_NOISE_SCHEDULE') ?? 'karras',
+    steps: number(env, 'IMAGE_STEPS', 28, 1, 50, true),
+    guidance: number(env, 'IMAGE_GUIDANCE', 5, 0, 10),
+    cfgRescale: number(env, 'IMAGE_CFG_RESCALE', 0, 0, 1),
+    variety: flag(env, 'IMAGE_VARIETY'),
+    ...(seed !== undefined ? { seed } : {}),
   }
+}
+
+// NovelAI's Variety+ skips guidance at high noise; the sigma is the web app's, per model and size.
+// nai-diffusion-5 has no Variety+, so it (and any unknown model) gets none.
+export function varietySigma(model: string, sampler: string, width: number, height: number): number | null {
+  if (!model.startsWith('nai-diffusion-4')) return null
+  if (sampler === 'k_dpmpp_2s_ancestral') return 19.69230769230769
+  const square = width === 1024 && height === 1024
+  if (model.startsWith('nai-diffusion-4-5')) return square ? 59.04722600415217 : 58
+  return square ? 19.343056794463642 : 19
 }
 
 function caption(base: string) {
@@ -63,11 +112,12 @@ export function novelaiRequest(prompt: string, aspect: Aspect, settings: ImageSe
     parameters: {
       width, height, seed,
       n_samples: 1,
-      steps: 28,
-      scale: 5,
+      steps: settings.steps,
+      scale: settings.guidance,
       sampler: settings.sampler,
       noise_schedule: settings.noiseSchedule,
-      cfg_rescale: 0,
+      cfg_rescale: settings.cfgRescale,
+      skip_cfg_above_sigma: settings.variety ? varietySigma(settings.model, settings.sampler, width, height) : null,
       uncond_scale: 1,
       sm: false,
       sm_dyn: false,
@@ -123,7 +173,7 @@ export function createNovelaiExecutor(fetchFn?: typeof fetch, env: Env = process
     const settings = imageSettings(config, ctx.imageOverride, env)
     if (!settings.apiKey) throw new Error('IMAGE_API_KEY is not set in .env.local')
 
-    const seed = Math.floor(Math.random() * 4_294_967_295)
+    const seed = settings.seed ?? Math.floor(Math.random() * MAX_SEED)
     const extra = config.parameters && typeof config.parameters === 'object' && !Array.isArray(config.parameters)
       ? config.parameters as Record<string, unknown>
       : {}
