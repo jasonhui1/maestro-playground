@@ -7,5 +7,6 @@
   "varianceGroups": true,
   "holdFeedback": true,
   "holdReroll": true,
-  "holdRerollFork": true
+  "holdRerollFork": true,
+  "runImages": true
 }

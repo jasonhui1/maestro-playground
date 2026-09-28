@@ -1,8 +1,10 @@
-import { ChainDef, ChainNode, AgentDef, AgentOutput, HoldRecord } from './types'
+import { ChainDef, ChainNode, AgentDef, AgentOutput, FixedParts, HoldRecord } from './types'
 import type { RunDefinitions } from './runDefinitions'
 import { makeContextReader } from './fs/contextReader'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
+import type { ToolContext } from './tools/context'
+import { agentPartSockets } from './tools/parts'
 import { injectSkills } from './prompt'
 import { resolveNodePrompt, readSocket } from './resolveNode'
 import { SectionWarning, sameSectionWarning, emitSectionWarnings } from './sectionWarning'
@@ -53,6 +55,8 @@ export interface RunRequest {
   depth?: number
   /** Model override for this run (#128). */
   modelOverride?: string
+  /** Where the run's tools save images; without it a tool reaches only the workspace (#148). */
+  toolContext?: ToolContext
 }
 
 export async function runChainGraph(
@@ -63,7 +67,7 @@ export async function runChainGraph(
 ): Promise<AgentOutput[]> {
   const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
   const { seedPrompt, paramValue = '', context: contextOverrides = {}, replay: startOutputs = [],
-    run: runFn = runAgent, depth = 0, modelOverride } = request
+    run: runFn = runAgent, depth = 0, modelOverride, toolContext = { workspacePath } } = request
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
@@ -91,7 +95,7 @@ export async function runChainGraph(
   const liveEdgeForSlot = (nodeId: string, slot: string): number | undefined =>
     (incomingByNode.get(nodeId) || []).find(i => chain.edges[i].toSocket === slot && live.has(i))
 
-  const lookup: WorkspaceLookup = { chain, agents, chains }
+  const lookup: WorkspaceLookup = { chain, agents, chains, tools }
   // A node is skipped unless every non-optional input has a live edge; an
   // optional input (subchain only, today) counts only if it is actually wired —
   // an unwired optional input never blocks the node.
@@ -142,6 +146,17 @@ export async function runChainGraph(
   }
   const inValue = (nodeId: string): string => slotValue(nodeId, 'in')
 
+  // A wired part reads its edge, an unwired one its literal; neither leaves it to the tool (#149).
+  const partsFixedBy = (node: ChainNode, agent: AgentDef): FixedParts => {
+    const fixed: FixedParts = {}
+    for (const { tool, part, socket } of agentPartSockets(agent, tools)) {
+      const wired = (incomingByNode.get(node.id) || []).some(index => chain.edges[index].toSocket === socket)
+      const value = wired ? slotValue(node.id, socket) : hasLiteralInput(node, socket) ? node.inputs![socket] : undefined
+      if (value !== undefined) (fixed[tool] ??= {})[part] = value
+    }
+    return fixed
+  }
+
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
     const effectiveAgent = withModelOverride(agent, modelOverride)
@@ -153,7 +168,8 @@ export async function runChainGraph(
     // Binding is all the scheduler knows about tools: it hands the runner a list
     // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
     // took one API call or nine is entirely below this line.
-    const boundTools = bindAgentTools(effectiveAgent, tools, workspacePath)
+    const fixedParts = partsFixedBy(node, effectiveAgent)
+    const boundTools = bindAgentTools(effectiveAgent, tools, { ...toolContext, fixedParts })
     const output = await runFn(
       effectiveAgent, systemPrompt, 'Follow your instructions.',
       {
@@ -164,6 +180,7 @@ export async function runChainGraph(
     )
     output.nodeId = node.id
     if (round !== undefined) output.round = round
+    if (Object.keys(fixedParts).length > 0) output.fixedParts = fixedParts
     nodeOutputs.set(node.id, output); emit(anchorId, output); callbacks.onDone(node.id, output)
     return output
   }

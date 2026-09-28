@@ -125,18 +125,38 @@ export interface ToolParamDef {
   type: 'string' | 'number' | 'boolean'
   description?: string
   required?: boolean
+  enum?: string[]       // string params only: the values the model may pass
 }
+
+/** One named piece of a tool's prompt; no `default` leaves it open for the agent (#149). */
+export interface ToolPartDef {
+  name: string
+  default?: string
+  description?: string
+}
+
+/** A node's fixed part values, by tool name then part name (#149). */
+export type FixedParts = Record<string, Record<string, string>>
 
 export interface ToolDef {
   slug: string
   name: string
   executor: string
   params: Record<string, ToolParamDef>
+  parts?: ToolPartDef[]  // in prompt order; absent means none
   config: Record<string, unknown>
   activity?: string
   description: string  // body of the .md file, model-facing
   filePath: string
   rawContent?: string  // set by every loader; absent on a def built in memory (ADR-0011)
+}
+
+export type ImageSize = 'normal' | 'small'
+
+export interface ImageOverride {
+  size?: ImageSize
+  quality?: string
+  negative?: string
 }
 
 export interface ToolCallRecord {
@@ -147,6 +167,7 @@ export interface ToolCallRecord {
   latencyMs: number
   isError: boolean
   turnText?: string     // assistant text emitted alongside the calls; set on a turn's first record only
+  images?: string[]     // engine-relative URLs of images this call saved (#148)
 }
 
 export interface SkillDef {
@@ -213,6 +234,7 @@ export interface AgentOutput {
   round?: number         // loop iteration (0-based), set for loop-body outputs
   toolCalls?: ToolCallRecord[]  // in-node tool transcript; absent for tool-less agents
   toolTurns?: number            // assistant messages that carried tool_calls
+  fixedParts?: FixedParts       // the tool parts this node fixed by wire or literal (#149)
   warnings?: SectionWarning[]   // sections downstream edges asked this output for and did not find (#37)
   chosen?: string               // a hold's answer: the candidate heading picked (#96)
   custom?: string               // a hold's answer: the human's custom idea (#96, #135)
@@ -282,6 +304,8 @@ export interface RunMeta {
   versions?: Record<string, number>
   /** Model override for this run (#128). */
   modelOverride?: string
+  /** Image settings laid over the engine's env for this run and its continuations (#148). */
+  imageOverride?: ImageOverride
   /** The slug of the chain or agent entrypoint (#131). */
   chainSlug?: string
   /** The entrypoint identity (kind + slug) (#131). */

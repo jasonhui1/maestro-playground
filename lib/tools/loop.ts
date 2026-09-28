@@ -171,6 +171,7 @@ export async function runToolLoop(
       const started = Date.now()
       let args: unknown
       let result: string
+      let images: string[] | undefined
       let isError = false
       try {
         args = JSON.parse(call.function.arguments)
@@ -190,7 +191,9 @@ export async function runToolLoop(
           result = `Error: unknown tool "${call.function.name}" — only the declared tools are available.`
         } else {
           try {
-            result = await tool.execute(args as Record<string, unknown>)
+            const outcome = await tool.execute(args as Record<string, unknown>)
+            result = typeof outcome === 'string' ? outcome : outcome.result
+            if (typeof outcome !== 'string' && outcome.images?.length) images = outcome.images
           } catch (err) {
             isError = true
             result = `Error: ${err instanceof Error ? err.message : String(err)}`
@@ -208,6 +211,7 @@ export async function runToolLoop(
         latencyMs,
         isError,
         ...(i === 0 && turnText !== undefined ? { turnText } : {}),
+        ...(images ? { images } : {}),
       })
     }
   }

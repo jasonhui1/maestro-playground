@@ -7,6 +7,7 @@ import { pinnedWorkspace } from './pinnedWorkspace'
 import { newRunId } from './logger'
 import type { LiveWorkspace, Workspace } from './runFolders'
 import { runChainGraph } from './executor'
+import { runToolContext } from './tools/context'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
@@ -145,7 +146,10 @@ export function streamChainRun(s: RunSession): Response {
           },
           onHold: hold => { reached.push(hold) },
         },
-        { seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride },
+        {
+          seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
+          toolContext: runToolContext(s.ws, runId),
+        },
       )
 
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
@@ -193,6 +197,7 @@ export interface StartRunInput {
   replayedSlots?: string[]
   sourceOutputs?: AgentOutput[]
   modelOverride?: string
+  imageOverride?: RunMeta['imageOverride']
   chainSlug?: string
   entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
   variance?: RunMeta['variance']
@@ -233,6 +238,7 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     versionNumber: versionNumber > 0 ? versionNumber : undefined,
     versions: run.versions,
     ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),
+    ...(run.imageOverride ? { imageOverride: run.imageOverride } : {}),
     ...(run.chainSlug ? { chainSlug: run.chainSlug } : {}),
     ...(run.entrypoint ? { entrypoint: run.entrypoint } : {}),
     ...(run.variance ? { variance: run.variance } : {}),

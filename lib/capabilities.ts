@@ -28,6 +28,9 @@ export const CAPABILITIES = {
   /** The reroll route takes `fork` and `like` (a candidate heading), and forks an answered hold even while its run
    *  is running: the new run waits on the fresh set, its hold carrying `like`; a failed one never lands on disk (#147). */
   holdRerollFork: true,
+  /** A tool's saved image is linked in node output as `/api/runs/:id/images/:name` and served there; `/api/run`
+   *  takes `imageOverride: { size?, quality?, negative? }`, which the run's continuations carry on (#148). */
+  runImages: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

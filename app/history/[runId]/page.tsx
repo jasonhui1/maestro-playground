@@ -79,6 +79,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   const g = run.graph
 
   const agents = useWorkspaceStore(s => s.files.agents)
+  const tools = useWorkspaceStore(s => s.files.tools)
   const chains = useWorkspaceStore(s => s.files.chains)
   // Gates the view below on the one fetch classification needs, so a classified run
   // opens straight into its result view instead of flashing the trace first (#72).
@@ -124,7 +125,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   ), [canvasIds])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => {
-    const workspace = { chain: chainDef, agents, chains: [] }
+    const workspace = { chain: chainDef, agents, chains: [], tools }
     return {
       node,
       sockets: socketHandles(node, workspace),
@@ -136,7 +137,7 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
       chains: [],
       readOnly: true,
     }
-  }, [chainDef, agents, view.states])
+  }, [chainDef, agents, tools, view.states])
 
   async function handleFork(nodeId: string, opts?: { modelOverride?: string | null }) {
     setIsForking(true)

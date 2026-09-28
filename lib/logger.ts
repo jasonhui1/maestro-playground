@@ -100,6 +100,7 @@ export function stepLog(runId: string, stepIdx: number, output: AgentOutput): { 
     system_prompt: output.systemPrompt,
     thought: output.thought,
     tool_turns: output.toolTurns,
+    fixed_parts: output.fixedParts,
     chosen: output.chosen,
     custom: output.custom,
     reroll_hold: output.reroll?.holdId,

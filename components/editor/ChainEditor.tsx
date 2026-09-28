@@ -245,7 +245,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
-    sockets: socketHandles(node, { chain, agents, chains }),
+    sockets: socketHandles(node, { chain, agents, chains, tools }),
     agents: agents.map(a => ({ slug: a.slug, name: a.name })),
     contextFiles,
     run: runState[node.id],
@@ -256,7 +256,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     chains: chains.map(c => ({ slug: c.slug, name: c.name })),
     wiredSockets: new Set(edges.filter(e => e.toNode === node.id).map(e => e.toSocket)),
     availableZones,
-  }), [chain, agents, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges, availableZones])
+  }), [chain, agents, tools, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges, availableZones])
 
   return (
     <div className="h-full flex flex-col">

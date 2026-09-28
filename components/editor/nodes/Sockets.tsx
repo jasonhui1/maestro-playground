@@ -224,6 +224,8 @@ export function SocketList({
         const isInput = h.side === 'input'
         const isSection = !isInput && h.id !== 'output' && tone !== 'loop' && tone !== 'muted'
         const label = isInput ? h.id : (isSection ? `## ${h.id}` : `.${h.id}`)
+        // A tool part socket `tool.part` (#149): the tool dimmed, as a section's `##` is.
+        const partDot = isInput ? h.id.indexOf('.') : -1
         const tooltip = isSection
           ? dotTitle(h, tone, true)
           : (isInput ? dotTitle(h, tone) : label)
@@ -244,6 +246,11 @@ export function SocketList({
                 <>
                   <span className="text-zinc-400 font-semibold select-none">## </span>
                   <span>{h.id}</span>
+                </>
+              ) : partDot > 0 ? (
+                <>
+                  <span className="text-zinc-400 select-none">{h.id.slice(0, partDot)} · </span>
+                  <span>{h.id.slice(partDot + 1)}</span>
                 </>
               ) : (
                 label

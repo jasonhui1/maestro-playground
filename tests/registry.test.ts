@@ -26,7 +26,7 @@ test('registry', () => {
 
   // resolves a plain ref into a bound tool: def + jsonSchema (params only) + execute
   {
-    const bound = bindAgentTools(agent(['retrieve']), [retrieveDef], wp)
+    const bound = bindAgentTools(agent(['retrieve']), [retrieveDef], { workspacePath: wp })
     assert.strictEqual(bound.length, 1)
     assert.strictEqual(bound[0].def.name, 'retrieve')
     assert.deepStrictEqual(bound[0].jsonSchema, {
@@ -40,19 +40,19 @@ test('registry', () => {
 
   // execute runs the bound executor with the tool's config, using only model-supplied params
   {
-    const [bound] = bindAgentTools(agent(['retrieve']), [retrieveDef], wp)
+    const [bound] = bindAgentTools(agent(['retrieve']), [retrieveDef], { workspacePath: wp })
     const result = bound.execute({ query: 'Gilded Flagon' })
     assert.match(String(result), /Mirna Copperhand/)
   }
 
   // unresolvable refs are dropped, not thrown (validateChain gates this before a run reaches here)
   {
-    const bound = bindAgentTools(agent(['nope']), [retrieveDef], wp)
+    const bound = bindAgentTools(agent(['nope']), [retrieveDef], { workspacePath: wp })
     assert.deepStrictEqual(bound, [])
   }
 
   // agent with no tools -> empty bound list
   {
-    assert.deepStrictEqual(bindAgentTools(agent([]), [retrieveDef], wp), [])
+    assert.deepStrictEqual(bindAgentTools(agent([]), [retrieveDef], { workspacePath: wp }), [])
   }
 })

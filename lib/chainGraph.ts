@@ -78,7 +78,7 @@ export function validateChain(
 
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
-  const workspace = { chain, agents, chains }
+  const workspace = { chain, agents, chains, tools }
 
   // Tool refs match by frontmatter `name` (like skills), not filename slug.
   const toolByName = new Map<string, ToolDef>()

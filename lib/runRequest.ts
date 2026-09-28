@@ -1,5 +1,6 @@
 import { validateChain } from './chainGraph'
 import { parseModelOverride } from './pricing'
+import { parseImageOverride } from './imageOverride'
 import { resolveRunChain, type RunChainBody } from './resolveRunChain'
 import { pinRunSnapshot } from './runVersions'
 import { versionKey } from './runVersionModel'
@@ -12,6 +13,7 @@ export type RunRequestBody = RunChainBody & {
   paramValue?: string
   context?: unknown
   modelOverride?: unknown
+  imageOverride?: unknown
   chainSlug?: string
 }
 
@@ -28,6 +30,8 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const parsedOverride = parseModelOverride(body.modelOverride)
   if (!parsedOverride.valid) return { error: parsedOverride.error, status: 400 }
   const cleanOverride = parsedOverride.value ?? undefined
+  const imageOverride = parseImageOverride(body.imageOverride)
+  if (!imageOverride.valid) return { error: imageOverride.error, status: 400 }
 
   const workspace = ws.definitions()
   const { agents, chains } = workspace
@@ -63,6 +67,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       versions,
       versionNumber,
       modelOverride: cleanOverride,
+      imageOverride: imageOverride.value,
       chainSlug: slug,
       entrypoint: slug ? { kind, slug } : (kind === 'inline' ? { kind: 'inline' } : undefined),
     },

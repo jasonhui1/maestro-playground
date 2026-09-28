@@ -102,6 +102,7 @@ export function forkInput(
     versions,
     versionNumber,
     modelOverride: fork.modelOverride,
+    imageOverride: source.imageOverride,
     replay: [...kept.replay, ...(fork.outputs ?? [])],
     holds: [...kept.holds, ...(fork.hold ? [fork.hold] : [])],
     forkedFrom: { runId: source.runId, nodeId: fork.anchors[0] },

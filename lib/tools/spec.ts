@@ -2,7 +2,7 @@
 // in the browser (app/workspace/page.tsx) imports this module directly.
 import { ToolParamDef } from '../types'
 
-export const EXECUTOR_IDS = ['retrieve'] as const
+export const EXECUTOR_IDS = ['retrieve', 'novelai'] as const
 export type ExecutorId = typeof EXECUTOR_IDS[number]
 
 export function isValidExecutorId(id: string): id is ExecutorId {
@@ -11,7 +11,7 @@ export function isValidExecutorId(id: string): id is ExecutorId {
 
 export interface JsonSchema {
   type: 'object'
-  properties: Record<string, { type: ToolParamDef['type']; description?: string }>
+  properties: Record<string, { type: ToolParamDef['type']; description?: string; enum?: string[] }>
   required: string[]
 }
 
@@ -19,7 +19,11 @@ export function paramsToJsonSchema(params: Record<string, ToolParamDef>): JsonSc
   const properties: JsonSchema['properties'] = {}
   const required: string[] = []
   for (const [key, def] of Object.entries(params)) {
-    properties[key] = { type: def.type, ...(def.description ? { description: def.description } : {}) }
+    properties[key] = {
+      type: def.type,
+      ...(def.description ? { description: def.description } : {}),
+      ...(def.enum ? { enum: def.enum } : {}),
+    }
     if (def.required) required.push(key)
   }
   return { type: 'object', properties, required }

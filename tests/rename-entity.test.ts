@@ -189,7 +189,7 @@ test('renaming a tool rewrites its own name and every agent that calls it', asyn
   const { loadWorkspace } = await import('../lib/fs/workspace')
   const ws = loadWorkspace(wp)
   const { bindAgentTools } = await import('../lib/tools/registry')
-  assert.deepStrictEqual(bindAgentTools(ws.agents[0], ws.tools, wp).map(b => b.def.slug), ['lore-search'])
+  assert.deepStrictEqual(bindAgentTools(ws.agents[0], ws.tools, { workspacePath: wp }).map(b => b.def.slug), ['lore-search'])
 })
 
 test('a tool is a workspace file type like any other', async () => {

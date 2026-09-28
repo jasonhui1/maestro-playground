@@ -7,6 +7,7 @@ import { createChatCall } from './chatCall'
 import { runToolLoop, ToolLoopError, ChatCall, WireMessage } from './tools/loop'
 import type { ToolEventSink, ToolNarration } from './tools/events'
 import type { BoundTool } from './tools/registry'
+import { attachImages } from './tools/context'
 
 export const DEFAULT_MAX_TOOL_TURNS = 8
 
@@ -53,7 +54,7 @@ export async function runAgent(
     const { output, thought } = splitThought(res.finalText)
     return {
       ...base,
-      output,
+      output: attachImages(output, res.toolCalls),
       thought: thought || res.reasoning,
       tokensIn: res.tokensIn,
       tokensOut: res.tokensOut,

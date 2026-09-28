@@ -1,11 +1,14 @@
-import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ZoneStateEntry } from './types'
+import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
 import { promptSlots, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
+import { agentPartSockets } from './tools/parts'
 
 export interface WorkspaceLookup {
   chain: ChainDef
   agents: AgentDef[]
   chains: ChainDef[]
+  /** Without it an agent node shows no tool part sockets (#149). */
+  tools?: ToolDef[]
 }
 
 export interface InputSocket {
@@ -78,10 +81,15 @@ export function unknownSkillNames(names: string[], allSkills: SkillDef[]): strin
   return names.filter(name => !known.has(name))
 }
 
-function agentInputs(node: ChainNode, { agents }: WorkspaceLookup): InputSocket[] {
+// A part socket is optional: unwired and unset, the tool's default or the agent fills it (#149).
+function agentInputs(node: ChainNode, { agents, tools = [] }: WorkspaceLookup): InputSocket[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
-  return a ? promptSlots(a.systemPrompt).map(name => ({ name })) : []
+  if (!a) return []
+  return [
+    ...promptSlots(a.systemPrompt).map(name => ({ name })),
+    ...agentPartSockets(a, tools).map(({ socket }) => ({ name: socket, optional: true })),
+  ]
 }
 
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {

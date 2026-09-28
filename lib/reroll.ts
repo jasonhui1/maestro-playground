@@ -12,6 +12,7 @@ import { readSocket } from './resolveNode'
 import { runAgent } from './runner'
 import { withModelOverride } from './modelOverride'
 import { bindAgentTools } from './tools/registry'
+import { runToolContext } from './tools/context'
 import { sseResponse, type SseSend } from './sse'
 import { loadContinuation, newRunMeta, type LiveWorkspace } from './runSession'
 import type { Workspace } from './runFolders'
@@ -127,17 +128,19 @@ function readyReroll(workspace: LiveWorkspace, meta: RunMeta, hold: HoldRecord, 
 
 /** One streamed attempt of the producer at `step`; a success with no candidates is marked failed (#134). */
 async function attemptReroll(
-  send: SseSend, ws: Workspace, workspace: LiveWorkspace, seedPrompt: string,
+  send: SseSend, ws: Workspace, workspace: LiveWorkspace, seedPrompt: string, runId: string,
   { producer, edge, baseline, agent }: ReadyReroll, hold: HoldRecord, step: number, versionNumber: number,
 ): Promise<{ attempt: AgentOutput; input: string }> {
   const { feedback } = hold
   send({ type: 'agent_start', agentName: agent.name, nodeId: producer.id, step, kind: producer.kind })
   const attempt = await runAgent(agent, rerollPrompt(baseline.systemPrompt, feedback, hold.like?.candidate), baseline.input, {
     onToken: (token, tokenType, turn) => send({ type: 'token', agentName: agent.name, nodeId: producer.id, token, tokenType, step, kind: producer.kind, turn }),
-    boundTools: bindAgentTools(agent, workspace.tools, ws.root),
+    // A fork's folder is not written until its set is in hand, so images land in the source run.
+    boundTools: bindAgentTools(agent, workspace.tools, { ...runToolContext(ws, runId), fixedParts: baseline.fixedParts }),
     onToolEvent: event => send({ ...event, nodeId: producer.id, step, kind: producer.kind }),
   })
   attempt.nodeId = producer.id
+  if (baseline.fixedParts) attempt.fixedParts = baseline.fixedParts
   attempt.reroll = { holdId: hold.nodeId, ...(feedback ? { feedback } : {}) }
   if (versionNumber > 0) attempt.versionNumber = versionNumber
   const input = readSocket(producer, edge.fromSocket, new Map([[producer.id, attempt]]), seedPrompt, () => '').value
@@ -172,7 +175,7 @@ function rerollInPlace(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, r
     let next = hold
     try {
       const step = runs.nextStep(runId)
-      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, plan, hold, step, versionNumber)
+      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, meta.runId, plan, hold, step, versionNumber)
       runs.writeStep(runId, step, attempt)
 
       const rerolled = attempt.status === 'success' ? rerollHold(holds, hold, input) : undefined
@@ -211,7 +214,7 @@ function rerollFork(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, sour
     send({ type: 'layout', model: buildLayoutModel(start.chain, replay) })
     let created = false
     try {
-      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, plan, hold, replay.length, start.versionNumber)
+      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, meta.runId, plan, hold, replay.length, start.versionNumber)
       if (attempt.status !== 'success') {
         send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
         return

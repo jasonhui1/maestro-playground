@@ -19,6 +19,15 @@ export interface RunFolders {
   /** The step of a node's latest log in a run, if it has one. */
   latestStepOf(runId: string, nodeId: string): number | undefined
   list(): RunMeta[]
+  /** Saves an image in the run's `images/`; throws on a name `isImageName` refuses (#148). */
+  writeImage(runId: string, name: string, bytes: Uint8Array): void
+  /** The image saved in the run under `name`; undefined for none, or a refused name. */
+  readImage(runId: string, name: string): Uint8Array | undefined
+}
+
+/** The only file names a run's `images/` holds, so a request path never leaves that folder. */
+export function isImageName(name: string): boolean {
+  return /^img-[A-Za-z0-9_-]+\.webp$/.test(name)
 }
 
 /** The workspace as loaded from disk: what a run starts or continues over. */
@@ -48,9 +57,11 @@ interface RunFolderBasics {
   writeStep(runId: string, step: number, output: AgentOutput): void
   steps(runId: string): { step: number; label: string }[]
   list(): RunMeta[]
+  writeImage(runId: string, name: string, bytes: Uint8Array): void
+  readImage(runId: string, name: string): Uint8Array | undefined
 }
 
-function runFolders({ create, read, write, writeStep, steps, list }: RunFolderBasics): RunFolders {
+function runFolders({ create, read, write, writeStep, steps, list, writeImage, readImage }: RunFolderBasics): RunFolders {
   const highest = (logged: { step: number }[]) => logged.reduce((max, s) => Math.max(max, s.step), -1)
   return {
     create,
@@ -80,6 +91,11 @@ function runFolders({ create, read, write, writeStep, steps, list }: RunFolderBa
       return step < 0 ? undefined : step
     },
     list,
+    writeImage(runId, name, bytes) {
+      if (!isImageName(name)) throw new Error(`Refused image name "${name}"`)
+      writeImage(runId, name, bytes)
+    },
+    readImage: (runId, name) => isImageName(name) ? readImage(runId, name) : undefined,
   }
 }
 
@@ -89,6 +105,7 @@ export function diskRunFolders(root: string): RunFolders {
   const metaPath = (runId: string) => path.join(dirOf(runId), 'meta.json')
   const read = (runId: string): RunMeta => JSON.parse(fs.readFileSync(metaPath(runId), 'utf-8'))
   const write = (meta: RunMeta) => fs.writeFileSync(metaPath(meta.runId), JSON.stringify(meta, null, 2))
+  const imagesDir = (runId: string) => path.join(dirOf(runId), 'images')
 
   return runFolders({
     create(meta) {
@@ -113,6 +130,14 @@ export function diskRunFolders(root: string): RunFolders {
           try { return [read(d)] } catch { return [] }
         })
     },
+    writeImage(runId, name, bytes) {
+      fs.mkdirSync(imagesDir(runId), { recursive: true })
+      fs.writeFileSync(path.join(imagesDir(runId), name), bytes)
+    },
+    readImage(runId, name) {
+      const file = path.join(imagesDir(runId), name)
+      return fs.existsSync(file) ? fs.readFileSync(file) : undefined
+    },
   })
 }
 
@@ -126,6 +151,8 @@ export function memoryRunFolders(): MemoryRunFolders {
   const metas = new Map<string, string>()
   // Every write, rewrites included: a rewrite repeats a step, which leaves the highest step unchanged.
   const logged = new Map<string, { step: number; label: string; output: AgentOutput }[]>()
+  const images = new Map<string, Uint8Array>()
+  const imageKey = (runId: string, name: string) => `${path.basename(runId)}/${name}`
   const read = (runId: string): RunMeta => {
     const json = metas.get(path.basename(runId))
     if (json === undefined) throw new Error(`No run ${runId}`)
@@ -149,6 +176,11 @@ export function memoryRunFolders(): MemoryRunFolders {
     },
     steps: logsOf,
     list: () => [...metas.values()].map(json => JSON.parse(json)),
+    writeImage(runId, name, bytes) {
+      read(runId)
+      images.set(imageKey(runId, name), bytes)
+    },
+    readImage: (runId, name) => images.get(imageKey(runId, name)),
   })
   return { ...folders, logs: runId => logsOf(runId).map(({ step, output }) => ({ step, output })) }
 }

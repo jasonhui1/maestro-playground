@@ -46,6 +46,8 @@ export function Markdown({ children, className = '', tone = 'ui' }: {
           th: p => <th className="border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-left font-semibold text-zinc-700" {...p} />,
           td: p => <td className="border border-zinc-200 px-2 py-1.5 align-top" {...p} />,
           input: p => <input className="mr-1.5 align-middle accent-zinc-500" disabled {...p} />,
+          // eslint-disable-next-line @next/next/no-img-element -- a run's own image route, not a static asset (#148)
+          img: ({ alt = '', ...p }) => <img className="my-2 max-w-full max-h-[480px] h-auto rounded-lg border border-zinc-200" alt={alt} loading="lazy" {...p} />,
         }}
       >
         {children}

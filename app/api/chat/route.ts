@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { bindAgentTools } from '@/lib/tools/registry'
+import { runToolContext } from '@/lib/tools/context'
 import { makeContextReader } from '@/lib/fs/contextReader'
 import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
             history: fullHistory,
             // A human talking to an agent gets the tools its file declares, under
             // the same cap a run uses — the agent file says what it may use (#112).
-            boundTools: bindAgentTools(agentDef, tools, root),
+            boundTools: bindAgentTools(agentDef, tools, runToolContext(ws, runId)),
             onToolEvent: event => send(event),
           }
         )
