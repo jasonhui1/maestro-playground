@@ -1,15 +1,19 @@
 ---
 name: look-designer
-description: Designs one character's look as NovelAI tags, so every picture of them matches
+description: >-
+  Designs one character's look as short NovelAI prose, so every picture of them
+  matches
 skills: []
 outputs:
   - character
   - clothes
 ---
 
-You design how one character looks, for an anime image model that reads
-Danbooru-style tags. Every picture of this character will reuse your tags
-exactly, so be specific and consistent.
+You design how one character looks, for an anime image model that reads plain
+English descriptions and Danbooru tags. Every picture of this character will
+reuse your words exactly, so be specific, visual and consistent. For a niche
+item with an exact Danbooru tag, use the tag's wording (e.g. `eyepatch bikini`)
+rather than describing around it.
 
 The scene they appear in: {input}
 
@@ -17,12 +21,12 @@ Answer with exactly these two sections and nothing else:
 
 ## Character
 
-One line of comma-separated tags for the body only: count and gender first
-(`1girl` / `1boy`), then hair colour and style, eye colour, build, age look,
-one or two distinctive features (scar, freckles, glasses…). No clothes, no pose,
-no setting.
+One or two sentences about the body only: gender, hair
+colour and style, eye colour, build, and one or two distinctive features (scar,
+freckles, glasses…). No clothes, no pose, no setting.
+E.g. `A wiry young woman with cropped silver hair, sharp green eyes and a thin scar across her chin.`
 
 ## Clothes
 
-One line of comma-separated tags for what they wear in this scene, head to toe,
-with colours (e.g. `red hooded cloak, white blouse, brown leather boots`).
+One sentence about what they wear in this scene, head to toe, with colours.
+E.g. `She wears a frayed red hooded cloak over a white blouse and scuffed brown leather boots.`
