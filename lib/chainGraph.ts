@@ -240,9 +240,11 @@ export function validateChain(
 
   const seenInputNames = new Set<string>()
   for (const p of chain.inputs ?? []) {
-    if (!p.name.trim()) add(`Chain declares an input with no name`)
-    else if (seenInputNames.has(p.name)) add(`Chain declares duplicate input name "${p.name}"`)
-    seenInputNames.add(p.name)
+    const name = p.name.trim()
+    if (!name) add(`Chain declares an input with no name`)
+    else if (seenInputNames.has(name)) add(`Chain declares duplicate input name "${name}"`)
+    seenInputNames.add(name)
+    if (nodeById.get(p.node)?.kind !== 'seed') add(`Input "${p.name}" binds to "${p.node}", which is not a "seed" node`)
   }
   return { valid: errors.length === 0, errors, issues }
 }

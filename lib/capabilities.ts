@@ -34,6 +34,9 @@ export const CAPABILITIES = {
   /** A hold candidate carries `images`: the engine image URLs its decider linked inside it, lifted out of its
    *  `body`; an image linked in no candidate stays in the hold input's `## Images`. */
   holdCandidateImages: true,
+  /** `/api/run` takes `inputs: { [name]: text | null }`, each filling the seed its chain's `inputs:` port binds to;
+   *  one left out or `null` reads `seedPrompt`, an undeclared name is a 400. meta.json pins them, so forks keep them (#150). */
+  runInputs: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

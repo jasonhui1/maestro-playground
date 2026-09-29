@@ -66,6 +66,7 @@ export interface RunSession {
   chain: ChainDef
   workspace: RunDefinitions
   seedPrompt: string
+  inputs?: Record<string, string>
   paramValue: string
   context: Record<string, string>
   /** Outputs handed to the graph as done: `logged` are already on disk here, never logged again (ADR-0011); `fresh` are logged first. */
@@ -147,7 +148,7 @@ export function streamChainRun(s: RunSession): Response {
           onHold: hold => { reached.push(hold) },
         },
         {
-          seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
+          seedPrompt: s.seedPrompt, inputs: s.inputs, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
           toolContext: runToolContext(s.ws, runId),
         },
       )
@@ -182,6 +183,7 @@ export interface StartRunInput {
   workspace: RunSession['workspace']
   title: string
   seedPrompt: string
+  inputs?: RunMeta['inputs']
   parameter?: RunMeta['parameter']
   /** A request's context overrides, laid over a fork's pinned context files. */
   context?: unknown
@@ -209,6 +211,7 @@ export function startRun(ws: Workspace, run: StartRunInput): Response {
   ws.runs.create(newRunMeta(runId, run))
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
+    inputs: run.inputs,
     context: { ...run.pinnedContext, ...contextOverrides(run.context) },
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },
@@ -225,6 +228,7 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     chainName: run.title,
     seedPrompt,
     parameter,
+    ...(run.inputs ? { inputs: run.inputs } : {}),
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],

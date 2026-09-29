@@ -146,6 +146,7 @@ function inPlace(
     versionNumber,
     runId: meta.runId,
     seedPrompt: meta.seedPrompt,
+    inputs: meta.inputs,
     paramValue: meta.parameter?.value ?? '',
     context,
     modelOverride: stretch.modelOverride,

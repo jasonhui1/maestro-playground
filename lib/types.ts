@@ -283,6 +283,8 @@ export interface RunMeta {
   /** The chain's declared dropdown and what this run set it to — an input like the seed,
    *  so a reopened run can say which one it was (#65). Absent on runs recorded before. */
   parameter?: { name: string; value: string }
+  /** Values for the chain's `inputs:` ports, by name; a port left out reads `seedPrompt` (#150). */
+  inputs?: Record<string, string>
   startedAt: string
   completedAt?: string
   status: 'running' | 'waiting' | 'complete' | 'error'

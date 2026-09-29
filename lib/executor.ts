@@ -28,7 +28,7 @@ export interface RunCallbacks {
   onHold?: (hold: HoldRecord) => void
 }
 
-export function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
+function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
   return { nodeId, agentName: label, systemPrompt: '', input: '', output,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }
 }
@@ -47,6 +47,8 @@ export interface RunRequest {
   paramValue?: string
   /** Context files supplied inline, overriding the ones on disk. */
   context?: Record<string, string>
+  /** Values for the chain's `inputs:` ports, by name; each fills its seed unless a replayed record already has. */
+  inputs?: Record<string, string>
   /** Outputs handed to the graph as already done: a resume, a fork, or an answered hold. */
   replay?: AgentOutput[]
   /** The agent runner; ADR-0002 fixes its shape. */
@@ -66,7 +68,7 @@ export async function runChainGraph(
   request: RunRequest,
 ): Promise<AgentOutput[]> {
   const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
-  const { seedPrompt, paramValue = '', context: contextOverrides = {}, replay: startOutputs = [],
+  const { seedPrompt, paramValue = '', context: contextOverrides = {}, inputs = {}, replay: startOutputs = [],
     run: runFn = runAgent, depth = 0, modelOverride, toolContext = { workspacePath } } = request
   const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
@@ -292,6 +294,11 @@ export async function runChainGraph(
     if (o.nodeId) { nodeOutputs.set(o.nodeId, o); markOut(o.nodeId, () => true) }
     emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
   }
+  for (const port of chain.inputs ?? []) {
+    if (!(port.name in inputs) || nodeOutputs.has(port.node)) continue
+    const rec = controlOutput(port.node, port.name, inputs[port.name], 'success')
+    nodeOutputs.set(port.node, rec); emit(port.node, rec); callbacks.onDone(port.node, rec)
+  }
 
   const processZoneUnit = async (startZone: Zone): Promise<void> => {
     if (nodeOutputs.has(startZone.endId)) {
@@ -355,11 +362,10 @@ export async function runChainGraph(
         nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       } else {
         callbacks.onStart(nodeId, ref.name)
-        // inject each *wired* declared input value into the matching inner seed
-        // node; unwired inputs are skipped so the inner seed keeps its default.
-        const innerStart: AgentOutput[] = (ref.inputs ?? [])
+        // Only *wired* inputs are passed, so an unwired inner seed keeps its default.
+        const innerInputs = Object.fromEntries((ref.inputs ?? [])
           .filter(p => liveEdgeForSlot(nodeId, p.name) !== undefined)
-          .map(p => controlOutput(p.node, p.name, slotValue(nodeId, p.name), 'success'))
+          .map(p => [p.name, slotValue(nodeId, p.name)]))
         // Every warning raised in here predates this node's own record, so none of
         // them can report until that record exists (#40).
         const deferredWarnings: SectionWarning[] = []
@@ -369,7 +375,7 @@ export async function runChainGraph(
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
           },
-          { ...request, replay: innerStart, depth: depth + 1 },
+          { ...request, inputs: innerInputs, replay: [], depth: depth + 1 },
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()

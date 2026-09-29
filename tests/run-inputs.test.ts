@@ -104,15 +104,42 @@ test('an input name the chain does not declare is a 400 naming it', async () => 
   assert.match(body.error, /bogus/)
 })
 
-test('the values are pinned with the run: they land as records a resume or fork can replay', async () => {
-  const wp = newWorkspace()
+test('inputs that are not a map of text are a 400', async () => {
+  newWorkspace()
+  for (const inputs of ['abc', null, { story: 5 }, ['a knight']]) {
+    const res = await run({ chainName: 'writer-chain', seedPrompt: 'SEED', inputs })
+    assert.strictEqual(res.status, 400, JSON.stringify(inputs))
+    assert.match((await res.json() as { error: string }).error, /inputs must map/)
+  }
+})
+
+test('empty text is a value; null leaves the input to seedPrompt', async () => {
+  newWorkspace()
+  const events = await sse(await run({ chainName: 'writer-chain', seedPrompt: 'FALLBACK', inputs: { story: '', audience: null } }))
+  assert.strictEqual(writerDone(events).output, 'Story:  / Audience: FALLBACK')
+})
+
+test('the values are pinned with the run: a fork replays the same inputs', async () => {
+  newWorkspace()
   const runId = (await sse(await run({ chainName: 'writer-chain', seedPrompt: 'SEED', inputs: { story: 'a knight', audience: 'kids' } }))).at(-1)!.runId as string
 
   const { GET } = await import('../app/api/runs/[runId]/route')
   const meta = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId }) })).json() as RunMeta
-  const storyRecord = meta.agentOutputs.find(o => o.nodeId === 'story-seed')
-  const audienceRecord = meta.agentOutputs.find(o => o.nodeId === 'audience-seed')
-  assert.strictEqual(storyRecord?.output, 'a knight')
-  assert.strictEqual(audienceRecord?.output, 'kids')
-  void wp
+  assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'story-seed')?.output, 'a knight')
+  assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'audience-seed')?.output, 'kids')
+
+  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
+  const forked = await sse(await fork({ json: async () => ({ from: 'writer' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+  assert.strictEqual(writerDone(forked).output, 'Story: a knight / Audience: kids')
+  assert.deepStrictEqual(meta.inputs, { story: 'a knight', audience: 'kids' })
+
+  const reseeded = await sse(await fork({ json: async () => ({ from: 'story-seed' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+  assert.strictEqual(writerDone(reseeded).output, 'Story: a knight / Audience: kids', 'a rerun seed reads its pinned input, not seedPrompt')
+})
+
+test('the workspace chain list carries each chain\'s inputs in file order', async () => {
+  newWorkspace()
+  const { GET } = await import('../app/api/workspace/route')
+  const { chains } = await (await GET()).json() as { chains: { slug: string; inputs?: { name: string }[] }[] }
+  assert.deepStrictEqual(chains.find(c => c.slug === 'writer-chain')?.inputs?.map(p => p.name), ['story', 'audience'])
 })

@@ -4,15 +4,14 @@ import { parseImageOverride } from './imageOverride'
 import { resolveRunChain, type RunChainBody } from './resolveRunChain'
 import { pinRunSnapshot } from './runVersions'
 import { versionKey } from './runVersionModel'
-import { controlOutput } from './executor'
+import { badRequest } from './refusal'
 import type { StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
-import type { AgentOutput, ChainDef, Refusal } from './types'
+import type { ChainDef, Refusal } from './types'
 
 export type RunRequestBody = RunChainBody & {
   seedPrompt?: string
-  /** Named values for the chain's declared `inputs:` ports (#150). */
-  inputs?: Record<string, string>
+  inputs?: unknown
   paramValue?: string
   context?: unknown
   modelOverride?: unknown
@@ -20,15 +19,19 @@ export type RunRequestBody = RunChainBody & {
   chainSlug?: string
 }
 
-// Mirrors the subchain input-injection arm in lib/executor.ts (#150).
-export function resolveInputRecords(chain: ChainDef, inputs: Record<string, string> | undefined): { records: AgentOutput[] } | Refusal {
-  const records: AgentOutput[] = []
-  for (const [name, value] of Object.entries(inputs ?? {})) {
-    const port = chain.inputs?.find(p => p.name === name)
-    if (!port) return { error: `Chain "${chain.slug}" declares no input named "${name}"`, status: 400 }
-    records.push(controlOutput(port.node, name, value, 'success'))
+/** A request's `inputs`: `""` is empty text, `null` leaves the port to `seedPrompt`. */
+export function readRunInputs(chain: ChainDef, inputs: unknown): { inputs?: Record<string, string> } | Refusal {
+  if (inputs === undefined) return {}
+  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)
+    || !Object.values(inputs).every(v => v === null || typeof v === 'string')) {
+    return badRequest('inputs must map input names to text or null')
   }
-  return { records }
+  const given: Record<string, string> = {}
+  for (const [name, value] of Object.entries(inputs as Record<string, string | null>)) {
+    if (!chain.inputs?.some(p => p.name === name)) return badRequest(`Chain "${chain.slug}" declares no input named "${name}"`)
+    if (value !== null) given[name] = value
+  }
+  return Object.keys(given).length ? { inputs: given } : {}
 }
 
 const RETIRED_BRANCH_FIELDS = ['branchOutputs', 'branchedFromRunId', 'branchedFromStep'] as const
@@ -56,8 +59,8 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const validation = validateChain(chain, workspace)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
 
-  const inputResult = resolveInputRecords(chain, body.inputs)
-  if ('error' in inputResult) return inputResult
+  const runInputs = readRunInputs(chain, body.inputs)
+  if ('error' in runInputs) return runInputs
 
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)
   const versions = snapshot.versions
@@ -76,6 +79,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       workspace,
       title,
       seedPrompt: typeof body.seedPrompt === 'string' ? body.seedPrompt : '',
+      inputs: runInputs.inputs,
       parameter: chain.parameter && typeof body.paramValue === 'string' && body.paramValue
         ? { name: chain.parameter.name, value: body.paramValue }
         : undefined,
@@ -83,7 +87,6 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       pinnedContext: snapshot.context,
       versions,
       versionNumber,
-      replay: inputResult.records.length ? inputResult.records : undefined,
       modelOverride: cleanOverride,
       imageOverride: imageOverride.value,
       chainSlug: slug,

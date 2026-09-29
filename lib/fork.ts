@@ -97,6 +97,7 @@ export function forkInput(
     title: source.chainName,
     seedPrompt: source.seedPrompt,
     parameter: source.parameter,
+    inputs: source.inputs,
     context,
     pinnedContext,
     versions,

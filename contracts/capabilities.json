@@ -9,5 +9,6 @@
   "holdReroll": true,
   "holdRerollFork": true,
   "runImages": true,
-  "holdCandidateImages": true
+  "holdCandidateImages": true,
+  "runInputs": true
 }
