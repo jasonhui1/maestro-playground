@@ -28,7 +28,7 @@ export interface RunCallbacks {
   onHold?: (hold: HoldRecord) => void
 }
 
-function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
+export function controlOutput(nodeId: string, label: string, output: string, status: AgentOutput['status']): AgentOutput {
   return { nodeId, agentName: label, systemPrompt: '', input: '', output,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status }
 }

@@ -218,6 +218,13 @@ export function validateChain(
   } else if (paramNodes.length > 0) {
     add(`Chain has a "param" node but declares no parameter`)
   }
+
+  const seenInputNames = new Set<string>()
+  for (const p of chain.inputs ?? []) {
+    if (!p.name.trim()) add(`Chain declares an input with no name`)
+    else if (seenInputNames.has(p.name)) add(`Chain declares duplicate input name "${p.name}"`)
+    seenInputNames.add(p.name)
+  }
   return { valid: errors.length === 0, errors, issues }
 }
 

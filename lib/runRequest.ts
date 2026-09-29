@@ -4,17 +4,31 @@ import { parseImageOverride } from './imageOverride'
 import { resolveRunChain, type RunChainBody } from './resolveRunChain'
 import { pinRunSnapshot } from './runVersions'
 import { versionKey } from './runVersionModel'
+import { controlOutput } from './executor'
 import type { StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
-import type { Refusal } from './types'
+import type { AgentOutput, ChainDef, Refusal } from './types'
 
 export type RunRequestBody = RunChainBody & {
   seedPrompt?: string
+  /** Named values for the chain's declared `inputs:` ports (#150). */
+  inputs?: Record<string, string>
   paramValue?: string
   context?: unknown
   modelOverride?: unknown
   imageOverride?: unknown
   chainSlug?: string
+}
+
+// Mirrors the subchain input-injection arm in lib/executor.ts (#150).
+export function resolveInputRecords(chain: ChainDef, inputs: Record<string, string> | undefined): { records: AgentOutput[] } | Refusal {
+  const records: AgentOutput[] = []
+  for (const [name, value] of Object.entries(inputs ?? {})) {
+    const port = chain.inputs?.find(p => p.name === name)
+    if (!port) return { error: `Chain "${chain.slug}" declares no input named "${name}"`, status: 400 }
+    records.push(controlOutput(port.node, name, value, 'success'))
+  }
+  return { records }
 }
 
 const RETIRED_BRANCH_FIELDS = ['branchOutputs', 'branchedFromRunId', 'branchedFromStep'] as const
@@ -42,6 +56,9 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const validation = validateChain(chain, workspace)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
 
+  const inputResult = resolveInputRecords(chain, body.inputs)
+  if ('error' in inputResult) return inputResult
+
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)
   const versions = snapshot.versions
   const versionNumber = versions[kind === 'agent'
@@ -66,6 +83,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       pinnedContext: snapshot.context,
       versions,
       versionNumber,
+      replay: inputResult.records.length ? inputResult.records : undefined,
       modelOverride: cleanOverride,
       imageOverride: imageOverride.value,
       chainSlug: slug,

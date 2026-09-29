@@ -9,6 +9,10 @@ export interface ChainPort {
   node: string      // inner node this port binds to (seed for inputs; any node for outputs)
   socket?: string   // inner output socket (outputs only); defaults to 'output'
   role?: 'join'     // marks the panel as a layout's converging panel (ADR-0016)
+  // Inputs only, display-only: a direct run (POST /api/run) shows these; a subchain's
+  // wired port ignores them and stays optional either way (#150).
+  description?: string
+  required?: boolean
 }
 
 export interface BranchCase {
