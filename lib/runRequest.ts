@@ -1,7 +1,7 @@
 import { validateChain } from './chainGraph'
 import { parseModelOverride } from './pricing'
 import { parseImageOverride } from './imageOverride'
-import { resolveRunChain, type RunChainBody } from './resolveRunChain'
+import { resolveRunChain, type RunChainBody, type ResolvedRunKind } from './resolveRunChain'
 import { pinRunSnapshot } from './runVersions'
 import { versionKey } from './runVersionModel'
 import { badRequest } from './refusal'
@@ -20,7 +20,7 @@ export type RunRequestBody = RunChainBody & {
 }
 
 /** A request's `inputs`: `""` is empty text, `null` leaves the port to `seedPrompt`. */
-export function readRunInputs(chain: ChainDef, inputs: unknown): { inputs?: Record<string, string> } | Refusal {
+export function readRunInputs(chain: ChainDef, inputs: unknown, kind: ResolvedRunKind): { inputs?: Record<string, string> } | Refusal {
   if (inputs === undefined) return {}
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)
     || !Object.values(inputs).every(v => v === null || typeof v === 'string')) {
@@ -28,7 +28,11 @@ export function readRunInputs(chain: ChainDef, inputs: unknown): { inputs?: Reco
   }
   const given: Record<string, string> = {}
   for (const [name, value] of Object.entries(inputs as Record<string, string | null>)) {
-    if (!chain.inputs?.some(p => p.name === name)) return badRequest(`Chain "${chain.slug}" declares no input named "${name}"`)
+    if (!chain.inputs?.some(p => p.name === name)) {
+      return badRequest(kind === 'agent'
+        ? `Agent "${chain.slug}" has no prompt slot named "${name}"`
+        : `Chain "${chain.slug}" declares no input named "${name}"`)
+    }
     if (value !== null) given[name] = value
   }
   return Object.keys(given).length ? { inputs: given } : {}
@@ -59,7 +63,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const validation = validateChain(chain, workspace)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
 
-  const runInputs = readRunInputs(chain, body.inputs)
+  const runInputs = readRunInputs(chain, body.inputs, kind)
   if ('error' in runInputs) return runInputs
 
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)

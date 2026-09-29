@@ -233,7 +233,7 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     status: 'running',
     agentOutputs: [],
     ...(holds ? { holds } : {}),
-    graph: { nodes: chain.nodes, edges: chain.edges },
+    graph: { nodes: chain.nodes, edges: chain.edges, ...(chain.inputs ? { inputs: chain.inputs } : {}) },
     ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
     ...(run.forkAnchors ? { forkAnchors: run.forkAnchors } : {}),
     ...(run.replayedNodeIds ? { replayedNodeIds: run.replayedNodeIds } : {}),

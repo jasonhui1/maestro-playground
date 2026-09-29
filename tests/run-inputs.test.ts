@@ -75,8 +75,9 @@ async function sse(res: Response): Promise<{ type: string; [k: string]: unknown 
   })
 }
 
-const writerDone = (events: { type: string; [k: string]: unknown }[]) =>
-  events.find(e => e.type === 'agent_done' && e.nodeId === 'writer')!.output as AgentOutput
+const doneOutput = (events: { type: string; [k: string]: unknown }[], nodeId: string) =>
+  events.find(e => e.type === 'agent_done' && e.nodeId === nodeId)!.output as AgentOutput
+const writerDone = (events: { type: string; [k: string]: unknown }[]) => doneOutput(events, 'writer')
 
 test('a named input fills the seed its port binds to', async () => {
   newWorkspace()
@@ -142,4 +143,66 @@ test('the workspace chain list carries each chain\'s inputs in file order', asyn
   const { GET } = await import('../app/api/workspace/route')
   const { chains } = await (await GET()).json() as { chains: { slug: string; inputs?: { name: string }[] }[] }
   assert.deepStrictEqual(chains.find(c => c.slug === 'writer-chain')?.inputs?.map(p => p.name), ['story', 'audience'])
+})
+
+// #152: a direct agent run declares one input per prompt slot.
+const rewriterDone = (events: { type: string; [k: string]: unknown }[]) => doneOutput(events, 'rewriter')
+
+test('an agent run fills each named slot from its input', async () => {
+  newWorkspace()
+  const events = await sse(await run({ agentName: 'rewriter', seedPrompt: 'SEED', inputs: { story: 'a knight', audience: 'kids' } }))
+  assert.strictEqual(rewriterDone(events).output, 'Story: a knight / Audience: kids')
+})
+
+test('an agent run reads seedPrompt for a slot left out or null; an unknown slot is a 400 naming it', async () => {
+  newWorkspace()
+  const events = await sse(await run({ agentName: 'rewriter', seedPrompt: 'FALLBACK', inputs: { story: 'a knight', audience: null } }))
+  assert.strictEqual(rewriterDone(events).output, 'Story: a knight / Audience: FALLBACK')
+  const bare = await sse(await run({ agentName: 'rewriter', seedPrompt: 'FALLBACK' }))
+  assert.strictEqual(rewriterDone(bare).output, 'Story: FALLBACK / Audience: FALLBACK')
+
+  const res = await run({ agentName: 'rewriter', seedPrompt: 'SEED', inputs: { bogus: 'x' } })
+  assert.strictEqual(res.status, 400)
+  assert.match((await res.json() as { error: string }).error, /no prompt slot named "bogus"/)
+})
+
+test('an agent whose prompt has no slot at all is still refused, as before', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/plain.md'), '---\nname: Plain\n---\nJust write.\n')
+  const res = await run({ agentName: 'plain', seedPrompt: 'SEED' })
+  assert.strictEqual(res.status, 400)
+  assert.match(JSON.stringify(await res.json()), /no such input slot/)
+})
+
+test('an agent whose only slot is {input} runs one seed into it, as before', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/echo.md'), '---\nname: Echo\n---\nSay {input}\n')
+  const events = await sse(await run({ agentName: 'echo', seedPrompt: 'SEED' }))
+  assert.strictEqual(doneOutput(events, 'echo').output, 'Say SEED')
+  const { GET } = await import('../app/api/runs/[runId]/route')
+  const meta = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId: events.at(-1)!.runId as string }) })).json() as RunMeta
+  assert.deepStrictEqual(meta.graph?.nodes, [{ id: 'seed', kind: 'seed' }, { id: 'echo', kind: 'agent', agent: 'echo' }])
+  assert.deepStrictEqual(meta.graph?.edges, [{ fromNode: 'seed', fromSocket: 'output', toNode: 'echo', toSocket: 'input' }])
+})
+
+test('an agent run\'s {input} slot beside named ones keeps the default seed', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/echo.md'), '---\nname: Echo\n---\nSay {input} to {audience}\n')
+  const events = await sse(await run({ agentName: 'echo', seedPrompt: 'SEED', inputs: { audience: 'kids' } }))
+  assert.strictEqual(doneOutput(events, 'echo').output, 'Say SEED to kids')
+})
+
+test('a fork of an agent run from a slot\'s seed keeps its pinned input', async () => {
+  newWorkspace()
+  const runId = (await sse(await run({ agentName: 'rewriter', seedPrompt: 'SEED', inputs: { story: 'a knight', audience: 'kids' } }))).at(-1)!.runId as string
+  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
+  const reseeded = await sse(await fork({ json: async () => ({ from: 'story-seed' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+  assert.strictEqual(rewriterDone(reseeded).output, 'Story: a knight / Audience: kids')
+})
+
+test('the workspace agent list carries each agent\'s prompt slots', async () => {
+  newWorkspace()
+  const { GET } = await import('../app/api/workspace/route')
+  const { agents } = await (await GET()).json() as { agents: { slug: string; slots?: string[] }[] }
+  assert.deepStrictEqual(agents.find(a => a.slug === 'rewriter')?.slots, ['story', 'audience'])
 })

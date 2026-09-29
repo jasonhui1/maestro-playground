@@ -37,6 +37,9 @@ export const CAPABILITIES = {
   /** `/api/run` takes `inputs: { [name]: text | null }`, each filling the seed its chain's `inputs:` port binds to;
    *  one left out or `null` reads `seedPrompt`, an undeclared name is a 400. meta.json pins them, so forks keep them (#150). */
   runInputs: true,
+  /** An `agentName` run takes `inputs` too: one per `{slot}` in the agent's prompt, listed as `slots` on each
+   *  `GET /api/workspace` agent so a client need not parse the prompt (#152). */
+  agentRunInputs: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

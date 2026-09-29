@@ -10,5 +10,6 @@
   "holdRerollFork": true,
   "runImages": true,
   "holdCandidateImages": true,
-  "runInputs": true
+  "runInputs": true,
+  "agentRunInputs": true
 }

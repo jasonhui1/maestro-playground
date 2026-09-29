@@ -291,7 +291,8 @@ export interface RunMeta {
   agentOutputs: AgentOutput[]
   /** One entry per hold reached; the open one is the last without `resolvedAt` (#93). */
   holds?: HoldRecord[]
-  graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
+  /** `inputs` pins the ports a run was started with; absent before #152, when the live chain's are read. */
+  graph?: Pick<ChainDef, 'nodes' | 'edges' | 'inputs'>
   branchedFromRunId?: string
   /** A branch's anchor by step, on runs from before branches became forks (#103). */
   branchedFromStep?: number
