@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { WorkspaceError } from './errors'
 import type { NameClash } from '../types'
 
 export interface DiscoveredFile {
@@ -14,30 +13,18 @@ export interface DiscoverResult {
   clashes: NameClash[]
 }
 
-// Refuses a single write outright, unlike `groupByName`/`discoverFiles` below (#151).
-export function assertUniqueSlug(
-  bySlug: Map<string, string>,
-  slug: string,
-  filePath: string,
-  what = 'slug',
-): void {
-  const clash = bySlug.get(slug)
-  if (clash) {
-    throw new WorkspaceError(
-      'ALREADY_EXISTS',
-      `Duplicate ${what} "${slug}":\n  ${clash}\n  ${filePath}\n` +
-      `Rename one of them — a folder groups files, but the name addresses them.`
-    )
-  }
-  bySlug.set(slug, filePath)
+/** One type's parsed definitions, minus any name discovery left out as a clash. */
+export interface Loaded<T> {
+  items: T[]
+  clashes: NameClash[]
 }
 
-/** A repeated name is a clash and both entries are left out of `unique` (#151). */
+/** A repeated name is a clash and every entry claiming it is left out of `items` (#151). */
 export function groupByName<T>(
   items: T[],
   nameOf: (item: T) => string,
   pathOf: (item: T) => string,
-): { unique: T[]; clashes: NameClash[] } {
+): Loaded<T> {
   const byName = new Map<string, T[]>()
   for (const item of items) {
     const name = nameOf(item)
@@ -50,7 +37,7 @@ export function groupByName<T>(
     if (group.length > 1) clashes.push({ name, paths: [...new Set(group.map(pathOf))] })
     else unique.push(group[0])
   }
-  return { unique, clashes }
+  return { items: unique, clashes }
 }
 
 // A duplicate slug is left out of `files` and reported in `clashes` instead of
@@ -61,8 +48,18 @@ export function discoverFiles(typeDir: string): DiscoverResult {
     filePath,
     raw: fs.readFileSync(filePath, 'utf-8'),
   }))
-  const { unique, clashes } = groupByName(found, f => f.slug, f => f.filePath)
-  return { files: unique, clashes }
+  const { items, clashes } = groupByName(found, f => f.slug, f => f.filePath)
+  return { files: items, clashes }
+}
+
+export function loadDiscovered<T>(typeDir: string, parse: (file: DiscoveredFile) => T): Loaded<T> {
+  const { files, clashes } = discoverFiles(typeDir)
+  return { items: files.map(parse), clashes }
+}
+
+/** `filePath` relative to `dir`, with `/` on every platform — the form a message names. */
+export function relativePosix(dir: string, filePath: string): string {
+  return path.relative(dir, filePath).split(path.sep).join('/')
 }
 
 // Dot-prefixed entries are skipped: `.versions/` holds snapshots of workspace files,
@@ -79,8 +76,8 @@ export function walkMarkdown(dir: string): string[] {
   return out
 }
 
-// Rejects no duplicate, unlike discoverFiles: a workspace that already has one must
-// stay editable back into shape (ADR-0012).
+// Takes the first match even for a clashing name, unlike discoverFiles, so a
+// workspace that has a clash stays editable back into shape (ADR-0012, #151).
 export function findBySlug(typeDir: string, slug: string): string | undefined {
   return walkMarkdown(typeDir).find(p => path.basename(p, '.md') === slug)
 }

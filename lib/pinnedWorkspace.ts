@@ -52,7 +52,7 @@ export function pinnedWorkspace(
 
   const defaultsRaw = pins.find(p => p.type === 'defaults')?.raw
   const defaults = defaultsRaw === undefined ? live.defaults : matter(defaultsRaw).data as Record<string, unknown>
-  const ws: PinnedWorkspace = { agents: live.agents, skills: live.skills, chains: live.chains, tools: live.tools, context: {} }
+  const ws: PinnedWorkspace = { agents: live.agents, skills: live.skills, chains: live.chains, tools: live.tools, warnings: live.warnings, context: {} }
 
   for (const { type, slug, raw } of pins) {
     if (type === 'context') ws.context[slug] = matter(raw).content

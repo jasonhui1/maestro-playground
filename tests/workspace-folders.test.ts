@@ -133,7 +133,7 @@ test('resolveEntityPath still resolves to the existing file when a folder is als
 
   const { resolveEntityPath } = await load()
   // the slug already exists elsewhere — the existing file wins over the requested folder,
-  // preserving "duplicate leaf name anywhere under the type" as a hard load failure (ADR-0012)
+  // so a save never mints a second file under one name (ADR-0012, #151)
   assert.strictEqual(resolveEntityPath(wp, 'agent', 'optimist', 'other'), nested)
 })
 

@@ -7,8 +7,10 @@ import { WorkspaceError } from './errors'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
-import { walkMarkdown } from './discover'
-import { normalizeVariants, loadAllAgents } from './parseAgent'
+import { walkMarkdown, relativePosix } from './discover'
+import { normalizeVariants } from './parseAgent'
+import { declaredVariants } from './variantIndex'
+import { ENTITY_DIRS } from '../entityDirs'
 
 export interface SaveEntityRequest {
   type: EntityType
@@ -18,26 +20,32 @@ export interface SaveEntityRequest {
   folder?: string
 }
 
-// A variant id addresses a file like a slug does (ADR-0012), so a save that would
-// newly claim a name another agent has is refused before it lands (#151).
-function assertVariantsFree(root: string, ownFilePath: string, rawVariants: unknown) {
+/** The names an agent file answers to: its variants, or its own slug when it has none (ADR-0013). */
+function agentNamesOf(filePath: string): string[] {
+  const variants = declaredVariants(filePath)
+  return variants.length ? variants : [path.basename(filePath, '.md')]
+}
+
+// File names and variant ids share one namespace (ADR-0012), so a save may not newly
+// claim a name another agent file already claims — clashing or not (#151).
+function assertAgentNamesFree(root: string, filePath: string, slug: string, rawVariants: unknown) {
   let variants
   try {
-    variants = normalizeVariants(rawVariants, ownFilePath)
+    variants = normalizeVariants(rawVariants, filePath)
   } catch {
-    return
+    return // malformed variants claim no name; the parser reports them on load
   }
-  if (!variants.length) return
+  const held = fs.existsSync(filePath) ? agentNamesOf(filePath) : []
+  const claims = (variants.length ? variants.map(v => v.id) : [slug]).filter(name => !held.includes(name))
+  if (!claims.length) return
 
-  const claimedBy = new Map<string, string>()
-  for (const a of loadAllAgents(root).agents) {
-    if (a.filePath !== ownFilePath && !claimedBy.has(a.slug)) claimedBy.set(a.slug, a.filePath)
-  }
-  for (const v of variants) {
-    const clash = claimedBy.get(v.id)
-    if (clash) {
-      const relClash = path.relative(path.join(root, 'agents'), clash)
-      throw new WorkspaceError('ALREADY_EXISTS', `an agent named \`${v.id}\` already exists: ${relClash}`)
+  const agentsDir = path.join(root, ENTITY_DIRS.agent)
+  for (const other of walkMarkdown(agentsDir)) {
+    if (other === filePath) continue
+    const names = agentNamesOf(other)
+    const taken = claims.find(name => names.includes(name))
+    if (taken) {
+      throw new WorkspaceError('ALREADY_EXISTS', `an agent named \`${taken}\` already exists: ${relativePosix(agentsDir, other)}`)
     }
   }
 }
@@ -56,7 +64,7 @@ export function saveWorkspaceEntity(root: string, { type, slug, data, content, f
   // resolveEntityPath handles sanitization and security checks
   const filePath = resolveEntityPath(root, type, cleanSlug, folder)
 
-  if (type === 'agent') assertVariantsFree(root, filePath, data.variants)
+  if (type === 'agent') assertAgentNamesFree(root, filePath, cleanSlug, data.variants)
 
   const fileContent = matter.stringify(content, data)
 

@@ -9,7 +9,8 @@ import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type Edi
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
-import type { ChainDef, ChainNode, ChainEdge, AgentDef, ChainNodeKind, ChainPort, ToolDef, SkillDef, ValidationIssue, WorkspaceWarning } from '@/lib/types'
+import type { ChainDef, ChainNode, ChainEdge, ChainNodeKind, ChainPort, ValidationIssue } from '@/lib/types'
+import type { RunDefinitions } from '@/lib/runDefinitions'
 import type { RunStateMap } from '@/lib/runState'
 import type { EditorNodeData } from './nodeData'
 import ChainCanvas from './ChainCanvas'
@@ -41,18 +42,15 @@ function seedPositions(nodes: ChainNode[], edges: ChainEdge[]): ChainNode[] {
   return nodes.map(n => n.pos ? n : { ...n, pos: [g.node(n.id).x - NODE_W / 2, g.node(n.id).y - NODE_H / 2] as [number, number] })
 }
 
-export default function ChainEditor({ slug, initialChain, agents, contextFiles, initialSeedPrompt, chains, tools, skills, warnings, onValidation }: {
+export default function ChainEditor({ slug, initialChain, defs, contextFiles, initialSeedPrompt, onValidation }: {
   slug: string
   initialChain: ChainDef
-  agents: AgentDef[]
+  defs: RunDefinitions
   contextFiles: { slug: string; name: string }[]
   initialSeedPrompt?: string
-  chains: ChainDef[]
-  tools?: ToolDef[]
-  skills?: SkillDef[]
-  warnings?: WorkspaceWarning[]
   onValidation?: (issues: ValidationIssue[]) => void
 }) {
+  const { agents, chains, tools, skills } = defs
   const historied = useMemo(() => withHistory(applyOp, (op: EditorOp) => !NON_HISTORIC.has(op.type)), [])
   const [hist, dispatch] = useReducer(historied, undefined, () => ({
     past: [],
@@ -127,7 +125,7 @@ export default function ChainEditor({ slug, initialChain, agents, contextFiles, 
     setContent(serializeChain(chain))
   }, [chain, setContent])
 
-  const validation = useMemo(() => validateChain(chain, { agents, chains, tools, skills, warnings }), [chain, agents, chains, tools, skills, warnings])
+  const validation = useMemo(() => validateChain(chain, defs), [chain, defs])
 
   const nodeIssues = useMemo(() => issuesByNode(validation.issues), [validation])
   useEffect(() => { onValidation?.(validation.issues) }, [validation, onValidation])

@@ -5,6 +5,16 @@ import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 import { scanTokens, endpointOf, socketKey } from './tokens'
 
+type AddIssue = (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void
+/** A ref's "not found" message, or the clash that left the name out of the load (#151). */
+type MissingRef = (entityType: WorkspaceWarning['entityType'], name: string, notFound: string) => string
+
+function missingRefMessage(warnings: WorkspaceWarning[]): MissingRef {
+  const byType = new Map<WorkspaceWarning['entityType'], Map<string, string>>()
+  for (const w of warnings) byType.set(w.entityType, (byType.get(w.entityType) ?? new Map()).set(w.name, w.message))
+  return (entityType, name, notFound) => byType.get(entityType)?.get(name) ?? notFound
+}
+
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
   const indeg = new Map<string, number>(ids.map(id => [id, 0]))
@@ -65,16 +75,7 @@ export function validateChain(
     issues.push({ message, severity: 'warning', ...ref })
   }
 
-  // A ref to a name discovery left out for clashing gets that reason instead of a
-  // plain "not found" — the clash, not a typo, is what the user needs to fix (#151).
-  const clashByName = new Map<string, WorkspaceWarning>()
-  for (const w of warnings) {
-    if (w.entityType === 'agent' || w.entityType === 'chain') clashByName.set(`${w.entityType}:${w.name}`, w)
-  }
-  const notFoundMessage = (entityType: 'agent' | 'chain', name: string, notFound: string): string => {
-    const clash = clashByName.get(`${entityType}:${name}`)
-    return clash ? clash.message : notFound
-  }
+  const missing = missingRefMessage(warnings)
 
   const seenIds = new Set<string>()
   const hasWiredIn = (n: ChainNode) => chain.edges.some(e => e.toNode === n.id && e.toSocket === 'in')
@@ -119,7 +120,7 @@ export function validateChain(
       if (!n.agent || !agentBySlug.has(n.agent)) {
         add(
           n.agent
-            ? notFoundMessage('agent', n.agent, `Node "${n.id}": agent "${n.agent}" not found`)
+            ? missing('agent', n.agent, `Node "${n.id}": agent "${n.agent}" not found`)
             : `Node "${n.id}": agent "" not found`,
           { nodeId: n.id },
         )
@@ -134,7 +135,9 @@ export function validateChain(
       if (nodeAgent) {
         const resolved = resolveNodeSkills(n, nodeAgent.skills ?? [])
         for (const skillRef of unknownSkillNames(resolved, skills)) {
-          add(`Node "${n.id}": agent "${nodeAgent.slug}" names skill "${skillRef}", which does not exist`, { nodeId: n.id })
+          // Skills and tools are named by frontmatter `name`, which a clash (keyed by
+          // file name) only matches when the two agree.
+          add(missing('skill', skillRef, `Node "${n.id}": agent "${nodeAgent.slug}" names skill "${skillRef}", which does not exist`), { nodeId: n.id })
         }
       }
       for (const toolRef of nodeAgent?.tools ?? []) {
@@ -144,7 +147,7 @@ export function validateChain(
         }
         const tool = toolByName.get(toolRef)
         if (!tool) {
-          add(`Node "${n.id}": agent "${nodeAgent!.slug}" references unknown tool "${toolRef}"`, { nodeId: n.id })
+          add(missing('tool', toolRef, `Node "${n.id}": agent "${nodeAgent!.slug}" references unknown tool "${toolRef}"`), { nodeId: n.id })
         } else if (!isValidExecutorId(tool.executor)) {
           add(`Node "${n.id}": tool "${toolRef}" has unknown executor "${tool.executor}"`, { nodeId: n.id })
         }
@@ -221,8 +224,7 @@ export function validateChain(
   if (topoOrder(chain).length !== chain.nodes.length) add('Chain has a cycle')
 
   validateZones(chain, add)
-  validateSubchains(chain, chains, add, warn,
-    (nodeId, name) => notFoundMessage('chain', name, `Node "${nodeId}": references unknown chain "${name}"`))
+  validateSubchains(chain, chains, { add, warn, missing })
   validateHoldPlacement(chain, chains, add)
 
   // `readSocket` dispatches every `kind: 'param'` node to the run's one value by
@@ -249,7 +251,7 @@ export function validateChain(
   return { valid: errors.length === 0, errors, issues }
 }
 
-function validateZones(chain: ChainDef, add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void) {
+function validateZones(chain: ChainDef, add: AddIssue) {
   for (const n of chain.nodes) {
     if ((n.kind === 'loop-start' || n.kind === 'loop-end') && (!n.zone || !n.zone.trim())) {
       add(`Node "${n.id}": ${n.kind} has no zone`, { nodeId: n.id })
@@ -324,7 +326,7 @@ const refsOf = (c: ChainDef): string[] =>
 function validateHoldPlacement(
   chain: ChainDef,
   chains: ChainDef[],
-  add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
+  add: AddIssue,
 ) {
   const holds = chain.nodes.filter(n => n.kind === 'hold')
   const users = holds.length
@@ -354,9 +356,7 @@ function validateHoldPlacement(
 function validateSubchains(
   chain: ChainDef,
   chains: ChainDef[],
-  add: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
-  warn: (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void,
-  refMessage: (nodeId: string, name: string) => string,
+  { add, warn, missing }: { add: AddIssue; warn: AddIssue; missing: MissingRef },
 ) {
   const chainBySlug = chainLookup(chain, chains)
 
@@ -364,7 +364,7 @@ function validateSubchains(
     if (n.kind !== 'subchain') continue
     if (!n.subchain) { add(`Node "${n.id}": subchain has no chain reference`, { nodeId: n.id }); continue }
     const target = chainBySlug(n.subchain)
-    if (!target) { add(refMessage(n.id, n.subchain), { nodeId: n.id }); continue }
+    if (!target) { add(missing('chain', n.subchain, `Node "${n.id}": references unknown chain "${n.subchain}"`), { nodeId: n.id }); continue }
     if (!target.outputs || target.outputs.length === 0) {
       // Non-blocking: a side-effect-only subchain can still run, it just exposes nothing to wire.
       warn(`Node "${n.id}": referenced chain "${n.subchain}" declares no outputs (nothing to wire)`, { nodeId: n.id })

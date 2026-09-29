@@ -104,6 +104,10 @@ The place that names an agent and supplies its per-instance values: an `agent` n
 
 A named agent declared inside another agent's file, sharing that file's prompt body and changing its skill list or filling one of its slots ([ADR-0013](docs/adr/0013-an-agent-file-may-declare-named-variants.md)). A variant **is** an agent: its `id` is a slug, addressed from a chain exactly like a file name, and it shares the one flat namespace per type that ADR-0012 gives. It may also state `name:`, an optional display label distinct from `id` — never used for addressing, and falling back to `id` when unstated, the same split an agent file draws between its filename and its frontmatter `name:` (#61). A file that declares variants is not addressable by its own name — it yields its variants and nothing else, so its own frontmatter `name:` is inert; a reader wanting a variant's display name states `name:` on that variant instead. `variantOf` on the resolved agent names the declaring file, which is what a run pins and what the editor opens. Deleting a variant removes its entry from the declaring file; deleting the last one drops the `variants:` block, so the file becomes addressable by its own name again ([ADR-0014](docs/adr/0014-deleting-the-last-variant-promotes-its-file.md)). _Avoid_: parameterized agent, agent instance, subtype.
 
+## Name clash
+
+Two or more files, or a file and a variant, claiming one name under a type. Discovery leaves every claimant out and the load carries a **workspace warning** naming each path (`Two agents are named "fixer": creative/fixer.md, scratch/fixer.md`); the rest of the workspace loads. A chain addressing the name is refused with that message instead of "not found", and a save, rename or delete that would create a clash is refused (#151). _Avoid_: duplicate slug error (the load no longer fails).
+
 ## Defaults file
 
 `workspace/defaults.md` — the shared agent frontmatter. An agent file states only

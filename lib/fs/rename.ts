@@ -96,9 +96,9 @@ function resolveRenameTarget(
 }
 
 /**
- * Refuses a name already claimed under the type — a duplicate leaf name is a hard load
- * failure (ADR-0012), and under `agents/` a file name and a variant name share the one
- * namespace (ADR-0013). The message names the source so the user knows which to look at.
+ * Refuses a name already claimed under the type — a duplicate leaf name leaves both out
+ * of the load (ADR-0012, #151), and under `agents/` a file name and a variant name share
+ * the one namespace (ADR-0013). The message names the source so the user knows which to look at.
  */
 function assertNameFree(root: string, type: EntityType, to: string, variants: Map<string, VariantSource>) {
   const file = findBySlug(typeDir(root, type), to)

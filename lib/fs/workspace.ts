@@ -4,7 +4,7 @@ import { loadAllSkills } from './parseSkill'
 import { loadAllChains } from './parseChain'
 import { loadAllTemplates } from './parseTemplate'
 import { loadAllTools } from './parseTool'
-import { discoverFiles, findBySlug } from './discover'
+import { loadDiscovered, findBySlug, relativePosix, type Loaded } from './discover'
 import { variantIndex, type VariantSource } from './variantIndex'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
@@ -56,7 +56,7 @@ export function resolveEntityPath(root: string, type: string, slug: string, fold
   const filename = safeSlug.toLowerCase().endsWith('.md') ? safeSlug : `${safeSlug}.md`
   // A slug addresses a file wherever it sits, so an existing file resolves to its own
   // path — rebuilding one from the slug would write a root twin of a file in a
-  // sub-folder, and that twin then fails the load as a duplicate (ADR-0012).
+  // sub-folder, and that twin would clash with it (ADR-0012, #151).
   const existing = findBySlug(absoluteSubDir, path.basename(filename, '.md'))
   const targetPath = existing ?? path.join(root, subDir, sanitizeFolder(folder), filename)
 
@@ -120,53 +120,45 @@ export function declaringAgentSlug(root: string, slug: string): string | undefin
   return fs.existsSync(filePath) ? storageSlug : undefined
 }
 
-// A name that claims two sources warns rather than failing the load (#151); the message
-// gives paths relative to the type directory, matching what a chain-clash refusal names.
-function clashWarnings(entityType: EntityType, typeDir: string, clashes: NameClash[]): WorkspaceWarning[] {
-  return clashes.map(({ name, paths }) => ({
-    entityType,
-    name,
-    paths,
-    message: `Two ${entityType}s are named "${name}": ${paths.map(p => path.relative(typeDir, p)).join(', ')}`,
-  }))
+// A name that claims two sources warns rather than failing the load (#151).
+function clashWarnings(root: string, entityType: EntityType, clashes: NameClash[]): WorkspaceWarning[] {
+  const typeDir = path.join(root, ENTITY_TYPES[entityType])
+  return clashes.map(({ name, paths }) => {
+    const count = paths.length === 2 ? 'Two' : String(paths.length)
+    const where = paths.map(p => relativePosix(typeDir, p)).join(', ')
+    return { entityType, name, paths, message: `${count} ${entityType}s are named "${name}": ${where}` }
+  })
 }
 
 export function loadWorkspace(root: string) {
-  const contextDir = path.join(root, 'context')
-  const contextResult = discoverFiles(contextDir)
-  const context = contextResult.files.map(f => ({
-    slug: f.slug,
-    name: f.slug,
-    filePath: f.filePath,
-    rawContent: f.raw,
-  }))
+  const loaded = {
+    agent: loadAllAgents(root),
+    skill: loadAllSkills(root),
+    chain: loadAllChains(root),
+    template: loadAllTemplates(root),
+    tool: loadAllTools(root),
+    context: loadDiscovered(path.join(root, ENTITY_TYPES.context), f => ({
+      slug: f.slug,
+      name: f.slug,
+      filePath: f.filePath,
+      rawContent: f.raw,
+    })),
+  } satisfies Record<EntityType, Loaded<unknown>>
 
-  const agentsResult = loadAllAgents(root)
-  const skillsResult = loadAllSkills(root)
-  const chainsResult = loadAllChains(root)
-  const templatesResult = loadAllTemplates(root)
-  const toolsResult = loadAllTools(root)
-
-  const warnings: WorkspaceWarning[] = [
-    ...clashWarnings('agent', path.join(root, ENTITY_TYPES.agent), agentsResult.clashes),
-    ...clashWarnings('skill', path.join(root, ENTITY_TYPES.skill), skillsResult.clashes),
-    ...clashWarnings('chain', path.join(root, ENTITY_TYPES.chain), chainsResult.clashes),
-    ...clashWarnings('template', path.join(root, ENTITY_TYPES.template), templatesResult.clashes),
-    ...clashWarnings('tool', path.join(root, ENTITY_TYPES.tool), toolsResult.clashes),
-    ...clashWarnings('context', contextDir, contextResult.clashes),
-  ]
+  const warnings = (Object.keys(loaded) as EntityType[])
+    .flatMap(type => clashWarnings(root, type, loaded[type].clashes))
 
   return {
-    agents: agentsResult.agents,
-    skills: skillsResult.skills,
-    chains: chainsResult.chains,
-    templates: templatesResult.templates,
-    tools: toolsResult.tools,
-    context,
+    agents: loaded.agent.items,
+    skills: loaded.skill.items,
+    chains: loaded.chain.items,
+    templates: loaded.template.items,
+    tools: loaded.tool.items,
+    context: loaded.context.items,
     warnings,
     defaults: loadAgentDefaults(root),
     defaultsRaw: readAgentDefaultsRaw(root),
-    models: knownModelCatalogue(agentsResult.agents.map(a => a.model), resolveProvider().model),
+    models: knownModelCatalogue(loaded.agent.items.map(a => a.model), resolveProvider().model),
     envModelOverride: process.env.AI_MODEL_OVERRIDE === 'true',
   }
 }
