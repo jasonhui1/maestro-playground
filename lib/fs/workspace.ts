@@ -12,6 +12,7 @@ import fs from 'fs'
 import { WorkspaceError } from './errors'
 import { knownModelCatalogue } from '../pricing'
 import { resolveProvider } from '../provider'
+import type { NameClash, WorkspaceWarning } from '../types'
 
 export * from './errors'
 export type { VariantSource }
@@ -119,25 +120,53 @@ export function declaringAgentSlug(root: string, slug: string): string | undefin
   return fs.existsSync(filePath) ? storageSlug : undefined
 }
 
+// A name that claims two sources warns rather than failing the load (#151); the message
+// gives paths relative to the type directory, matching what a chain-clash refusal names.
+function clashWarnings(entityType: EntityType, typeDir: string, clashes: NameClash[]): WorkspaceWarning[] {
+  return clashes.map(({ name, paths }) => ({
+    entityType,
+    name,
+    paths,
+    message: `Two ${entityType}s are named "${name}": ${paths.map(p => path.relative(typeDir, p)).join(', ')}`,
+  }))
+}
+
 export function loadWorkspace(root: string) {
-  const context = discoverFiles(path.join(root, 'context')).map(f => ({
+  const contextDir = path.join(root, 'context')
+  const contextResult = discoverFiles(contextDir)
+  const context = contextResult.files.map(f => ({
     slug: f.slug,
     name: f.slug,
     filePath: f.filePath,
     rawContent: f.raw,
   }))
 
-  const agents = loadAllAgents(root)
+  const agentsResult = loadAllAgents(root)
+  const skillsResult = loadAllSkills(root)
+  const chainsResult = loadAllChains(root)
+  const templatesResult = loadAllTemplates(root)
+  const toolsResult = loadAllTools(root)
+
+  const warnings: WorkspaceWarning[] = [
+    ...clashWarnings('agent', path.join(root, ENTITY_TYPES.agent), agentsResult.clashes),
+    ...clashWarnings('skill', path.join(root, ENTITY_TYPES.skill), skillsResult.clashes),
+    ...clashWarnings('chain', path.join(root, ENTITY_TYPES.chain), chainsResult.clashes),
+    ...clashWarnings('template', path.join(root, ENTITY_TYPES.template), templatesResult.clashes),
+    ...clashWarnings('tool', path.join(root, ENTITY_TYPES.tool), toolsResult.clashes),
+    ...clashWarnings('context', contextDir, contextResult.clashes),
+  ]
+
   return {
-    agents,
-    skills: loadAllSkills(root),
-    chains: loadAllChains(root),
-    templates: loadAllTemplates(root),
-    tools: loadAllTools(root),
+    agents: agentsResult.agents,
+    skills: skillsResult.skills,
+    chains: chainsResult.chains,
+    templates: templatesResult.templates,
+    tools: toolsResult.tools,
     context,
+    warnings,
     defaults: loadAgentDefaults(root),
     defaultsRaw: readAgentDefaultsRaw(root),
-    models: knownModelCatalogue(agents.map(a => a.model), resolveProvider().model),
+    models: knownModelCatalogue(agentsResult.agents.map(a => a.model), resolveProvider().model),
     envModelOverride: process.env.AI_MODEL_OVERRIDE === 'true',
   }
 }

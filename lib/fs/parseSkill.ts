@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { SkillDef } from '../types'
+import { SkillDef, NameClash } from '../types'
 import { discoverFiles } from './discover'
 
 export function parseSkill(filePath: string, rawContent?: string): SkillDef {
@@ -22,7 +22,12 @@ export function parseSkill(filePath: string, rawContent?: string): SkillDef {
   }
 }
 
-export function loadAllSkills(workspacePath: string): SkillDef[] {
-  return discoverFiles(path.join(workspacePath, 'skills'))
-    .map(f => parseSkill(f.filePath, f.raw))
+export interface LoadAllSkillsResult {
+  skills: SkillDef[]
+  clashes: NameClash[]
+}
+
+export function loadAllSkills(workspacePath: string): LoadAllSkillsResult {
+  const { files, clashes } = discoverFiles(path.join(workspacePath, 'skills'))
+  return { skills: files.map(f => parseSkill(f.filePath, f.raw)), clashes }
 }

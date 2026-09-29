@@ -43,6 +43,7 @@ function WorkspaceContent() {
   const editorChains = useWorkspaceStore(s => s.files.chains);
   const editorTools = useWorkspaceStore(s => s.files.tools);
   const editorSkills = useWorkspaceStore(s => s.files.skills);
+  const editorWarnings = useWorkspaceStore(s => s.files.warnings);
   const defaults = useWorkspaceStore(s => s.files.defaults);
 
   useEffect(() => {
@@ -73,11 +74,11 @@ function WorkspaceContent() {
     if (view !== 'yaml' || !slug) return []
     try {
       const live = { ...parseChainContent(content, slug), filePath: '' }
-      return validateChain(live, { agents: editorAgents, chains: editorChains, tools: editorTools, skills: editorSkills }).issues
+      return validateChain(live, { agents: editorAgents, chains: editorChains, tools: editorTools, skills: editorSkills, warnings: editorWarnings }).issues
     } catch {
       return []
     }
-  }, [view, slug, content, editorAgents, editorChains, editorTools, editorSkills])
+  }, [view, slug, content, editorAgents, editorChains, editorTools, editorSkills, editorWarnings])
   const dockIssues = view === 'graph' ? graphIssues : yamlIssues
 
   // Canonical per-file run-store key for every view (matches ChainEditor's `chain:${slug}`).
@@ -210,6 +211,7 @@ function WorkspaceContent() {
                   chains={editorChains}
                   tools={editorTools}
                   skills={editorSkills}
+                  warnings={editorWarnings}
                   onValidation={setGraphIssues}
                 />
               ) : (

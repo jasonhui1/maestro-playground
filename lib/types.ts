@@ -337,6 +337,17 @@ export interface CreationParams {
   folder?: string
 }
 
+/** Two files (or a variant id and a file) claim one name; both are left out of the load (#151). */
+export interface NameClash {
+  name: string
+  paths: string[]
+}
+
+export interface WorkspaceWarning extends NameClash {
+  entityType: keyof typeof ENTITY_DIRS
+  message: string
+}
+
 export interface ValidationIssue {
   message: string
   severity: 'error' | 'warning'

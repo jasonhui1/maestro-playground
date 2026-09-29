@@ -43,6 +43,7 @@ export default function Sidebar() {
   const loaded = useWorkspaceStore((s) => s.loaded);
   const error = useWorkspaceStore((s) => s.error);
   const folderMap = useWorkspaceStore((s) => s.emptyFolders);
+  const warnings = useWorkspaceStore((s) => s.files.warnings) ?? [];
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -316,6 +317,16 @@ export default function Sidebar() {
 
   return (
     <div className="w-full h-full flex flex-col border-r border-zinc-200 min-w-0 bg-white">
+        {warnings.length > 0 && (
+          <div className="px-3 py-2 border-b border-amber-200 bg-amber-50 text-xs text-amber-800 space-y-1">
+            {warnings.map((w, i) => (
+              <div key={`${w.entityType}-${w.name}-${i}`} className="flex items-start gap-1.5">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>{w.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="p-4 border-b border-zinc-200 bg-white">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold text-zinc-800 capitalize">

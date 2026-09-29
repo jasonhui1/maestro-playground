@@ -8,6 +8,7 @@ import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
 import { walkMarkdown } from './discover'
+import { normalizeVariants, loadAllAgents } from './parseAgent'
 
 export interface SaveEntityRequest {
   type: EntityType
@@ -15,6 +16,30 @@ export interface SaveEntityRequest {
   data: Record<string, unknown>
   content: string
   folder?: string
+}
+
+// A variant id addresses a file like a slug does (ADR-0012), so a save that would
+// newly claim a name another agent has is refused before it lands (#151).
+function assertVariantsFree(root: string, ownFilePath: string, rawVariants: unknown) {
+  let variants
+  try {
+    variants = normalizeVariants(rawVariants, ownFilePath)
+  } catch {
+    return
+  }
+  if (!variants.length) return
+
+  const claimedBy = new Map<string, string>()
+  for (const a of loadAllAgents(root).agents) {
+    if (a.filePath !== ownFilePath && !claimedBy.has(a.slug)) claimedBy.set(a.slug, a.filePath)
+  }
+  for (const v of variants) {
+    const clash = claimedBy.get(v.id)
+    if (clash) {
+      const relClash = path.relative(path.join(root, 'agents'), clash)
+      throw new WorkspaceError('ALREADY_EXISTS', `an agent named \`${v.id}\` already exists: ${relClash}`)
+    }
+  }
 }
 
 export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder }: SaveEntityRequest) {
@@ -30,6 +55,9 @@ export function saveWorkspaceEntity(root: string, { type, slug, data, content, f
 
   // resolveEntityPath handles sanitization and security checks
   const filePath = resolveEntityPath(root, type, cleanSlug, folder)
+
+  if (type === 'agent') assertVariantsFree(root, filePath, data.variants)
+
   const fileContent = matter.stringify(content, data)
 
   fs.writeFileSync(filePath, fileContent, 'utf-8')

@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { ChainDef } from '../types'
+import { ChainDef, NameClash } from '../types'
 import { discoverFiles } from './discover'
 import { parseChainContent } from '../parseChain'
 
@@ -12,7 +12,12 @@ export function parseChain(filePath: string, rawContent?: string): ChainDef {
   return { ...parseChainContent(raw, slug), filePath, rawContent: raw }
 }
 
-export function loadAllChains(workspacePath: string): ChainDef[] {
-  return discoverFiles(path.join(workspacePath, 'chains'))
-    .map(f => parseChain(f.filePath, f.raw))
+export interface LoadAllChainsResult {
+  chains: ChainDef[]
+  clashes: NameClash[]
+}
+
+export function loadAllChains(workspacePath: string): LoadAllChainsResult {
+  const { files, clashes } = discoverFiles(path.join(workspacePath, 'chains'))
+  return { chains: files.map(f => parseChain(f.filePath, f.raw)), clashes }
 }

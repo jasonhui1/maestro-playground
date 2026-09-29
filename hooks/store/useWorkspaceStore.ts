@@ -1,7 +1,7 @@
 // hooks/store/useWorkspaceStore.ts
 // One owner of the workspace file list and of everything that invalidates it (#120).
 import { create } from 'zustand'
-import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef, RenamePlan, WorkspaceTab, WorkspaceTabType } from '../../lib/types'
+import { AgentDef, SkillDef, ChainDef, TemplateDef, ToolDef, RenamePlan, WorkspaceTab, WorkspaceTabType, WorkspaceWarning } from '../../lib/types'
 import { ENTITY_DIRS } from '../../lib/entityDirs'
 import { workspaceRootOf, type EntityType } from '../../lib/fileTree'
 import { closeTab, renameTab, tabKey } from '../../lib/fs/tabs'
@@ -22,6 +22,8 @@ export interface WorkspaceFiles {
   templates: TemplateDef[]
   context: ContextFileDef[]
   tools: ToolDef[]
+  /** Names discovery left out for clashing with another file or variant (#151). */
+  warnings?: WorkspaceWarning[]
   defaults?: Record<string, unknown>
   models?: string[]
   envModelOverride?: boolean
@@ -29,7 +31,7 @@ export interface WorkspaceFiles {
 
 // One frozen value, so a selector reading an untouched slice is referentially stable.
 export const EMPTY_FILES: WorkspaceFiles = Object.freeze({
-  agents: [], skills: [], chains: [], templates: [], context: [], tools: [], models: [],
+  agents: [], skills: [], chains: [], templates: [], context: [], tools: [], models: [], warnings: [],
 }) as WorkspaceFiles
 
 /** What the tabs looked like before a mutation, and what they look like after it. */

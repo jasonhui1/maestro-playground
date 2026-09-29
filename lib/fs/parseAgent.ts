@@ -1,8 +1,8 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDef, VariantDecl } from '../types'
-import { discoverFiles, assertUniqueSlug } from './discover'
+import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDef, VariantDecl, NameClash } from '../types'
+import { discoverFiles, groupByName } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 import { resolveProvider } from '../provider'
@@ -212,17 +212,20 @@ export function parseAgentFile(
   })
 }
 
-export function loadAllAgents(workspacePath: string): AgentDef[] {
+export interface LoadAllAgentsResult {
+  agents: AgentDef[]
+  clashes: NameClash[]
+}
+
+export function loadAllAgents(workspacePath: string): LoadAllAgentsResult {
   const defaults = loadAgentDefaults(workspacePath)
-  const out: AgentDef[] = []
-  const bySlug = new Map<string, string>()
-  for (const f of discoverFiles(path.join(workspacePath, 'agents'))) {
-    for (const a of parseAgentFile(f.filePath, f.raw, defaults)) {
-      // A variant name and a file name are addressed alike, so they share the one
-      // flat namespace per type (ADR-0012).
-      assertUniqueSlug(bySlug, a.slug, a.filePath, 'agent name')
-      out.push(a)
-    }
-  }
-  return out
+  const { files, clashes: fileClashes } = discoverFiles(path.join(workspacePath, 'agents'))
+
+  const all: AgentDef[] = []
+  for (const f of files) all.push(...parseAgentFile(f.filePath, f.raw, defaults))
+
+  // A variant name and a file name share one flat namespace (ADR-0012, #151).
+  const { unique, clashes: nameClashes } = groupByName(all, a => a.slug, a => a.filePath)
+
+  return { agents: unique, clashes: [...fileClashes, ...nameClashes] }
 }

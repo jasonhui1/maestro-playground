@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { WorkspaceError } from './errors'
+import type { NameClash } from '../types'
 
 export interface DiscoveredFile {
   slug: string      // file name without .md; the folder never appears in it (ADR-0012)
@@ -8,10 +9,12 @@ export interface DiscoveredFile {
   raw: string       // file bytes as read; ADR-0011 hashes these, not the parsed body
 }
 
-/**
- * A name addresses a file, so two sources may not claim one name (ADR-0012).
- * Records `slug` in `bySlug`, or throws naming both sources.
- */
+export interface DiscoverResult {
+  files: DiscoveredFile[]
+  clashes: NameClash[]
+}
+
+// Refuses a single write outright, unlike `groupByName`/`discoverFiles` below (#151).
 export function assertUniqueSlug(
   bySlug: Map<string, string>,
   slug: string,
@@ -29,18 +32,37 @@ export function assertUniqueSlug(
   bySlug.set(slug, filePath)
 }
 
-/** Every `*.md` under one type directory, at any depth. A duplicate slug throws (ADR-0012). */
-export function discoverFiles(typeDir: string): DiscoveredFile[] {
-  const found: DiscoveredFile[] = []
-  const bySlug = new Map<string, string>()
-
-  for (const filePath of walkMarkdown(typeDir)) {
-    const slug = path.basename(filePath, '.md')
-    assertUniqueSlug(bySlug, slug, filePath)
-    found.push({ slug, filePath, raw: fs.readFileSync(filePath, 'utf-8') })
+/** A repeated name is a clash and both entries are left out of `unique` (#151). */
+export function groupByName<T>(
+  items: T[],
+  nameOf: (item: T) => string,
+  pathOf: (item: T) => string,
+): { unique: T[]; clashes: NameClash[] } {
+  const byName = new Map<string, T[]>()
+  for (const item of items) {
+    const name = nameOf(item)
+    byName.set(name, [...(byName.get(name) ?? []), item])
   }
 
-  return found
+  const unique: T[] = []
+  const clashes: NameClash[] = []
+  for (const [name, group] of byName) {
+    if (group.length > 1) clashes.push({ name, paths: [...new Set(group.map(pathOf))] })
+    else unique.push(group[0])
+  }
+  return { unique, clashes }
+}
+
+// A duplicate slug is left out of `files` and reported in `clashes` instead of
+// throwing, so one repeated name doesn't take the rest of the type down (#151).
+export function discoverFiles(typeDir: string): DiscoverResult {
+  const found = walkMarkdown(typeDir).map(filePath => ({
+    slug: path.basename(filePath, '.md'),
+    filePath,
+    raw: fs.readFileSync(filePath, 'utf-8'),
+  }))
+  const { unique, clashes } = groupByName(found, f => f.slug, f => f.filePath)
+  return { files: unique, clashes }
 }
 
 // Dot-prefixed entries are skipped: `.versions/` holds snapshots of workspace files,

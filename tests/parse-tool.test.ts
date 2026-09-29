@@ -64,10 +64,11 @@ executor: retrieve
 desc
 `)
   const loaded = loadAllTools(wp)
-  assert.strictEqual(loaded.length, 1)
-  assert.strictEqual(loaded[0].slug, 'retrieve')
+  assert.strictEqual(loaded.tools.length, 1)
+  assert.strictEqual(loaded.tools[0].slug, 'retrieve')
+  assert.deepStrictEqual(loaded.clashes, [])
 
   // missing tools/ dir -> empty array
   const wpEmpty = fs.mkdtempSync(path.join(os.tmpdir(), 'parse-tool-ws-empty-'))
-  assert.deepStrictEqual(loadAllTools(wpEmpty), [])
+  assert.deepStrictEqual(loadAllTools(wpEmpty), { tools: [], clashes: [] })
 })
