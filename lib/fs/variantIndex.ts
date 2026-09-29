@@ -16,6 +16,8 @@ function parseFile(filePath: string) {
 }
 
 // Every variant declared under agents/, by name (#118). Tolerant of malformed files.
+// A clashing id keeps its first declarer, like findBySlug, so a clash stays
+// editable back into shape (ADR-0012, #151).
 export function variantIndex(root: string, type: string): Map<string, VariantSource> {
   const found = new Map<string, VariantSource>()
   if (type !== 'agent') return found
