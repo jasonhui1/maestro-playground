@@ -127,6 +127,17 @@ test('an agent run fills {dice} with one rolled line per axis and pins the roll'
     `Design a character for a festival.\n\n- culture: ${roll.culture[0]}\n- hair: ${roll.hair[0]}\n- styling: ${roll.styling.join(', ')}`)
 })
 
+// A direct agent run declares no layout, so its panels cannot carry the roll (#155).
+test('a direct agent run\'s run_start carries its rolls, and omits dice when nothing rolled', async () => {
+  newWorkspace()
+  const events = await sse(await run({ agentName: 'designer', seedPrompt: 'a festival' }))
+  const meta = await readMeta(runIdOf(events))
+  assert.deepStrictEqual(events.find(e => e.type === 'run_start')!.dice, meta.dice)
+
+  const plain = await sse(await run({ agentName: 'judge', seedPrompt: 'X' }))
+  assert.ok(!('dice' in plain.find(e => e.type === 'run_start')!))
+})
+
 test('an agent with dice but no {dice} token gets the lines after its body', async () => {
   newWorkspace()
   const events = await sse(await run({ agentName: 'appended', seedPrompt: 'X' }))

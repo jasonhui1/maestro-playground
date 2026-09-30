@@ -11,10 +11,11 @@ import { runToolContext } from './tools/context'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
+import type { RunEvent } from './runStream'
 import { keepConversations } from './nodeChat'
 import type { AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta } from './types'
 import type { RunDefinitions } from './runDefinitions'
-import { rollRunDice, type DicePins, type RunDice } from './dice'
+import { diceField, rollRunDice, type DicePins, type RunDice } from './dice'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -95,7 +96,7 @@ export function streamChainRun(s: RunSession): Response {
   const onDisk = new Set(s.replay.logged)
 
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
+    send(runStartEvent(runId, s.dice))
 
     // Every hop re-sends the panels, so a view drawing mid-run reads the finished
     // run's projection rather than porting the rule (#76).
@@ -179,6 +180,10 @@ export function streamChainRun(s: RunSession): Response {
   })
 }
 
+export function runStartEvent(runId: string, dice: RunDice | undefined): Extract<RunEvent, { type: 'run_start' }> {
+  return { type: 'run_start', runId, ...diceField(dice) }
+}
+
 /** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
 export interface StartRunInput {
   chain: ChainDef
@@ -236,7 +241,7 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     seedPrompt,
     parameter,
     ...(run.inputs ? { inputs: run.inputs } : {}),
-    ...(run.dice && Object.keys(run.dice).length ? { dice: run.dice } : {}),
+    ...diceField(run.dice),
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],

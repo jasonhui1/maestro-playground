@@ -112,6 +112,11 @@ export function innerDice(dice: RunDice, nodeId: string): RunDice {
     key.startsWith(prefix) ? [[key.slice(prefix.length), roll]] : []))
 }
 
+/** `{ dice }` for a spread, empty when nothing rolled — how meta.json and `run_start` both carry it. */
+export function diceField(dice: RunDice | undefined): { dice?: RunDice } {
+  return dice && Object.keys(dice).length ? { dice } : {}
+}
+
 /** A request's `dice` pins, each naming an axis some node in `chain` declares. */
 export function readDicePins(raw: unknown, chain: ChainDef, defs: DiceDefs): { pins?: DicePins } | Refusal {
   if (raw === undefined) return {}

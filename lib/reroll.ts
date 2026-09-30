@@ -14,7 +14,7 @@ import { withModelOverride } from './modelOverride'
 import { bindAgentTools } from './tools/registry'
 import { runToolContext } from './tools/context'
 import { sseResponse, type SseSend } from './sse'
-import { loadContinuation, newRunMeta, type LiveWorkspace } from './runSession'
+import { loadContinuation, newRunMeta, runStartEvent, type LiveWorkspace } from './runSession'
 import type { Workspace } from './runFolders'
 import type { AgentDef, AgentOutput, ChainEdge, ChainNode, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -170,7 +170,7 @@ function rerollInPlace(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, r
   const { runs } = ws
   const { runId } = meta
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
+    send(runStartEvent(runId, meta.dice))
     send({ type: 'layout', model: buildLayoutModel(chain, meta.agentOutputs, meta.dice) })
     let next = hold
     try {
@@ -210,7 +210,7 @@ function rerollFork(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, sour
 
   const runId = newRunId()
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
+    send(runStartEvent(runId, start.dice))
     send({ type: 'layout', model: buildLayoutModel(start.chain, replay, start.dice) })
     let created = false
     try {

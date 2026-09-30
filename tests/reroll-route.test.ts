@@ -111,6 +111,17 @@ const runIds = () => fs.readdirSync(path.join(root, 'logs')).sort()
 const forkedId = (events: Array<Record<string, unknown>>) => events.find(e => e.type === 'run_start')!.runId as string
 const deciderPrompts = () => fake.seen.filter(t => t.messages[0].content?.startsWith('decider on')).map(t => t.messages[0].content ?? '')
 
+test('a reroll\'s run_start carries the run\'s rolls, in place and forked (#155)', async () => {
+  fs.writeFileSync(path.join(root, 'agents/after.md'), '---\nname: after\nmodel: openai/gpt-4o-mini\ndice:\n  hair: [bob]\n---\nafter on {direction}\n')
+  const runId = await startWaiting()
+  const rolls = { after: { hair: ['bob'] } }
+  assert.deepStrictEqual(meta(runId).dice, rolls)
+  for (const body of [{ revision: 1 }, { fork: true, revision: 2 }]) {
+    const { events } = await drainSse(await reroll(runId, body))
+    assert.deepStrictEqual(events.find(e => e.type === 'run_start')!.dice, rolls, JSON.stringify(body))
+  }
+})
+
 test('reroll twice with saved feedback, then resume with a pick from the second set (#134)', async () => {
   const runId = await startWaiting()
   assert.strictEqual(openHold(runId).revision, 1)

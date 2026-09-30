@@ -10,7 +10,7 @@ import type { Workspace } from './runFolders'
 import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 import { resolveContinuationModelOverride } from './pricing'
-import { rollRunDice } from './dice'
+import { diceField, rollRunDice } from './dice'
 
 /** What a continuation does to a run: answer a hold (resume), reroll its candidates, promote a reply, or fork. */
 export type ContinuePlan =
@@ -139,7 +139,7 @@ function inPlace(
   const { chain, workspace: defs, versionNumber } = continuation
   const dice = rollRunDice(chain, defs, meta.dice)
 
-  if (!ws.runs.claim(meta.runId, { ...stretch.metaUpdate, ...(Object.keys(dice).length ? { dice } : {}) })) return conflict('Run is running')
+  if (!ws.runs.claim(meta.runId, { ...stretch.metaUpdate, ...diceField(dice) })) return conflict('Run is running')
   if (stretch.rewriteLog) ws.runs.writeStep(meta.runId, stretch.rewriteLog.step, stretch.rewriteLog.output)
   return streamChainRun({
     ws,

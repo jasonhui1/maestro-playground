@@ -43,6 +43,8 @@ export const CAPABILITIES = {
   /** `dice:` on an agent rolls once per node per run, pinned in meta.json and on each layout panel; `GET /api/workspace`
    *  lists each agent's axes, and `/api/run` and `/api/variance` take `dice: { [axis]: value | values }` pins (#153). */
   dice: true,
+  /** `run_start` carries the run's rolls as `dice`, keyed like meta.json's, on any run that rolled (#155). */
+  runStartDice: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

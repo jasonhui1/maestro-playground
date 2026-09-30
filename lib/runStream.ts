@@ -1,4 +1,4 @@
-import { AgentOutput, ChainNode, HoldRecord } from './types'
+import { AgentOutput, ChainNode, HoldRecord, RunDice } from './types'
 import type { SectionWarning } from './sectionWarning'
 import type { LayoutModel } from './layoutModel'
 import type { ToolLoopEvent } from './tools/events'
@@ -8,7 +8,8 @@ import type { ToolLoopEvent } from './tools/events'
 type NodeKind = ChainNode['kind']
 
 export type RunEvent =
-  | { type: 'run_start'; runId: string }
+  // `dice` is meta.json's, so a run with no layout panels still streams its rolls (#155).
+  | { type: 'run_start'; runId: string; dice?: RunDice }
   | { type: 'agent_start'; nodeId: string; agentName: string; step: number; kind?: NodeKind }
   | { type: 'token'; nodeId: string; agentName?: string; token: string; tokenType?: string; step?: number; kind?: NodeKind; turn?: number }
   | { type: 'agent_done'; nodeId: string; agentName: string; step: number; output: AgentOutput; kind?: NodeKind }
