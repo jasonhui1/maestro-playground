@@ -1,8 +1,9 @@
-import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
+import { ChainDef, ChainNode, AgentDef, AgentOutput, DiceRoll } from './types'
 import { extractSectionPath } from './graph'
-import { promptSlots, fillSlot, outputKey, isWholeOutput } from './tokens'
+import { agentSlots, fillSlot, outputKey, isWholeOutput } from './tokens'
 import { emitSectionWarnings, type SectionWarning } from './sectionWarning'
 import { hasLiteralInput } from './chainGraph'
+import { fillDice } from './dice'
 
 // Pure — reporting the miss is the caller's job (#37).
 export interface SocketRead {
@@ -79,10 +80,12 @@ export function resolveNodePrompt(
   seedPrompt: string,
   readContext: (file: string) => string,
   paramValue: string = '',
+  roll?: DiceRoll,
 ): ResolvedPrompt {
-  let out = agent.systemPrompt
+  // Before the slots, so a `{dice}` in text arriving on an edge stays text.
+  let out = fillDice(agent.systemPrompt, roll)
   const warnings: SectionWarning[] = []
-  for (const slot of promptSlots(agent.systemPrompt)) {
+  for (const slot of agentSlots(agent)) {
     const edge = chain.edges.find(e => e.toNode === node.id && e.toSocket === slot)
     let value: string
     if (edge) {

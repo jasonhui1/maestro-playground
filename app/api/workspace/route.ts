@@ -5,7 +5,7 @@ import { createWorkspaceEntity, createWorkspaceFolder, saveWorkspaceEntity } fro
 import { buildChainFromTemplate } from '@/lib/fs/forkChain'
 import { chainToData } from '@/lib/serializeChain'
 import { CAPABILITIES } from '@/lib/capabilities'
-import { promptSlots } from '@/lib/tokens'
+import { agentSlots } from '@/lib/tokens'
 import { workspaceErrorResponse } from './errors'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import fs from 'fs'
@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const workspace = loadWorkspace(requestWorkspace().root)
     // Each slot is an input a direct agent run takes by name (#152).
-    const agents = workspace.agents.map(a => ({ ...a, slots: promptSlots(a.systemPrompt) }))
+    const agents = workspace.agents.map(a => ({ ...a, slots: agentSlots(a) }))
     return NextResponse.json({ ...workspace, agents, capabilities: CAPABILITIES })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

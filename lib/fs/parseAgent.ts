@@ -7,6 +7,7 @@ import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 import { resolveProvider } from '../provider'
 import { fillSlot } from '../tokens'
+import { normalizeDice } from '../dice'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -136,6 +137,7 @@ export function parseAgent(
     // Read off the same frontmatter as every other field, so a variant block is
     // subject to the same rules rather than a second, laxer parse (ADR-0013).
     variants: normalizeVariants(data.variants, filePath),
+    dice: normalizeDice(data.dice, filePath),
     filePath,
     rawContent: raw,
     isFavorite: false,

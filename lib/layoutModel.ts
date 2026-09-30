@@ -1,4 +1,4 @@
-import { ChainDef, ChainPort, AgentOutput } from './types'
+import { ChainDef, ChainPort, AgentOutput, DiceRoll, RunDice } from './types'
 import { extractSection } from './graph'
 import { latestOutputsByNode } from './runHistoryState'
 
@@ -36,6 +36,8 @@ export interface LayoutPanel {
   error?: string
   /** Set under `view: sidebar` only — the loop round this panel is (ADR-0016 rule 4). */
   round?: number
+  /** What the panel's node rolled, by axis; absent on a node that rolls no dice (#153). */
+  dice?: DiceRoll
 }
 
 export interface LayoutModel {
@@ -70,28 +72,29 @@ function stateOf(output: AgentOutput | undefined, text: string): PanelState {
   return text.trim() === '' ? 'empty' : 'filled'
 }
 
-function panelFor(port: ChainPort, output: AgentOutput | undefined, name = port.name): LayoutPanel {
+function panelFor(port: ChainPort, output: AgentOutput | undefined, dice: RunDice, name = port.name): LayoutPanel {
   const text = contentOf(output, port.socket)
   const state = stateOf(output, text)
   const panel: LayoutPanel = { name, node: port.node, text, lines: lineCount(text), state }
   if (state === 'errored' && output?.error) panel.error = output.error
   if (port.role === 'join') panel.emphasis = 'join'
+  if (dice[port.node]) panel.dice = dice[port.node]
   return panel
 }
 
-function panelsFor(ports: ChainPort[], outputs: AgentOutput[]): LayoutPanel[] {
+function panelsFor(ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
   // Last write wins: a loop-body node reports once per round, and the panel shows
   // where the node ended up rather than where it started.
   const byNode = new Map<string, AgentOutput>()
   for (const o of latestOutputsByNode(outputs)) if (o.nodeId) byNode.set(o.nodeId, o)
 
-  return ports.map(port => panelFor(port, byNode.get(port.node)))
+  return ports.map(port => panelFor(port, byNode.get(port.node), dice))
 }
 
 // A loop-body node reports once per round; under `view: sidebar` each round is its
 // own panel rather than collapsing to the last write (ADR-0016 rule 4). A round
 // reported more than once (a retry) still collapses to its last write.
-function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[]): LayoutPanel[] {
+function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
   return ports.flatMap(port => {
     const byRound = new Map<number, AgentOutput>()
     for (const o of outputs) {
@@ -99,7 +102,7 @@ function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[]): LayoutPan
       byRound.set(o.round ?? 0, o)
     }
     return [...byRound.keys()].sort((a, b) => a - b).map((round): LayoutPanel => ({
-      ...panelFor(port, byRound.get(round), `${port.name} · round ${round + 1}`),
+      ...panelFor(port, byRound.get(round), dice, `${port.name} · round ${round + 1}`),
       round,
     }))
   })
@@ -111,21 +114,21 @@ function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[]): LayoutPan
  * Reads `view` and `outputs` only — never an edge or a node kind. A chain that
  * declares no layout is not opted in, and the caller renders it as the run trace.
  */
-export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[]): LayoutModel {
+export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[], dice: RunDice = {}): LayoutModel {
   const ports = chain.outputs ?? []
   if (ports.length === 0) return UNDECLARED
 
   if (chain.view === 'timeline') {
-    const panels = panelsFor(ports, outputs)
+    const panels = panelsFor(ports, outputs, dice)
     panels[panels.length - 1].emphasis = 'last'
     return { kind: 'timeline', panels }
   }
 
   // A columns chain with no `role: join` port renders its columns and nothing
   // beneath them (ADR-0016) — there is no "last panel" fallback here.
-  if (chain.view === 'columns') return { kind: 'columns', panels: panelsFor(ports, outputs) }
+  if (chain.view === 'columns') return { kind: 'columns', panels: panelsFor(ports, outputs, dice) }
 
-  if (chain.view === 'sidebar') return { kind: 'sidebar', panels: panelsForSidebar(ports, outputs) }
+  if (chain.view === 'sidebar') return { kind: 'sidebar', panels: panelsForSidebar(ports, outputs, dice) }
 
   return UNDECLARED
 }

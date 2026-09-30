@@ -1,7 +1,10 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
-import { promptSlots, socketKey } from './tokens'
+import { agentSlots, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
+
+/** How deep subchains may nest before a run refuses to go further. */
+export const MAX_SUBCHAIN_DEPTH = 10
 
 export interface WorkspaceLookup {
   chain: ChainDef
@@ -87,7 +90,7 @@ function agentInputs(node: ChainNode, { agents, tools = [] }: WorkspaceLookup): 
   const a = slug ? agents.find(x => x.slug === slug) : undefined
   if (!a) return []
   return [
-    ...promptSlots(a.systemPrompt).map(name => ({ name })),
+    ...agentSlots(a).map(name => ({ name })),
     ...agentPartSockets(a, tools).map(({ socket }) => ({ name: socket, optional: true })),
   ]
 }

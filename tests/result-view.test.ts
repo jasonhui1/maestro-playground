@@ -205,3 +205,9 @@ test('the trace order and the node states come off the same fold', () => {
     ['a', 'b'],
   )
 })
+
+test('a reopened run draws each panel\'s pinned dice roll (#153)', () => {
+  const roll = { hair: ['bob'] }
+  const model = projectResultView(resultViewFromMeta(metaFor([output('a', 'x')], { dice: { a: roll } }), chain()), NOW).model
+  assert.deepStrictEqual(model?.panels.find(p => p.node === 'a')?.dice, roll)
+})

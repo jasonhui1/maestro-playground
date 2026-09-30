@@ -5,6 +5,7 @@ import { resolveRunChain, type RunChainBody, type ResolvedRunKind } from './reso
 import { pinRunSnapshot } from './runVersions'
 import { versionKey } from './runVersionModel'
 import { badRequest } from './refusal'
+import { readDicePins } from './dice'
 import type { StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
 import type { ChainDef, Refusal } from './types'
@@ -12,6 +13,7 @@ import type { ChainDef, Refusal } from './types'
 export type RunRequestBody = RunChainBody & {
   seedPrompt?: string
   inputs?: unknown
+  dice?: unknown
   paramValue?: string
   context?: unknown
   modelOverride?: unknown
@@ -65,6 +67,8 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
 
   const runInputs = readRunInputs(chain, body.inputs, kind)
   if ('error' in runInputs) return runInputs
+  const dice = readDicePins(body.dice, chain, workspace)
+  if ('error' in dice) return dice
 
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)
   const versions = snapshot.versions
@@ -84,6 +88,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       title,
       seedPrompt: typeof body.seedPrompt === 'string' ? body.seedPrompt : '',
       inputs: runInputs.inputs,
+      dicePins: dice.pins,
       parameter: chain.parameter && typeof body.paramValue === 'string' && body.paramValue
         ? { name: chain.parameter.name, value: body.paramValue }
         : undefined,

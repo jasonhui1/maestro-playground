@@ -32,7 +32,7 @@ Whether a node can be scheduled and executed. For a required input slot: if conn
 
 ## Token
 
-A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt, node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.
+A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt (bar `{dice}` on an agent that declares `dice:`, see **Dice**), node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.
 
 ## Optional input
 
@@ -103,6 +103,10 @@ The place that names an agent and supplies its per-instance values: an `agent` n
 ## Variant
 
 A named agent declared inside another agent's file, sharing that file's prompt body and changing its skill list or filling one of its slots ([ADR-0013](docs/adr/0013-an-agent-file-may-declare-named-variants.md)). A variant **is** an agent: its `id` is a slug, addressed from a chain exactly like a file name, and it shares the one flat namespace per type that ADR-0012 gives. It may also state `name:`, an optional display label distinct from `id` — never used for addressing, and falling back to `id` when unstated, the same split an agent file draws between its filename and its frontmatter `name:` (#61). A file that declares variants is not addressable by its own name — it yields its variants and nothing else, so its own frontmatter `name:` is inert; a reader wanting a variant's display name states `name:` on that variant instead. `variantOf` on the resolved agent names the declaring file, which is what a run pins and what the editor opens. Deleting a variant removes its entry from the declaring file; deleting the last one drops the `variants:` block, so the file becomes addressable by its own name again ([ADR-0014](docs/adr/0014-deleting-the-last-variant-promotes-its-file.md)). _Avoid_: parameterized agent, agent instance, subtype.
+
+## Dice
+
+Named lists an agent file declares under `dice:`, each an **axis** rolled in code into the reserved `{dice}` token as `- axis: value` lines (#153). Every node rolls its own, once per run — loop rounds share it — and the run pins the **roll** in `meta.json`'s `dice` by node id, so a fork, resume or promote reuses it; only a new run rolls again. A request **pin** fixes an axis to a value or narrows it to a list. The engine rolls rather than asking the model to pick, because a model shown the list picks the same items every copy. _Avoid_: random slot, seed (collides with the `seed` node kind).
 
 ## Name clash
 

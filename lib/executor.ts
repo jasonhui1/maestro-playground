@@ -13,8 +13,9 @@ import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
 import { withModelOverride } from './modelOverride'
-import { kindOf, agentSlugOf, resolveNodeSkills, zoneStateName, type WorkspaceLookup } from './nodeKinds'
+import { kindOf, agentSlugOf, resolveNodeSkills, zoneStateName, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
+import { innerDice, type RunDice } from './dice'
 
 export interface RunCallbacks {
   onStart: (nodeId: string, agentName: string) => void
@@ -49,6 +50,8 @@ export interface RunRequest {
   context?: Record<string, string>
   /** Values for the chain's `inputs:` ports, by name; each fills its seed unless a replayed record already has. */
   inputs?: Record<string, string>
+  /** Each dice node's roll, pinned before the run starts (#153). */
+  dice?: RunDice
   /** Outputs handed to the graph as already done: a resume, a fork, or an answered hold. */
   replay?: AgentOutput[]
   /** The agent runner; ADR-0002 fixes its shape. */
@@ -68,9 +71,8 @@ export async function runChainGraph(
   request: RunRequest,
 ): Promise<AgentOutput[]> {
   const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
-  const { seedPrompt, paramValue = '', context: contextOverrides = {}, inputs = {}, replay: startOutputs = [],
+  const { seedPrompt, paramValue = '', context: contextOverrides = {}, inputs = {}, dice = {}, replay: startOutputs = [],
     run: runFn = runAgent, depth = 0, modelOverride, toolContext = { workspacePath } } = request
-  const MAX_SUBCHAIN_DEPTH = 10
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
@@ -162,7 +164,9 @@ export async function runChainGraph(
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
     const effectiveAgent = withModelOverride(agent, modelOverride)
-    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue)
+    const roll = agent.dice ? dice[node.id] : undefined
+    if (agent.dice && !roll) throw new Error(`node "${node.id}" rolls dice, but the run pinned no roll for it`)
+    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue, roll)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
     // two nodes naming the same agent may still produce two different system prompts.
@@ -375,7 +379,7 @@ export async function runChainGraph(
             onStart: () => {}, onToken: () => {}, onDone: () => {},
             onWarning: w => deferredWarnings.push({ ...w, fromNode: nodeId, viaNode: w.viaNode ?? w.fromNode }),
           },
-          { ...request, inputs: innerInputs, replay: [], depth: depth + 1 },
+          { ...request, inputs: innerInputs, dice: innerDice(dice, nodeId), replay: [], depth: depth + 1 },
         )
         // map each declared output to per-socket storage on this node
         const byNode = new Map<string, AgentOutput>()

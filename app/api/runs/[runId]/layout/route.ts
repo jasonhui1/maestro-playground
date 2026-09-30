@@ -20,6 +20,6 @@ export async function GET(
   // A chain renamed or deleted since the run happened resolves the same as one that
   // never declared a view (#72) — not a 404, the run itself was found.
   const chain = findChainForRun(chains, meta.chainName)
-  const model = chain ? buildLayoutModel(chain, meta.agentOutputs) : UNDECLARED
+  const model = chain ? buildLayoutModel(chain, meta.agentOutputs, meta.dice) : UNDECLARED
   return NextResponse.json(model)
 }

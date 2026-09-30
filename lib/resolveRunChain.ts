@@ -1,6 +1,6 @@
 import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta } from './types'
 import { badRequest, notFound } from './refusal'
-import { promptSlots } from './tokens'
+import { agentSlots } from './tokens'
 
 export interface RunChainBody {
   chainName?: string
@@ -50,7 +50,7 @@ export function resolveRunChain(
 
 /** An agent alone: one seed per prompt slot, each an input named after it; `{input}`, or no slot at all, reads the default `seed` (#152). */
 function agentChain(agent: AgentDef): ChainDef {
-  const slots = promptSlots(agent.systemPrompt)
+  const slots = agentSlots(agent)
   const seeds = (slots.length ? slots : ['input']).map(slot => ({ slot, id: slot === 'input' ? 'seed' : `${slot}-seed` }))
   return {
     slug: agent.slug, name: agent.name, description: '', filePath: '',

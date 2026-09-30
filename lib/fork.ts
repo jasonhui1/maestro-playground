@@ -98,6 +98,7 @@ export function forkInput(
     seedPrompt: source.seedPrompt,
     parameter: source.parameter,
     inputs: source.inputs,
+    dice: source.dice,
     context,
     pinnedContext,
     versions,

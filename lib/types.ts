@@ -123,7 +123,22 @@ export interface AgentDef {
   resolution?: AgentResolution // set by the loaders; absent on a def built in memory
   variants?: VariantDecl[]  // declared by the file; empty on a variant itself (ADR-0013)
   variantOf?: string    // slug of the file declaring this variant (ADR-0013)
+  dice?: AgentDice      // rolled once per node per run into `{dice}` (#153)
 }
+
+/** One die: `draws` distinct values, or a count rolled from `[min, max]` (#153). */
+export interface DiceAxis {
+  values: string[]
+  draws: number | [number, number]
+}
+
+export type AgentDice = Record<string, DiceAxis>
+
+/** What one node rolled, by axis. */
+export type DiceRoll = Record<string, string[]>
+
+/** A run's rolls, by node id; a subchain's inner node is `subchainId/innerId`. */
+export type RunDice = Record<string, DiceRoll>
 
 export interface ToolParamDef {
   type: 'string' | 'number' | 'boolean'
@@ -285,6 +300,8 @@ export interface RunMeta {
   parameter?: { name: string; value: string }
   /** Values for the chain's `inputs:` ports, by name; a port left out reads `seedPrompt` (#150). */
   inputs?: Record<string, string>
+  /** Each dice node's roll (#153). */
+  dice?: RunDice
   startedAt: string
   completedAt?: string
   status: 'running' | 'waiting' | 'complete' | 'error'

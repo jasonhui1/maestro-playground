@@ -14,6 +14,7 @@ import { sseResponse } from './sse'
 import { keepConversations } from './nodeChat'
 import type { AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta } from './types'
 import type { RunDefinitions } from './runDefinitions'
+import { rollRunDice, type DicePins, type RunDice } from './dice'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -67,6 +68,7 @@ export interface RunSession {
   workspace: RunDefinitions
   seedPrompt: string
   inputs?: Record<string, string>
+  dice?: RunDice
   paramValue: string
   context: Record<string, string>
   /** Outputs handed to the graph as done: `logged` are already on disk here, never logged again (ADR-0011); `fresh` are logged first. */
@@ -98,7 +100,7 @@ export function streamChainRun(s: RunSession): Response {
     // Every hop re-sends the panels, so a view drawing mid-run reads the finished
     // run's projection rather than porting the rule (#76).
     const soFar: AgentOutput[] = [...replay]
-    const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar) })
+    const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar, s.dice) })
     sendLayout()
 
     let step = s.firstStep
@@ -148,7 +150,7 @@ export function streamChainRun(s: RunSession): Response {
           onHold: hold => { reached.push(hold) },
         },
         {
-          seedPrompt: s.seedPrompt, inputs: s.inputs, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
+          seedPrompt: s.seedPrompt, inputs: s.inputs, dice: s.dice, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
           toolContext: runToolContext(s.ws, runId),
         },
       )
@@ -170,7 +172,7 @@ export function streamChainRun(s: RunSession): Response {
       const errorMessage = error instanceof Error ? error.message : String(error)
       // The panels first, then the run-level event: a client draws the frame it is
       // sent rather than copying this message onto panels itself (#77).
-      send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar), errorMessage) })
+      send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar, s.dice), errorMessage) })
       send({ type: 'error', error: errorMessage })
       runs.update(runId, { status: 'error' })
     }
@@ -184,6 +186,9 @@ export interface StartRunInput {
   title: string
   seedPrompt: string
   inputs?: RunMeta['inputs']
+  /** Rolls a fork keeps; `startRun` rolls every other dice node. */
+  dice?: RunDice
+  dicePins?: DicePins
   parameter?: RunMeta['parameter']
   /** A request's context overrides, laid over a fork's pinned context files. */
   context?: unknown
@@ -208,10 +213,12 @@ export interface StartRunInput {
 export function startRun(ws: Workspace, run: StartRunInput): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
-  ws.runs.create(newRunMeta(runId, run))
+  const dice = rollRunDice(chain, workspace, run.dice, run.dicePins)
+  ws.runs.create(newRunMeta(runId, { ...run, dice }))
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
     inputs: run.inputs,
+    dice,
     context: { ...run.pinnedContext, ...contextOverrides(run.context) },
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },
@@ -229,6 +236,7 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     seedPrompt,
     parameter,
     ...(run.inputs ? { inputs: run.inputs } : {}),
+    ...(run.dice && Object.keys(run.dice).length ? { dice: run.dice } : {}),
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],
