@@ -48,10 +48,10 @@ export function resolveRunChain(
   return badRequest('No chain or agent specified')
 }
 
-/** An agent alone: one seed per prompt slot, each an input named after it; `{input}`, or no slot at all, reads the default `seed` (#152). */
+/** An agent alone: one seed per prompt slot (#152); no slots means no seeds or edges (#156). */
 function agentChain(agent: AgentDef): ChainDef {
   const slots = agentSlots(agent)
-  const seeds = (slots.length ? slots : ['input']).map(slot => ({ slot, id: slot === 'input' ? 'seed' : `${slot}-seed` }))
+  const seeds = slots.map(slot => ({ slot, id: slot === 'input' ? 'seed' : `${slot}-seed` }))
   return {
     slug: agent.slug, name: agent.name, description: '', filePath: '',
     nodes: [...seeds.map(s => ({ id: s.id, kind: 'seed' as const })), { id: agent.slug, kind: 'agent', agent: agent.slug }],

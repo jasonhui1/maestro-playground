@@ -166,12 +166,46 @@ test('an agent run reads seedPrompt for a slot left out or null; an unknown slot
   assert.match((await res.json() as { error: string }).error, /no prompt slot named "bogus"/)
 })
 
-test('an agent whose prompt has no slot at all is still refused, as before', async () => {
+test('an agent whose prompt has no slot runs with no seed', async () => {
   const wp = newWorkspace()
   fs.writeFileSync(path.join(wp, 'agents/plain.md'), '---\nname: Plain\n---\nJust write.\n')
-  const res = await run({ agentName: 'plain', seedPrompt: 'SEED' })
-  assert.strictEqual(res.status, 400)
-  assert.match(JSON.stringify(await res.json()), /no such input slot/)
+  const events = await sse(await run({ agentName: 'plain' }))
+  assert.strictEqual(doneOutput(events, 'plain').output, 'Just write.')
+  assert.strictEqual(events.filter(e => e.type === 'agent_done').length, 1)
+  assert.strictEqual(events.at(-1)?.type, 'run_complete')
+  const { GET } = await import('../app/api/runs/[runId]/route')
+  const meta = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId: events.at(-1)!.runId as string }) })).json() as RunMeta
+  assert.deepStrictEqual(meta.graph, { nodes: [{ id: 'plain', kind: 'agent', agent: 'plain' }], edges: [] })
+  assert.deepStrictEqual(meta.agentOutputs.map(o => o.nodeId), ['plain'])
+})
+
+test('a slotless agent ignores a supplied seed and can rerun through a fork of its recorded graph', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/plain.md'), '---\nname: Plain\n---\nJust write.\n')
+  const events = await sse(await run({ agentName: 'plain', seedPrompt: 'IGNORED' }))
+  assert.strictEqual(doneOutput(events, 'plain').output, 'Just write.')
+  const runId = events.at(-1)!.runId as string
+  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
+  for (const versions of ['current', 'pinned']) {
+    const forked = await sse(await fork({ json: async () => ({ from: 'plain', versions }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
+    assert.strictEqual(doneOutput(forked, 'plain').output, 'Just write.')
+    assert.strictEqual(forked.filter(e => e.type === 'agent_done').length, 1)
+    assert.strictEqual(forked.at(-1)?.type, 'run_complete')
+    assert.notStrictEqual(forked.at(-1)?.runId, runId)
+  }
+  const { GET } = await import('../app/api/runs/[runId]/route')
+  const source = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId }) })).json() as RunMeta
+  assert.strictEqual(source.status, 'complete')
+  assert.deepStrictEqual(source.agentOutputs.map(o => o.nodeId), ['plain'])
+})
+
+test('the workspace advertises slotless agent runs', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/plain.md'), '---\nname: Plain\n---\nJust write.\n')
+  const { GET } = await import('../app/api/workspace/route')
+  const body = await (await GET()).json() as { capabilities: Record<string, boolean>; agents: { slug: string; slots: string[] }[] }
+  assert.strictEqual(body.capabilities.slotlessAgentRuns, true)
+  assert.deepStrictEqual(body.agents.find(a => a.slug === 'plain')?.slots, [])
 })
 
 test('an agent whose only slot is {input} runs one seed into it, as before', async () => {

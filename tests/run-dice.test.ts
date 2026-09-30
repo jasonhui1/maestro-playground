@@ -127,6 +127,48 @@ test('an agent run fills {dice} with one rolled line per axis and pins the roll'
     `Design a character for a festival.\n\n- culture: ${roll.culture[0]}\n- hair: ${roll.hair[0]}\n- styling: ${roll.styling.join(', ')}`)
 })
 
+test('a slotless agent rolls dice without a seed and streams the rolls on run_start', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/slotless.md'), designer.replace(' for {input}', ''))
+  const events = await sse(await run({ agentName: 'slotless' }))
+  const meta = await readMeta(runIdOf(events))
+  const roll = meta.dice?.slotless
+  assert.ok(roll)
+  assert.ok(CULTURES.includes(roll.culture[0]) && roll.culture.length === 1)
+  assert.ok(HAIR.includes(roll.hair[0]) && roll.hair.length === 1)
+  assert.strictEqual(roll.styling.length, 2)
+  assert.deepStrictEqual(events[0].dice, meta.dice)
+  assert.strictEqual(outputOf(events, 'slotless'),
+    `Design a character.\n\n- culture: ${roll.culture[0]}\n- hair: ${roll.hair[0]}\n- styling: ${roll.styling.join(', ')}`)
+  assert.strictEqual(events.filter(e => e.type === 'agent_done').length, 1)
+  assert.strictEqual(events.at(-1)?.type, 'run_complete')
+})
+
+test('a slotless agent accepts dice pins and keeps them when its saved graph is forked', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/slotless.md'), designer.replace(' for {input}', ''))
+  const events = await sse(await run({ agentName: 'slotless', seedPrompt: 'IGNORED', dice: {
+    culture: 'Atlantis', hair: 'mohawk', styling: 'sash',
+  } }))
+  const expectedDice = { slotless: { culture: ['Atlantis'], hair: ['mohawk'], styling: ['sash'] } }
+  const expectedOutput = 'Design a character.\n\n- culture: Atlantis\n- hair: mohawk\n- styling: sash'
+  const source = await readMeta(runIdOf(events))
+  assert.deepStrictEqual(source.dice, expectedDice)
+  assert.deepStrictEqual(events[0].dice, expectedDice)
+  assert.strictEqual(outputOf(events, 'slotless'), expectedOutput)
+  for (const versions of ['current', 'pinned']) {
+    const forked = await fork(source.runId, { from: 'slotless', versions })
+    const meta = await readMeta(runIdOf(forked))
+    assert.deepStrictEqual(meta.graph, { nodes: [{ id: 'slotless', kind: 'agent', agent: 'slotless' }], edges: [] })
+    assert.deepStrictEqual(meta.dice, expectedDice)
+    assert.deepStrictEqual(forked[0].dice, expectedDice)
+    assert.strictEqual(outputOf(forked, 'slotless'), expectedOutput)
+    assert.strictEqual(forked.at(-1)?.type, 'run_complete')
+    assert.strictEqual(meta.branchedFromRunId, source.runId)
+    assert.strictEqual(meta.branchedFromNode, 'slotless')
+  }
+})
+
 // A direct agent run declares no layout, so its panels cannot carry the roll (#155).
 test('a direct agent run\'s run_start carries its rolls, and omits dice when nothing rolled', async () => {
   newWorkspace()

@@ -40,6 +40,8 @@ export const CAPABILITIES = {
   /** An `agentName` run takes `inputs` too: one per `{slot}` in the agent's prompt, listed as `slots` on each
    *  `GET /api/workspace` agent so a client need not parse the prompt (#152). */
   agentRunInputs: true,
+  /** An `agentName` run with no prompt slots needs no seed; a supplied `seedPrompt` is ignored (#156). */
+  slotlessAgentRuns: true,
   /** `dice:` on an agent rolls once per node per run, pinned in meta.json and on each layout panel; `GET /api/workspace`
    *  lists each agent's axes, and `/api/run` and `/api/variance` take `dice: { [axis]: value | values }` pins (#153). */
   dice: true,

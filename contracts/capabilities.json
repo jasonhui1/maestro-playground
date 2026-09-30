@@ -12,6 +12,7 @@
   "holdCandidateImages": true,
   "runInputs": true,
   "agentRunInputs": true,
+  "slotlessAgentRuns": true,
   "dice": true,
   "runStartDice": true
 }
