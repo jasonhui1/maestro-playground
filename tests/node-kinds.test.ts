@@ -93,7 +93,7 @@ test('node-kinds', () => {
     cases: [{ label: 'l1', condition: 'c1' }],
   }
   const COMMON_KEYS = new Set(['id', 'kind', 'pos', 'zone'])
-  const allKinds: ChainNodeKind[] = ['seed', 'context', 'agent', 'decider', 'gate', 'branch', 'loop-start', 'loop-end', 'subchain', 'report']
+  const allKinds: ChainNodeKind[] = ['seed', 'context', 'agent', 'tool', 'decider', 'gate', 'branch', 'loop-start', 'loop-end', 'subchain', 'report']
 
   const populated: ChainNode[] = allKinds.map((kind, i) => {
     const node: Record<string, unknown> = { id: `n${i}`, kind, pos: [i, i * 2] as [number, number], zone: 'z1' }

@@ -2,6 +2,7 @@ import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneSt
 import { agentSlots, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
+import { toolNodeInputs } from './tools/spec'
 
 /** How deep subchains may nest before a run refuses to go further. */
 export const MAX_SUBCHAIN_DEPTH = 10
@@ -151,6 +152,17 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
       { key: 'skills+', codec: 'stringList', ref: 'skill' },
     ],
     palette: { label: 'Decider', category: 'Agents' },
+  },
+  tool: {
+    kind: 'tool',
+    acceptsInputs: true,
+    inputs: (node, { tools = [] }) => {
+      const tool = tools.find(t => node.kind === 'tool' && t.name === node.tool)
+      return tool ? toolNodeInputs(tool).map(name => ({ name, optional: true })) : []
+    },
+    outputs: () => ['output'],
+    fields: [{ key: 'tool', codec: 'string', ref: 'tool' }],
+    palette: { label: 'Tool', category: 'Tools' },
   },
   gate: {
     kind: 'gate',

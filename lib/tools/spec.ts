@@ -1,6 +1,14 @@
 // Pure, client-safe tool metadata. No `fs`/`path` imports here — live validation
 // in the browser (app/workspace/page.tsx) imports this module directly.
-import { ToolParamDef } from '../types'
+import { ToolDef, ToolParamDef } from '../types'
+
+export function toolNodeInputs(tool: ToolDef): string[] {
+  return [...(tool.parts ?? []).map(p => p.name), ...Object.keys(tool.params), ...(executorSavesImages(tool.executor) ? ['count'] : [])]
+}
+
+export function executorSavesImages(executor: string): boolean {
+  return executor === 'novelai'
+}
 
 export const EXECUTOR_IDS = ['retrieve', 'novelai'] as const
 export type ExecutorId = typeof EXECUTOR_IDS[number]

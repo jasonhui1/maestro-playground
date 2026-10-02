@@ -49,6 +49,11 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
   }
 
   const walkNode = (node: ChainNode) => {
+    if (node.kind === 'tool') {
+      const tool = ws.tools.find(t => t.name === node.tool)
+      if (tool) add('tool', tool.slug, tool.rawContent)
+      return
+    }
     if (node.kind === 'context') {
       const file = ws.context.find(f => f.slug === node.file)
       if (file) add('context', file.slug, file.rawContent)

@@ -2,7 +2,7 @@ import type { SectionWarning } from './sectionWarning'
 import type { ENTITY_DIRS } from './entityDirs'
 import type { MarkdownSection } from './graph'
 
-export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
+export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'tool' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
@@ -46,6 +46,7 @@ export type ChainNode =
   | (ChainNodeBase & { kind: 'context'; file?: string })
   | (ChainNodeBase & { kind: 'param' })
   | (ChainNodeBase & { kind: 'agent'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
+  | (ChainNodeBase & { kind: 'tool'; tool?: string })
   | (ChainNodeBase & { kind: 'decider'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'gate'; condition?: string })
   | (ChainNodeBase & { kind: 'branch'; cases?: BranchCase[]; default?: string })
@@ -340,7 +341,7 @@ export interface RunMeta {
   /** The slug of the chain or agent entrypoint (#131). */
   chainSlug?: string
   /** The entrypoint identity (kind + slug) (#131). */
-  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
+  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
   /** One ordinary run's place in a repeated, same-input launch (#133). */
   variance?: { groupId: string; index: number; size: number }
 }

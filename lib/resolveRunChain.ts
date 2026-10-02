@@ -1,15 +1,17 @@
-import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta } from './types'
+import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta, ToolDef } from './types'
 import { badRequest, notFound } from './refusal'
 import { agentSlots } from './tokens'
+import { toolNodeInputs } from './tools/spec'
 
 export interface RunChainBody {
   chainName?: string
   agentName?: string
+  toolName?: string
   chain?: { name?: string; description?: string; nodes: ChainNode[]; edges: ChainEdge[] }
   slug?: string
 }
 
-export type ResolvedRunKind = 'inline' | 'chain' | 'agent'
+export type ResolvedRunKind = 'inline' | 'chain' | 'agent' | 'tool'
 
 export type ResolvedRun =
   | { chain: ChainDef; title: string; kind: ResolvedRunKind }
@@ -22,7 +24,7 @@ export function findChainForRun(chains: ChainDef[], chainName: string): ChainDef
 
 export function resolveRunChain(
   body: RunChainBody,
-  ws: { agents: AgentDef[]; chains: ChainDef[] },
+  ws: { agents: AgentDef[]; chains: ChainDef[]; tools?: ToolDef[] },
 ): ResolvedRun {
   if (body.chain) {
     const name = body.chain.name || 'Inline chain'
@@ -45,7 +47,21 @@ export function resolveRunChain(
     if (!agent) return notFound('Agent not found')
     return { kind: 'agent', title: agent.name, chain: agentChain(agent) }
   }
-  return badRequest('No chain or agent specified')
+  if (body.toolName) {
+    const tool = ws.tools?.find(t => t.name === body.toolName) || ws.tools?.find(t => t.slug === body.toolName)
+    if (!tool) return notFound('Tool not found')
+    const inputs = toolNodeInputs(tool).map(name => ({ name, node: `${tool.slug}-${name}-seed` }))
+    return {
+      kind: 'tool', title: tool.name,
+      chain: {
+        slug: tool.slug, name: tool.name, description: '', filePath: '',
+        nodes: [...inputs.map(p => ({ id: p.node, kind: 'seed' as const })), { id: tool.slug, kind: 'tool', tool: tool.name }],
+        edges: inputs.map(p => ({ fromNode: p.node, fromSocket: 'output', toNode: tool.slug, toSocket: p.name })),
+        inputs,
+      },
+    }
+  }
+  return badRequest('No chain, agent or tool specified')
 }
 
 /** An agent alone: one seed per prompt slot (#152); no slots means no seeds or edges (#156). */

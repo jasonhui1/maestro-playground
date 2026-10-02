@@ -4,7 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import { socketHandles } from '../lib/nodeSockets'
 import { allKinds, kindOf } from '../lib/nodeKinds'
-import { ChainDef, ChainNode, ChainNodeKind, AgentDef } from '../lib/types'
+import { ChainDef, ChainNode, ChainNodeKind, AgentDef, ToolDef } from '../lib/types'
 
 const writer: AgentDef = {
   slug: 'writer', name: 'writer', model: 'm', description: '', skills: [], context: [],
@@ -34,6 +34,7 @@ const nodes: Record<ChainNodeKind, ChainNode> = {
   report: { id: 'r', kind: 'report' },
   join: { id: 'j', kind: 'join' },
   hold: { id: 'h', kind: 'hold' },
+  tool: { id: 't', kind: 'tool', tool: 'novelai' },
 }
 
 // What the canvas must draw for each node above, written out rather than re-derived —
@@ -52,13 +53,18 @@ const expected: Record<ChainNodeKind, string[]> = {
   report: ['input:in'],
   join: ['input:in', 'output:output'],
   hold: ['input:in', 'output:output'],
+  tool: ['input:character', 'input:clothes', 'input:scene', 'input:aspect', 'input:count', 'output:output'],
 }
 
 const chain: ChainDef = {
   slug: 'c', name: 'c', description: '', filePath: '',
   nodes: Object.values(nodes), edges: [],
 }
-const workspace = { chain, agents: [writer], chains: [inner] }
+const tool: ToolDef = {
+  slug: 'novelai', name: 'novelai', executor: 'novelai', description: '', filePath: '', config: {},
+  parts: [{ name: 'character' }, { name: 'clothes' }, { name: 'scene' }], params: { aspect: { type: 'string' } },
+}
+const workspace = { chain, agents: [writer], chains: [inner], tools: [tool] }
 const drawn = (kind: ChainNodeKind) => socketHandles(nodes[kind], workspace).map(h => `${h.side}:${h.id}`)
 
 test('every declared socket has a handle, and every handle a declared socket', () => {

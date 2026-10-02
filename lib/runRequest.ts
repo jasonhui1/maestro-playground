@@ -21,21 +21,26 @@ export type RunRequestBody = RunChainBody & {
   chainSlug?: string
 }
 
-/** A request's `inputs`: `""` is empty text, `null` leaves the port to `seedPrompt`. */
+/** `null` leaves a port unset; tool runs also accept numeric and boolean settings (#157). */
 export function readRunInputs(chain: ChainDef, inputs: unknown, kind: ResolvedRunKind): { inputs?: Record<string, string> } | Refusal {
   if (inputs === undefined) return {}
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)
-    || !Object.values(inputs).every(v => v === null || typeof v === 'string')) {
-    return badRequest('inputs must map input names to text or null')
+    || !Object.values(inputs).every(v => v === null || typeof v === 'string'
+      || (kind === 'tool' && (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)))))) {
+    return badRequest(kind === 'tool'
+      ? 'inputs must map input names to text, finite numbers, booleans or null'
+      : 'inputs must map input names to text or null')
   }
   const given: Record<string, string> = {}
-  for (const [name, value] of Object.entries(inputs as Record<string, string | null>)) {
+  for (const [name, value] of Object.entries(inputs as Record<string, string | number | boolean | null>)) {
     if (!chain.inputs?.some(p => p.name === name)) {
-      return badRequest(kind === 'agent'
+      return badRequest(kind === 'tool'
+        ? `Tool "${chain.slug}" has no input named "${name}"`
+        : kind === 'agent'
         ? `Agent "${chain.slug}" has no prompt slot named "${name}"`
         : `Chain "${chain.slug}" declares no input named "${name}"`)
     }
-    if (value !== null) given[name] = value
+    if (value !== null) given[name] = String(value)
   }
   return Object.keys(given).length ? { inputs: given } : {}
 }
@@ -57,8 +62,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   if (!imageOverride.valid) return { error: imageOverride.error, status: 400 }
 
   const workspace = ws.definitions()
-  const { agents, chains } = workspace
-  const resolved = resolveRunChain(body, { agents, chains })
+  const resolved = resolveRunChain(body, workspace)
   if ('error' in resolved) return resolved
   const { chain, title, kind } = resolved
 
@@ -67,13 +71,21 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
 
   const runInputs = readRunInputs(chain, body.inputs, kind)
   if ('error' in runInputs) return runInputs
+  if (kind === 'tool') {
+    const def = workspace.tools.find(t => t.slug === chain.slug)!
+    const inputs = { ...runInputs.inputs }
+    for (const part of def.parts ?? []) {
+      if (!Object.hasOwn(inputs, part.name) && part.default !== undefined) inputs[part.name] = part.default
+    }
+    runInputs.inputs = inputs
+  }
   const dice = readDicePins(body.dice, chain, workspace)
   if ('error' in dice) return dice
 
   const snapshot = pinRunSnapshot(ws.root, chain, workspace)
   const versions = snapshot.versions
-  const versionNumber = versions[kind === 'agent'
-    ? versionKey('agent', chain.slug)
+  const versionNumber = versions[kind === 'agent' || kind === 'tool'
+    ? versionKey(kind, chain.slug)
     : versionKey('chain', chain.slug)] ?? 0
   const slug = typeof body.chainSlug === 'string'
     ? body.chainSlug
@@ -86,7 +98,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
       chain,
       workspace,
       title,
-      seedPrompt: typeof body.seedPrompt === 'string' ? body.seedPrompt : '',
+      seedPrompt: kind !== 'tool' && typeof body.seedPrompt === 'string' ? body.seedPrompt : '',
       inputs: runInputs.inputs,
       dicePins: dice.pins,
       parameter: chain.parameter && typeof body.paramValue === 'string' && body.paramValue

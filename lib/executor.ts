@@ -3,6 +3,7 @@ import type { RunDefinitions } from './runDefinitions'
 import { makeContextReader } from './fs/contextReader'
 import { runAgent } from './runner'
 import { bindAgentTools } from './tools/registry'
+import { executeToolNode } from './tools/toolNode'
 import type { ToolContext } from './tools/context'
 import { agentPartSockets } from './tools/parts'
 import { injectSkills } from './prompt'
@@ -100,9 +101,7 @@ export async function runChainGraph(
     (incomingByNode.get(nodeId) || []).find(i => chain.edges[i].toSocket === slot && live.has(i))
 
   const lookup: WorkspaceLookup = { chain, agents, chains, tools }
-  // A node is skipped unless every non-optional input has a live edge; an
-  // optional input (subchain only, today) counts only if it is actually wired —
-  // an unwired optional input never blocks the node.
+  // Unwired optional sockets never block execution; wired sockets still require live edges (#157).
   const usedSlots = (node: ChainNode): string[] => {
     const wired = new Set((incomingByNode.get(node.id) ?? []).map(i => chain.edges[i].toSocket))
     return kindOf(node.kind).inputs(node, lookup)
@@ -191,6 +190,29 @@ export async function runChainGraph(
     return output
   }
 
+  const runToolNode = async (node: Extract<ChainNode, { kind: 'tool' }>, round?: number, anchorId = node.id) => {
+    const def = tools.find(t => t.name === node.tool)
+    callbacks.onStart(node.id, def?.name ?? node.tool ?? 'tool')
+    const rec = controlOutput(node.id, def?.name ?? 'tool', '', 'success')
+    rec.toolCalls = []
+    const started = Date.now()
+    try {
+      if (!def) throw new Error(`Tool "${node.tool ?? ''}" not found`)
+      rec.output = await executeToolNode(def, name => {
+        const wired = (incomingByNode.get(node.id) ?? []).some(i => chain.edges[i].toSocket === name)
+        return wired ? slotValue(node.id, name) : undefined
+      }, toolContext, rec.toolCalls)
+    } catch (error) {
+      rec.status = 'error'
+      rec.error = error instanceof Error ? error.message : String(error)
+    }
+    rec.latencyMs = Date.now() - started
+    rec.input = JSON.stringify(rec.toolCalls.map(call => call.args))
+    if (round !== undefined) rec.round = round
+    nodeOutputs.set(node.id, rec); emit(anchorId, rec); callbacks.onDone(node.id, rec)
+    return rec
+  }
+
   // --- zones ---
   interface ZoneState { name: string; accumulate: boolean; separator: string }
   interface Zone { id: string; startId: string; endId: string; bodyIds: string[]; states: ZoneState[]; until: string; maxIterations: number }
@@ -267,6 +289,16 @@ export async function runChainGraph(
               markOut(bn.id, () => true)
             }
           }
+        } else if (bn.kind === 'tool') {
+          if (!inputsAvailable(bn)) { recordSkipped(bn, zone.startId, round); continue }
+          const replayed = startOutputs.find(o => o.nodeId === bn.id && o.round === round)
+          if (replayed) {
+            nodeOutputs.set(bn.id, replayed)
+            if (replayed.status === 'success') markOut(bn.id, () => true)
+          } else {
+            const rec = await runToolNode(bn, round, zone.startId)
+            if (rec.status === 'success') markOut(bn.id, () => true)
+          }
         }
       }
       const newState = new Map<string, string>()
@@ -295,7 +327,10 @@ export async function runChainGraph(
 
   // replay branched outputs (their out-edges are live)
   for (const o of startOutputs) {
-    if (o.nodeId) { nodeOutputs.set(o.nodeId, o); markOut(o.nodeId, () => true) }
+    if (o.nodeId) {
+      nodeOutputs.set(o.nodeId, o)
+      if (nodeById.get(o.nodeId)?.kind !== 'tool' || o.status === 'success') markOut(o.nodeId, () => true)
+    }
     emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
   }
   for (const port of chain.inputs ?? []) {
@@ -324,7 +359,10 @@ export async function runChainGraph(
   let held = false
   const processMainNode = async (nodeId: string): Promise<void> => {
     const node = nodeById.get(nodeId)
-    if (!node || nodeOutputs.has(nodeId)) { if (node) markOut(nodeId, () => true); return }
+    if (!node || nodeOutputs.has(nodeId)) {
+      if (node && (node.kind !== 'tool' || nodeOutputs.get(nodeId)?.status === 'success')) markOut(nodeId, () => true)
+      return
+    }
 
     if (node.kind === 'seed' || node.kind === 'context' || node.kind === 'param') { markOut(nodeId, () => true); return }
 
@@ -339,6 +377,9 @@ export async function runChainGraph(
         await runAgentNode(node, agent)
         markOut(nodeId, () => true)
       }
+    } else if (node.kind === 'tool') {
+      const rec = await runToolNode(node)
+      if (rec.status === 'success') markOut(nodeId, () => true)
     } else if (node.kind === 'gate') {
       const pass = evalCondition(node.condition || '', nodeOutputs)
       const rec = controlOutput(nodeId, `gate: ${pass ? 'PASS' : 'BLOCK'}`, pass ? inValue(nodeId) : '', 'success')

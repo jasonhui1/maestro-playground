@@ -25,6 +25,7 @@ import SubchainNode from './nodes/SubchainNode'
 import ReportNode from './nodes/ReportNode'
 import JoinNode from './nodes/JoinNode'
 import HoldNode from './nodes/HoldNode'
+import ToolNode from './nodes/ToolNode'
 
 // Custom edge with hover highlight and quick-disconnect badge (#146).
 interface DeletableEdgeData extends Record<string, unknown> {
@@ -146,6 +147,7 @@ const nodeTypes: KindComponents & { zoneFrame: React.ComponentType<any> } = {
   report: ReportNode,
   join: JoinNode,
   hold: HoldNode,
+  tool: ToolNode,
   zoneFrame: ZoneFrame,
 }
 

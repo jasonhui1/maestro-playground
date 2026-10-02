@@ -153,6 +153,11 @@ export function validateChain(
         }
       }
     }
+    if (n.kind === 'tool') {
+      const tool = toolByName.get(n.tool ?? '')
+      if (!tool) add(missing('tool', n.tool ?? '', `Node "${n.id}": tool "${n.tool ?? ''}" not found`), { nodeId: n.id })
+      else if (!isValidExecutorId(tool.executor)) add(`Node "${n.id}": tool "${tool.name}" has unknown executor "${tool.executor}"`, { nodeId: n.id })
+    }
     if (n.kind === 'context' && !n.file) add(`Node "${n.id}": context node missing "file"`, { nodeId: n.id })
     if (n.kind === 'gate') {
       if (!n.condition || !n.condition.trim()) add(`Node "${n.id}": gate needs a condition`, { nodeId: n.id })

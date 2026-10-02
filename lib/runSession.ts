@@ -211,7 +211,7 @@ export interface StartRunInput {
   modelOverride?: string
   imageOverride?: RunMeta['imageOverride']
   chainSlug?: string
-  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
+  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
   variance?: RunMeta['variance']
 }
 

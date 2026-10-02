@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import type { ImageOverride, ImageSize } from '../types'
 import type { ToolContext } from './context'
 import type { PromptParts, ToolOutcome } from './registry'
+import { imageSeed, MAX_IMAGE_SEED } from './imageSeed'
 
 export const ASPECTS = ['2:3', '3:2', '1:1'] as const
 export type Aspect = typeof ASPECTS[number]
@@ -53,23 +54,13 @@ function flag(env: Env, key: string): boolean {
   throw new Error(`${key} must be "true" or "false", got "${raw}"`)
 }
 
-const MAX_SEED = 4_294_967_295
-
-function configSeed(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null) return undefined
-  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw > MAX_SEED) {
-    throw new Error(`config.seed must be a whole number from 0 to ${MAX_SEED}`)
-  }
-  return raw
-}
-
 /** Tool file config > env for the model and seed; run override > env for the rest (#148). */
 export function imageSettings(config: Record<string, unknown>, override: ImageOverride | undefined, env: Env = process.env): ImageSettings {
   const envSize = read(env, 'IMAGE_SIZE')
   if (envSize !== undefined && envSize !== 'normal' && envSize !== 'small') {
     throw new Error(`IMAGE_SIZE must be "normal" or "small", got "${envSize}"`)
   }
-  const seed = configSeed(config.seed)
+  const seed = imageSeed(config.seed)
   return {
     apiKey: read(env, 'IMAGE_API_KEY'),
     baseUrl: (read(env, 'IMAGE_BASE_URL') ?? 'https://image.novelai.net').replace(/\/+$/, ''),
@@ -173,7 +164,7 @@ export function createNovelaiExecutor(fetchFn?: typeof fetch, env: Env = process
     const settings = imageSettings(config, ctx.imageOverride, env)
     if (!settings.apiKey) throw new Error('IMAGE_API_KEY is not set in .env.local')
 
-    const seed = settings.seed ?? Math.floor(Math.random() * MAX_SEED)
+    const seed = settings.seed ?? Math.floor(Math.random() * MAX_IMAGE_SEED)
     const extra = config.parameters && typeof config.parameters === 'object' && !Array.isArray(config.parameters)
       ? config.parameters as Record<string, unknown>
       : {}

@@ -4,7 +4,11 @@ Terms as used in this codebase. Skills and issues should use these exactly; avoi
 
 ## Node kind
 
-One of the thirteen node types a chain may contain: `seed`, `context`, `param`, `agent`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`, `hold`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
+One of the fourteen node types a chain may contain: `seed`, `context`, `param`, `agent`, `tool`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`, `hold`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
+
+## Tool node
+
+A node with `kind: tool` and `tool: <name>` that calls one tool's executor directly, without a model (#157). Its optional input sockets are the tool's prompt **parts** in declared order, followed by its **params** (executor settings). Unfilled parts use tool-file defaults or are omitted; unfilled params use executor defaults. An image-saving executor also accepts `count` (1–8), drawing sequentially with distinct seeds. Its output is `## Images` linking the saved pictures, or the executor's text. It is not a proposer and has no conversation or promote. A direct run uses `toolName` and named `inputs`, and continuations replay completed outputs without executing the tool again.
 
 ## Node-kind registry
 
@@ -36,7 +40,7 @@ A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` 
 
 ## Optional input
 
-An input socket that does not block execution when left unwired. Per-input fact (`{ name, optional? }` from the registry's `inputs()`), not a per-kind flag. In v1 only subchain inputs are optional: a subchain with `topic` wired and `tone` unwired still runs (the inner seed falls back to the seed prompt). What an unwired optional slot resolves to on *other* kinds is deliberately undecided.
+An input socket that does not block execution when left unwired. Per-input fact (`{ name, optional? }` from the registry's `inputs()`), not a per-kind flag. A subchain's unwired input falls back to its seed prompt. A tool node's unwired part uses its tool-file default or is omitted, and an unwired param uses the executor's default. An agent's unwired tool-part socket leaves the part to its literal, the tool default, or the model. An optional socket that is wired still requires its upstream value to be live.
 
 ## Workspace lookup
 
