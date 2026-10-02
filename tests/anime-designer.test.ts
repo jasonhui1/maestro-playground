@@ -27,14 +27,14 @@ test('rolls the recipe\'s axes with the recipe\'s draw counts', () => {
   const { agent } = designer()
   const axes = Object.keys(agent.dice ?? {})
   assert.deepStrictEqual(axes, [
-    'culture', 'role', 'motif', 'occasion',
-    'signature', 'asymmetry', 'styling', 'reveal', 'unreal',
+    'culture', 'role', 'outfit', 'length', 'top', 'footwear', 'legwear', 'motif', 'occasion',
+    'signature', 'weapon kind', 'weapon size', 'weapon use', 'asymmetry', 'styling', 'reveal', 'unreal',
     'hair', 'build', 'feature', 'expression', 'pose',
-    'palette', 'material', 'wear',
+    'palette', 'material', 'accent', 'wear',
   ])
-  assert.strictEqual(agent.dice!.styling.draws, 2)
+  assert.deepStrictEqual(agent.dice!.styling.draws, [1, 2])
   assert.deepStrictEqual(agent.dice!.reveal.draws, [1, 2])
-  assert.strictEqual(agent.dice!.culture.values.length, 13)
+  assert.strictEqual(agent.dice!.culture.values.length, 25)
 })
 
 test('takes no input: the roll is the whole prompt', () => {
@@ -51,7 +51,16 @@ test('every roll fills {dice} with one line per axis, none left as a token', () 
   const { agent } = designer()
   const prompt = rolledPrompt(agent)
   assert.ok(!prompt.includes('{dice}'))
-  for (const axis of Object.keys(agent.dice!)) assert.match(prompt, new RegExp(`^- ${axis}: .+$`, 'm'))
+  for (const [axis, { fits }] of Object.entries(agent.dice!)) {
+    if (!fits) assert.match(prompt, new RegExp(`^- ${axis}: .+$`, 'm'))
+  }
+})
+
+test('only a fighting role is handed a weapon, as its kind, size and use', () => {
+  const { agent } = designer()
+  const knight = fillDice(agent.systemPrompt, rollDice(agent.dice!, { role: 'knight' }))
+  for (const axis of ['weapon kind', 'weapon size', 'weapon use']) assert.match(knight, new RegExp(`^- ${axis}: .+$`, 'm'))
+  assert.doesNotMatch(fillDice(agent.systemPrompt, rollDice(agent.dice!, { role: 'chef' })), /^- weapon (kind|size|use): /m)
 })
 
 test('the base-protocol Summary follows the asked sections, so character and clothes stay sections', () => {
