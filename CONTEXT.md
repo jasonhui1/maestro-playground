@@ -106,7 +106,7 @@ A named agent declared inside another agent's file, sharing that file's prompt b
 
 ## Dice
 
-Named lists an agent file declares under `dice:`, each an **axis** rolled in code into the reserved `{dice}` token as `- axis: value` lines (#153). Every node rolls its own, once per run — loop rounds share it — and the run pins the **roll** in `meta.json`'s `dice` by node id, so a fork, resume or promote reuses it; only a new run rolls again. A request **pin** fixes an axis to a value or narrows it to a list. The engine rolls rather than asking the model to pick, because a model shown the list picks the same items every copy. _Avoid_: random slot, seed (collides with the `seed` node kind).
+Named lists an agent file declares under `dice:`, each an **axis** rolled in code into the reserved `{dice}` token as `- axis: value` lines (#153). Every node rolls its own, once per run — loop rounds share it — and the run pins the **roll** in `meta.json`'s `dice` by node id, so a fork, resume or promote reuses it; only a new run rolls again. A request **pin** fixes an axis to a value or narrows it to a list. Its values may be a map giving each a **rarity** (common, uncommon, rare: four, two and one shares) and, on an axis with `by: role`, the **fits** that may roll it: a value rolls only when `role` drew one of its fits, and an axis-level `fits` covers every value stating none of its own; an axis none fit draws nothing, so the prompt never mentions it; a pin still applies. The engine rolls rather than asking the model to pick, because a model shown the list picks the same items every copy. _Avoid_: random slot, seed (collides with the `seed` node kind).
 
 ## Name clash
 

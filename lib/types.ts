@@ -130,7 +130,13 @@ export interface AgentDef {
 export interface DiceAxis {
   values: string[]
   draws: number | [number, number]
+  /** Each value rolled less often than common, by value. */
+  rarity?: Record<string, Rarity>
+  /** Values that roll only when axis `by` drew one of theirs; a value not listed fits anything. */
+  fits?: { by: string; values: Record<string, string[]> }
 }
+
+export type Rarity = 'common' | 'uncommon' | 'rare'
 
 export type AgentDice = Record<string, DiceAxis>
 

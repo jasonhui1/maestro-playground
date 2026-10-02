@@ -80,3 +80,55 @@ test('request pins map declared axes to a value or a list of them', () => {
   const undeclared = readDicePins({ tail: 'long' }, chain, defs)
   assert.ok('error' in undeclared && undeclared.status === 400 && /"tail"/.test(undeclared.error))
 })
+
+test('a value map gives each value a rarity; common rolls about four times as often as rare', () => {
+  const dice = normalizeDice({ weapon: { values: { lance: { rarity: 'rare' }, sword: null, bow: { rarity: 'uncommon' } } } }, 'f.md')!
+  assert.deepStrictEqual(dice.weapon.values, ['lance', 'sword', 'bow'])
+  assert.deepStrictEqual(dice.weapon.rarity, { lance: 'rare', bow: 'uncommon' })
+  const tally: Record<string, number> = { lance: 0, sword: 0, bow: 0 }
+  for (let i = 0; i < 7000; i++) tally[rollDice(dice).weapon[0]]++
+  assert.ok(tally.sword > tally.bow * 1.5 && tally.bow > tally.lance * 1.5, JSON.stringify(tally))
+})
+
+test('a `by` axis rolls only among the values that fit what its axis drew, and nothing when none fit', () => {
+  const dice = normalizeDice({
+    role: ['knight', 'thief', 'chef'],
+    weapon: { by: 'role', values: { lance: { fits: ['knight'] }, 'sword cane': { fits: ['thief', 'knight'] } } },
+  }, 'f.md')!
+  assert.deepStrictEqual(dice.weapon.fits, { by: 'role', values: { lance: ['knight'], 'sword cane': ['thief', 'knight'] } })
+  for (let i = 0; i < 20; i++) assert.deepStrictEqual(rollDice(dice, { role: 'thief' }).weapon, ['sword cane'])
+  assert.deepStrictEqual(rollDice(dice, { role: 'chef' }).weapon, [])
+  assert.deepStrictEqual(rollDice(dice, { role: 'samurai' }).weapon, [], 'a pinned value the axis does not list fits nothing')
+  assert.deepStrictEqual(rollDice(dice, { role: 'chef', weapon: 'lance' }).weapon, ['lance'], 'a pin is asked for, not rolled')
+  assert.strictEqual(fillDice('{dice}', rollDice(dice, { role: 'chef' })), '- role: chef')
+})
+
+test('a malformed value map or `by` throws naming the file and axis', () => {
+  const weapon = (decl: unknown) => normalizeDice({ role: ['knight', 'chef'], weapon: decl }, 'f.md')
+  assert.throws(() => weapon({ values: { lance: { rarity: 'legendary' } } }), /f\.md: dice axis "weapon" value "lance" rarity must be common, uncommon or rare/)
+  assert.throws(() => weapon({ values: { lance: { colour: 'red' } } }), /axis "weapon" value "lance" may state only fits and rarity/)
+  assert.throws(() => weapon({ values: { lance: { fits: ['knight'] } } }), /axis "weapon" value "lance" fits needs the axis's by/)
+  assert.throws(() => weapon({ by: 'role', values: { lance: { fits: [] } } }), /axis "weapon" value "lance" fits must list/)
+  assert.throws(() => weapon({ by: 'tail', values: { lance: { fits: ['long'] } } }), /axis "weapon" by names "tail", which this block does not declare/)
+  assert.throws(() => weapon({ by: 'role', values: { lance: { fits: ['knigth'] } } }), /axis "weapon" value "lance" fits "knigth", which "role" does not roll/)
+  assert.throws(() => normalizeDice({ role: { by: 'role', values: { knight: null } } }, 'f.md'), /axis "role" by names "role", which is itself/)
+  assert.throws(() => normalizeDice({
+    role: ['knight'],
+    weapon: { by: 'role', values: { lance: { fits: ['knight'] } } },
+    grip: { by: 'weapon', values: { 'two-handed': { fits: ['lance'] } } },
+  }, 'f.md'), /axis "grip" by names "weapon", which has a by of its own/)
+})
+
+test('an axis-level `fits` covers every value that states none of its own', () => {
+  const dice = normalizeDice({
+    role: ['knight', 'thief', 'chef'],
+    size: { by: 'role', fits: ['knight', 'thief'], values: { 'one-handed': null, 'taller than she is': { fits: ['knight'] } } },
+  }, 'f.md')!
+  assert.deepStrictEqual(dice.size.fits!.values, { 'one-handed': ['knight', 'thief'], 'taller than she is': ['knight'] })
+  assert.deepStrictEqual(rollDice(dice, { role: 'chef' }).size, [])
+  for (let i = 0; i < 20; i++) assert.deepStrictEqual(rollDice(dice, { role: 'thief' }).size, ['one-handed'])
+  assert.deepStrictEqual(normalizeDice({ role: ['knight'], size: { by: 'role', fits: ['knight'], values: ['big'] } }, 'f.md')!.size.fits!.values, { big: ['knight'] })
+  assert.throws(() => normalizeDice({ role: ['knight'], size: { fits: ['knight'], values: ['big'] } }, 'f.md'), /axis "size" fits needs the axis's by/)
+  assert.throws(() => normalizeDice({ role: ['knight'], size: { by: 'role', fits: [], values: ['big'] } }, 'f.md'), /axis "size" fits must list/)
+  assert.throws(() => normalizeDice({ role: ['knight'], size: { by: 'role', fits: ['knigth'], values: ['big'] } }, 'f.md'), /axis "size" value "big" fits "knigth"/)
+})

@@ -1,7 +1,7 @@
 import { badRequest } from './refusal'
 import { DICE_TOKEN, replaceTokens } from './tokens'
 import { agentSlugOf, MAX_SUBCHAIN_DEPTH } from './nodeKinds'
-import type { AgentDef, AgentDice, ChainDef, DiceAxis, DiceRoll, Refusal, RunDice } from './types'
+import type { AgentDef, AgentDice, ChainDef, DiceAxis, DiceRoll, Rarity, Refusal, RunDice } from './types'
 
 // Dice: named lists an agent file declares, rolled in code once per node per run, so each
 // copy of a variance group is handed its own values rather than asked to pick (#153).
@@ -18,13 +18,21 @@ const isScalar = (v: unknown): v is string | number | boolean =>
 export function normalizeDice(raw: unknown, where: string): AgentDice | undefined {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`${where}: "dice" must map axis names to values.`)
-  return Object.fromEntries(Object.entries(raw).map(([axis, decl]) => [axis, normalizeAxis(axis, decl, where)]))
+  const dice: AgentDice = Object.fromEntries(Object.entries(raw).map(([axis, decl]) => [axis, normalizeAxis(axis, decl, where)]))
+  for (const [axis, { fits }] of Object.entries(dice)) if (fits) checkFits(axis, fits, dice, where)
+  return dice
 }
+
+const RARITIES: readonly Rarity[] = ['common', 'uncommon', 'rare']
+/** How many times as often each rarity rolls as a rare value. */
+const RARITY_WEIGHT: Record<Rarity, number> = { common: 4, uncommon: 2, rare: 1 }
 
 function normalizeAxis(axis: string, decl: unknown, where: string): DiceAxis {
   const bad = (why: string) => new Error(`${where}: dice axis "${axis}" ${why}.`)
-  const list = Array.isArray(decl) ? decl : (decl as { values?: unknown } | null)?.values
-  if (!Array.isArray(list)) throw bad('must be a list, or { values, draws }')
+  const listed = Array.isArray(decl) ? decl : (decl as { values?: unknown } | null)?.values
+  const valueMap = typeof listed === 'object' && listed !== null && !Array.isArray(listed) ? listed as Record<string, unknown> : undefined
+  if (!Array.isArray(listed) && !valueMap) throw bad('must be a list, or { values, draws }')
+  const list: unknown[] = valueMap ? Object.keys(valueMap) : listed as unknown[]
   if (!list.every(isScalar)) throw bad('lists a value that is not text')
   const values = list.map(String)
   if (!values.length) throw bad('has no values')
@@ -33,7 +41,53 @@ function normalizeAxis(axis: string, decl: unknown, where: string): DiceAxis {
   if (!draws) throw bad('draws must be a count from 1, or [min, max]')
   const max = typeof draws === 'number' ? draws : draws[1]
   if (max > values.length) throw bad(`draws ${max} of ${values.length} value${values.length === 1 ? '' : 's'}`)
-  return { values, draws }
+
+  const by = Array.isArray(decl) ? undefined : (decl as { by?: unknown }).by
+  if (by !== undefined && typeof by !== 'string') throw bad('by must name an axis')
+  const axisFits = Array.isArray(decl) ? undefined : (decl as { fits?: unknown }).fits
+  if (axisFits !== undefined && by === undefined) throw bad("fits needs the axis's by")
+  if (axisFits !== undefined && !isFitsList(axisFits)) throw bad('fits must list values of the by axis')
+  const read = readValueMap(valueMap ?? {}, by, bad)
+  if (axisFits !== undefined) for (const value of values) read.fits!.values[value] ??= axisFits.map(String)
+  return { values, draws, ...read }
+}
+
+const isFitsList = (on: unknown): on is unknown[] => Array.isArray(on) && on.length > 0 && on.every(isScalar)
+
+/** Each value's `{ fits, rarity }`; a value stating neither is common and fits what the axis's `fits` does, or anything. */
+function readValueMap(map: Record<string, unknown>, by: string | undefined, bad: (why: string) => Error): Pick<DiceAxis, 'rarity' | 'fits'> {
+  const rarity: Record<string, Rarity> = {}
+  const fits: Record<string, string[]> = {}
+  for (const [value, spec] of Object.entries(map)) {
+    if (spec === null || spec === undefined) continue
+    const badValue = (why: string) => bad(`value "${value}" ${why}`)
+    if (typeof spec !== 'object' || Array.isArray(spec)) throw badValue('must map to { fits, rarity }, or to nothing')
+    const { fits: on, rarity: r, ...rest } = spec as Record<string, unknown>
+    if (Object.keys(rest).length) throw badValue('may state only fits and rarity')
+    if (r !== undefined && !RARITIES.includes(r as Rarity)) throw badValue('rarity must be common, uncommon or rare')
+    if (r !== undefined && r !== 'common') rarity[value] = r as Rarity
+    if (on === undefined) continue
+    if (by === undefined) throw badValue("fits needs the axis's by")
+    if (!isFitsList(on)) throw badValue('fits must list values of the by axis')
+    fits[value] = on.map(String)
+  }
+  return {
+    ...(Object.keys(rarity).length ? { rarity } : {}),
+    ...(by !== undefined ? { fits: { by, values: fits } } : {}),
+  }
+}
+
+/** `by` names another axis of the same block, one without a `by`, and every `fits` lists values it rolls. */
+function checkFits(axis: string, fits: NonNullable<DiceAxis['fits']>, dice: AgentDice, where: string): void {
+  const bad = (why: string) => new Error(`${where}: dice axis "${axis}" ${why}.`)
+  const named = dice[fits.by]
+  if (fits.by === axis) throw bad(`by names "${axis}", which is itself`)
+  if (!named) throw bad(`by names "${fits.by}", which this block does not declare`)
+  if (named.fits) throw bad(`by names "${fits.by}", which has a by of its own`)
+  for (const [value, on] of Object.entries(fits.values)) {
+    const stray = on.find(v => !named.values.includes(v))
+    if (stray !== undefined) throw bad(`value "${value}" fits "${stray}", which "${fits.by}" does not roll`)
+  }
 }
 
 function readDraws(raw: unknown): DiceAxis['draws'] | undefined {
@@ -50,18 +104,29 @@ function drawCount(draws: DiceAxis['draws'], random: () => number): number {
   return min + Math.floor(random() * (max - min + 1))
 }
 
-/** One independent roll of every axis, pins laid over the declared values. */
+/** One independent roll of every axis, pins laid over the declared values; a `by` axis rolls after the axis it names. */
 export function rollDice(dice: AgentDice, pins: DicePins = {}, random: () => number = Math.random): DiceRoll {
-  return Object.fromEntries(Object.entries(dice).map(([axis, { values, draws }]) => {
-    const pin = pins[axis]
-    if (typeof pin === 'string') return [axis, [pin]]
-    const pool = [...(pin ?? values)]
-    const picked: string[] = []
-    for (let n = Math.min(drawCount(draws, random), pool.length); n > 0; n--) {
-      picked.push(pool.splice(Math.floor(random() * pool.length), 1)[0])
-    }
-    return [axis, picked]
-  }))
+  const roll: DiceRoll = {}
+  const axes = Object.entries(dice)
+  for (const [axis, def] of [...axes.filter(([, a]) => !a.fits), ...axes.filter(([, a]) => a.fits)]) {
+    roll[axis] = rollAxis(def, pins[axis], roll, random)
+  }
+  return Object.fromEntries(axes.map(([axis]) => [axis, roll[axis]]))
+}
+
+/** Distinct draws weighted by rarity, among the pin or else the values that fit; none fitting draws nothing. */
+function rollAxis({ values, draws, rarity, fits }: DiceAxis, pin: DicePins[string] | undefined, rolled: DiceRoll, random: () => number): string[] {
+  if (typeof pin === 'string') return [pin]
+  const fitsRoll = (v: string) => !fits?.values[v] || fits.values[v].some(on => rolled[fits.by].includes(on))
+  const pool = pin ? [...pin] : values.filter(fitsRoll)
+  const weight = (v: string) => RARITY_WEIGHT[rarity?.[v] ?? 'common']
+  const picked: string[] = []
+  for (let n = Math.min(drawCount(draws, random), pool.length); n > 0; n--) {
+    let left = random() * pool.reduce((sum, v) => sum + weight(v), 0)
+    const at = pool.findIndex(v => (left -= weight(v)) < 0)
+    picked.push(pool.splice(at < 0 ? pool.length - 1 : at, 1)[0])
+  }
+  return picked
 }
 
 /** The roll as prompt lines, one per axis; an axis that drew nothing says nothing. */
