@@ -92,7 +92,7 @@ test('the streamed projection wins; the local build is the fallback (ADR-0017)',
   const start = launched(chain())
   const engine: LayoutModel = {
     kind: 'timeline',
-    panels: [{ name: 'draft', node: 'a', text: 'from the engine', lines: 1, state: 'filled' }],
+    panels: [{ name: 'draft', node: 'a', socket: 'output', text: 'from the engine', lines: 1, state: 'filled' }],
   }
 
   const local = fold(start, ran(output('a', 'built here'), 1))

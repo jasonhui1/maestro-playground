@@ -1,5 +1,6 @@
 import { runLog, recordKey } from './partialRun'
-import { badRequest, notFound, unprocessable } from './refusal'
+import { badRequest, notFound, unprocessable, isRefusal } from './refusal'
+import { isRecord, readRevision, reviseOutput, type Revision } from './revision'
 import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace, type StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
@@ -17,10 +18,10 @@ export interface Fork {
   modelOverride?: string
 }
 
-/** `POST /api/runs/:id/fork`'s body, read (capability `runFork`): rerun from `from`, and/or set `revisions` (node id → text). */
+/** `POST /api/runs/:id/fork`'s body, read (capability `runFork`): rerun from `from`, and/or set `revisions` (node id → text or addressed edits). */
 export interface ForkRequest {
   from?: string
-  revisions?: Record<string, string>
+  revisions?: Record<string, Revision>
   versions?: ContinuationVersions
   modelOverride?: string | null
 }
@@ -28,17 +29,26 @@ export interface ForkRequest {
 /** A fork body's shape, before it meets a run. */
 export function readForkRequest({ from, revisions, versions, modelOverride }: Record<string, unknown>): ForkRequest | Refusal {
   if (from !== undefined && typeof from !== 'string') return badRequest('from must be a node id')
-  if (revisions !== undefined && !isTextMap(revisions)) return badRequest('revisions must map node ids to text')
+  let parsedRevisions: Record<string, Revision> | undefined
+  if (revisions !== undefined) {
+    if (!isRecord(revisions)) return badRequest('revisions must map node ids to text or addressed edits')
+    parsedRevisions = {}
+    for (const [nodeId, value] of Object.entries(revisions)) {
+      const rev = readRevision(value)
+      if (isRefusal(rev)) return rev
+      parsedRevisions[nodeId] = rev
+    }
+  }
   if (versions !== undefined && versions !== 'current' && versions !== 'pinned') {
     return badRequest("versions must be 'current' or 'pinned'")
   }
   const parsedOverride = parseModelOverride(modelOverride)
   if (!parsedOverride.valid) return badRequest(parsedOverride.error)
-  if (from === undefined && !Object.keys(revisions ?? {}).length) return badRequest('from or revisions is required')
-  if (from !== undefined && revisions && from in revisions) return badRequest(`Node ${from} cannot both rerun and be revised`)
+  if (from === undefined && !Object.keys(parsedRevisions ?? {}).length) return badRequest('from or revisions is required')
+  if (from !== undefined && parsedRevisions && from in parsedRevisions) return badRequest(`Node ${from} cannot both rerun and be revised`)
   return {
     from,
-    revisions,
+    revisions: parsedRevisions,
     versions,
     ...(parsedOverride.value !== undefined ? { modelOverride: parsedOverride.value } : {}),
   }
@@ -58,13 +68,15 @@ export function planFork(source: RunMeta, { from, revisions, versions, modelOver
   }
 
   const outputs: AgentOutput[] = []
-  for (const [nodeId, text] of revised) {
+  for (const [nodeId, rev] of revised) {
     const node = graph.nodes.find(n => n.id === nodeId)!
     if (node.kind === 'hold') return badRequest(`Node ${nodeId} is a hold; answer it through resume`)
     if (node.zone) return badRequest(`Node ${nodeId} is inside a loop; its rounds cannot be revised`)
     const record = source.agentOutputs.findLast(o => o.nodeId === nodeId)
     if (!record) return badRequest(`Node ${nodeId} has no output in this run`)
-    outputs.push(revisedOutput(record, text))
+    const outcome = reviseOutput(record.output, rev)
+    if (isRefusal(outcome)) return outcome
+    outputs.push(revisedOutput(record, outcome.output))
   }
   // #128: Omission inherits source override; null clears; nonempty string replaces.
   const effectiveOverride = resolveContinuationModelOverride(source.modelOverride, modelOverride)
@@ -115,11 +127,6 @@ export function forkInput(
     chainSlug: source.chainSlug,
     entrypoint: source.entrypoint,
   }
-}
-
-function isTextMap(value: unknown): value is Record<string, string> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-    && Object.values(value).every(v => typeof v === 'string')
 }
 
 // Nothing ran, so metrics are zero; the thought and chat argued for the old text.

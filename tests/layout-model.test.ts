@@ -51,6 +51,17 @@ test('a panel names the node its port binds to', () => {
   assert.deepStrictEqual(model.panels.map(p => p.node), ['first', 'second', 'third'])
 })
 
+// One node may feed several panels; an edit to one of them names node and socket
+// rather than guessing from panel order or matching the shown text (#160).
+test('a panel names the socket it shows, `output` when the port names none', () => {
+  const model = buildLayoutModel(chain({ view: 'columns', outputs: [
+    { name: 'Pitch', node: 'prop', socket: 'pitch' },
+    { name: 'Notes', node: 'prop', socket: 'notes' },
+    { name: 'all', node: 'prop' },
+  ] }), [output('prop', '## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.')])
+  assert.deepStrictEqual(model.panels.map(p => [p.node, p.socket]), [['prop', 'pitch'], ['prop', 'notes'], ['prop', 'output']])
+})
+
 // Panel order is the chain's declaration, not the run's arrival order or the graph's.
 test('panels follow the declared order, whatever order the outputs arrived in', () => {
   const model = buildLayoutModel(chain({ view: 'timeline', outputs: relayPorts }), [

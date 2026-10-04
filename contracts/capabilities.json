@@ -16,5 +16,6 @@
   "slotlessAgentRuns": true,
   "toolNodes": true,
   "dice": true,
-  "runStartDice": true
+  "runStartDice": true,
+  "addressedRevisions": true
 }

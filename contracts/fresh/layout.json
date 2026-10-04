@@ -4,6 +4,7 @@
     {
       "name": "hop 1",
       "node": "first",
+      "socket": "summary",
       "text": "Hop 1 summary with café",
       "lines": 1,
       "state": "filled"
@@ -11,6 +12,7 @@
     {
       "name": "hop 2",
       "node": "second",
+      "socket": "summary",
       "text": "Hop 2 summary",
       "lines": 1,
       "state": "filled",

@@ -4,6 +4,7 @@
     {
       "name": "proposal",
       "node": "proposer",
+      "socket": "summary",
       "text": "Revised proposal summary",
       "lines": 1,
       "state": "filled"
@@ -11,6 +12,7 @@
     {
       "name": "verdict",
       "node": "decider",
+      "socket": "summary",
       "text": "",
       "lines": 0,
       "state": "empty"
@@ -18,6 +20,7 @@
     {
       "name": "after",
       "node": "after",
+      "socket": "summary",
       "text": "",
       "lines": 0,
       "state": "pending",

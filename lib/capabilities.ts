@@ -52,6 +52,8 @@ export const CAPABILITIES = {
   dice: true,
   /** `run_start` carries the run's rolls as `dice`, keyed like meta.json's, on any run that rolled (#155). */
   runStartDice: true,
+  /** Fork revisions accept edits keyed by socket; layout panels carry socket (#160). */
+  addressedRevisions: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

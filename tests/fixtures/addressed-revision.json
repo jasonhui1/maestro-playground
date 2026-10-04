@@ -1,0 +1,131 @@
+{
+  "about": "Shared engine/plugin fixtures for addressed revision (maestro-playground #160, obsidian-chain-runner #139). Each case is one node's recorded output and the `revisions` value a fork sends for that node; `expect` is the whole output the fork replays, or the refusal status.",
+  "cases": [
+    {
+      "name": "editing Notes changes Notes, not Pitch",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "notes": "Edited notes." },
+      "expect": { "output": "## Pitch\nOriginal pitch.\n\n## Notes\nEdited notes." }
+    },
+    {
+      "name": "editing both Pitch and Notes keeps both edits",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "pitch": "Edited pitch.", "notes": "Edited notes." },
+      "expect": { "output": "## Pitch\nEdited pitch.\n\n## Notes\nEdited notes." }
+    },
+    {
+      "name": "a Notes body that also appears in Pitch changes only Notes",
+      "output": "## Pitch\nShared line.\n\n## Notes\nShared line.",
+      "revision": { "notes": "Edited notes." },
+      "expect": { "output": "## Pitch\nShared line.\n\n## Notes\nEdited notes." }
+    },
+    {
+      "name": "editing an empty Notes at the end fills it and keeps Pitch",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\n",
+      "revision": { "notes": "New notes." },
+      "expect": { "output": "## Pitch\nOriginal pitch.\n\n## Notes\nNew notes.\n" }
+    },
+    {
+      "name": "editing an empty section between headings fills it in place",
+      "output": "## Pitch\n\n## Notes\nOriginal notes.",
+      "revision": { "pitch": "New pitch." },
+      "expect": { "output": "## Pitch\nNew pitch.\n\n## Notes\nOriginal notes." }
+    },
+    {
+      "name": "an empty heading with nothing after it is filled on its own line",
+      "output": "Intro.\n\n## Notes",
+      "revision": { "notes": "New notes." },
+      "expect": { "output": "Intro.\n\n## Notes\nNew notes." }
+    },
+    {
+      "name": "clearing a section empties it and keeps the headings around it",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "pitch": "" },
+      "expect": { "output": "## Pitch\n\n## Notes\nOriginal notes." }
+    },
+    {
+      "name": "a heading name repeated under different parents is addressed by its path",
+      "output": "# Act 1\n## Scene 3\nFirst scene.\n# Act 2\n## Scene 3\nSecond scene.",
+      "revision": { "act-2/scene-3": "Rewritten." },
+      "expect": { "output": "# Act 1\n## Scene 3\nFirst scene.\n# Act 2\n## Scene 3\nRewritten." }
+    },
+    {
+      "name": "the output socket replaces the whole text",
+      "output": "## Pitch\nOriginal pitch.",
+      "revision": { "output": { "text": "All new.", "was": "## Pitch\nOriginal pitch." } },
+      "expect": { "output": "All new." }
+    },
+    {
+      "name": "an edit whose was matches the shown text applies",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "notes": { "text": "Edited notes.", "was": "Original notes." } },
+      "expect": { "output": "## Pitch\nOriginal pitch.\n\n## Notes\nEdited notes." }
+    },
+    {
+      "name": "an edit whose was no longer matches is a conflict",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "notes": { "text": "Edited notes.", "was": "Older notes." } },
+      "expect": { "refused": 409 }
+    },
+    {
+      "name": "a whole-output edit whose was no longer matches is a conflict",
+      "output": "## Pitch\nOriginal pitch.",
+      "revision": { "output": { "text": "All new.", "was": "Something else." } },
+      "expect": { "refused": 409 }
+    },
+    {
+      "name": "a section the output lacks is refused, not appended",
+      "output": "## Pitch\nOriginal pitch.",
+      "revision": { "notes": "New notes." },
+      "expect": { "refused": 422 }
+    },
+    {
+      "name": "a heading the output repeats is refused as ambiguous",
+      "output": "## Notes\nFirst.\n\n## Notes\nSecond.",
+      "revision": { "notes": "Edited." },
+      "expect": { "refused": 422 }
+    },
+    {
+      "name": "two sockets that land on one section are refused",
+      "output": "# Pitch\nOriginal pitch.\n## Notes\nOriginal notes.",
+      "revision": { "notes": "One.", "pitch/notes": "Two." },
+      "expect": { "refused": 422 }
+    },
+    {
+      "name": "an edit that adds a heading is refused, since its panel would not read it back",
+      "output": "## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.",
+      "revision": { "pitch": "New pitch.\n\n## Notes\nSmuggled." },
+      "expect": { "refused": 422 }
+    },
+    {
+      "name": "the whole output and a section of it in one revision overlap",
+      "output": "## Pitch\nOriginal pitch.",
+      "revision": { "output": "All new.", "pitch": "Edited." },
+      "expect": { "refused": 400 }
+    },
+    {
+      "name": "two spellings of one socket are refused",
+      "output": "## Notes\nOriginal notes.",
+      "revision": { "Notes": "One.", "notes": "Two." },
+      "expect": { "refused": 400 }
+    },
+    {
+      "name": "a socket with no heading name in it is refused",
+      "output": "## Notes\nOriginal notes.",
+      "revision": { "!!": "One." },
+      "expect": { "refused": 400 }
+    },
+    {
+      "name": "a revision naming no socket is refused",
+      "output": "## Notes\nOriginal notes.",
+      "revision": {},
+      "expect": { "refused": 400 }
+    },
+    {
+      "name": "an edit that is not text is refused",
+      "output": "## Notes\nOriginal notes.",
+      "revision": { "notes": { "was": "Original notes." } },
+      "expect": { "refused": 400 }
+    }
+  ]
+}

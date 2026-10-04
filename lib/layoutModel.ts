@@ -24,6 +24,9 @@ export interface LayoutPanel {
   /** The inner node this panel's port binds to — what a live token event is keyed by,
    *  so a streaming view can overlay tokens without matching on the display name (#76). */
   node: string
+  /** The port's socket, `output` for the whole text — with `node`, the address a fork's
+   *  `revisions` names to edit this panel alone (#160). */
+  socket: string
   /** What travelled on this socket — the same text the engine handed downstream. */
   text: string
   /** Content volume the view scales the panel by; 0 unless `filled`. */
@@ -75,7 +78,7 @@ function stateOf(output: AgentOutput | undefined, text: string): PanelState {
 function panelFor(port: ChainPort, output: AgentOutput | undefined, dice: RunDice, name = port.name): LayoutPanel {
   const text = contentOf(output, port.socket)
   const state = stateOf(output, text)
-  const panel: LayoutPanel = { name, node: port.node, text, lines: lineCount(text), state }
+  const panel: LayoutPanel = { name, node: port.node, socket: port.socket || 'output', text, lines: lineCount(text), state }
   if (state === 'errored' && output?.error) panel.error = output.error
   if (port.role === 'join') panel.emphasis = 'join'
   if (dice[port.node]) panel.dice = dice[port.node]
