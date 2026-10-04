@@ -10,7 +10,7 @@ const KEY = editedFileKey(REF)
 const FILE = '/api/workspace/agent/writer'
 const RAW = '---\nname: writer\n---\nbody\n'
 
-interface Write { data: Record<string, unknown>; content: string }
+interface Write { data: Record<string, unknown>; content: string; expectedRaw?: string }
 
 let disk: string
 let writes: Write[]
@@ -35,16 +35,19 @@ function stub() {
       if (park) await new Promise<void>(release => park!.push(release))
       if (fail) return new Response(JSON.stringify({ error: fail }), { status: 500 })
       const body = JSON.parse(String(init.body)) as Write
+      if (body.expectedRaw !== undefined && body.expectedRaw !== disk) {
+        return new Response(JSON.stringify({ code: 'SAVE_CONFLICT', currentRaw: disk }), { status: 409 })
+      }
       writes.push(body)
       disk = `---\nname: ${body.data.name}\n---\n${body.content}`
-      return new Response('{}', { status: 200 })
+      return new Response(JSON.stringify({ raw: disk }), { status: 200 })
     }
     return new Response(JSON.stringify({ raw: disk }), { status: 200 })
   }) as typeof fetch
 
   class FakeEventSource {
     onmessage: ((e: { data: string }) => void) | null = null
-    constructor(public url: string) { push = raw => this.onmessage?.({ data: JSON.stringify({ type: 'change', raw }) }) }
+    constructor(public url: string) { push = raw => { disk = raw; this.onmessage?.({ data: JSON.stringify({ type: 'change', raw }) }) } }
     close() { closed += 1 }
   }
   ;(globalThis as { EventSource?: unknown }).EventSource = FakeEventSource
@@ -58,7 +61,7 @@ ${text}
 `
 
 /** Let the stubbed fetch's promises settle. */
-const settle = async () => { for (let i = 0; i < 4; i++) await Promise.resolve() }
+const settle = async () => { await vi.advanceTimersByTimeAsync(0) }
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -220,4 +223,79 @@ test('edited-file-store — a file that will not load reports the error', async 
   await open()
   assert.strictEqual(state().loadError, 'Failed to fetch file content')
   assert.strictEqual(state().loaded, false)
+})
+
+test('edited-file-store — a competing save without a watch notification pauses writes for review', async () => {
+  await open()
+  useEditedFileStore.getState().setContent(REF, body('mine'))
+  disk = body('plugin wrote this')
+  await vi.advanceTimersByTimeAsync(2000)
+  await settle()
+  assert.strictEqual(writes.length, 0)
+  assert.strictEqual(state().conflict, disk)
+  assert.strictEqual(state().content, body('mine'))
+  await vi.advanceTimersByTimeAsync(6000)
+  assert.strictEqual(writes.length, 0, 'no automatic overwrite while deciding')
+})
+
+test('edited-file-store — keeping mine approves only the displayed conflict, not a later save', async () => {
+  await open()
+  useEditedFileStore.getState().setContent(REF, body('mine'))
+  push(body('shown in conflict'))
+  await vi.advanceTimersByTimeAsync(4000)
+  assert.strictEqual(writes.length, 0, 'the watch conflict suspends autosave')
+  useEditedFileStore.getState().resolve(REF, 'mine')
+  disk = body('changed while deciding')
+  await vi.advanceTimersByTimeAsync(2000)
+  await settle()
+  assert.strictEqual(writes.length, 0)
+  assert.strictEqual(state().conflict, body('changed while deciding'))
+  useEditedFileStore.getState().resolve(REF, 'mine')
+  await vi.advanceTimersByTimeAsync(2000)
+  await settle()
+  assert.strictEqual(writes.length, 1)
+  assert.strictEqual(writes[0].expectedRaw, body('changed while deciding'))
+  assert.strictEqual(disk, body('mine'))
+})
+
+test('edited-file-store — the serialized receipt becomes the baseline, without a follow-up GET', async () => {
+  await open()
+  useEditedFileStore.getState().setContent(REF, '---\nname: "writer"\n---\nmine\n')
+  await vi.advanceTimersByTimeAsync(2000)
+  await settle()
+  assert.strictEqual(state().onDisk, body('mine'))
+  assert.strictEqual(state().content, body('mine'), 'normalization leaves the buffer clean')
+  useEditedFileStore.getState().setContent(REF, body('next'))
+  await vi.advanceTimersByTimeAsync(2000)
+  await settle()
+  assert.strictEqual(writes[1].expectedRaw, body('mine'))
+})
+
+test('edited-file-store — closing during a conflict does not overwrite the other writer', async () => {
+  await open()
+  useEditedFileStore.getState().setContent(REF, body('mine'))
+  push(body('theirs'))
+  useEditedFileStore.getState().release(REF)
+  await settle()
+  assert.strictEqual(writes.length, 0)
+  assert.strictEqual(disk, body('theirs'))
+})
+
+test('edited-file-store — closing during a write flushes later typing only after the receipt arrives', async () => {
+  await open()
+  park = []
+  useEditedFileStore.getState().setContent(REF, body('first'))
+  await vi.advanceTimersByTimeAsync(2000)
+  useEditedFileStore.getState().setContent(REF, body('last edit'))
+  useEditedFileStore.getState().release(REF)
+  await settle()
+  assert.strictEqual(park.length, 1, 'closing does not launch an overlapping PUT')
+  park.shift()!()
+  await settle()
+  assert.strictEqual(park.length, 1, 'the final flush follows the first receipt')
+  park.shift()!()
+  await settle()
+  assert.deepStrictEqual(writes.map(w => w.content.trim()), ['first', 'last edit'])
+  assert.strictEqual(writes[1].expectedRaw, body('first'))
+  assert.strictEqual(disk, body('last edit'))
 })

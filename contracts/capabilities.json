@@ -1,4 +1,5 @@
 {
+  "conditionalWorkspaceSaves": true,
   "runLayoutFrames": true,
   "runStartEvent": true,
   "runFailureFrame": true,

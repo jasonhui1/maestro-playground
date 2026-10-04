@@ -6,6 +6,8 @@
  * A flag is added when the behaviour ships and never removed while any client reads it.
  */
 export const CAPABILITIES = {
+  /** Entity PUT accepts `expectedRaw` and returns the exact serialized `raw`; stale saves are 409 (#158). */
+  conditionalWorkspaceSaves: true,
   /** `/api/run` streams `{ type: 'layout', model }` frames, and every panel carries `node`. */
   runLayoutFrames: true,
   /** `/api/run` emits `{ type: 'run_start', runId }` as the first event of the stream. */

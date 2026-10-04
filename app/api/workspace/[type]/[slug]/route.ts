@@ -61,10 +61,13 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { data, content } = body
+    const { data, content, expectedRaw } = body
 
     if (!data || content === undefined) {
       return NextResponse.json({ error: 'Missing data or content' }, { status: 400 })
+    }
+    if ('expectedRaw' in body && expectedRaw !== null && typeof expectedRaw !== 'string') {
+      return NextResponse.json({ error: 'expectedRaw must be a string or null' }, { status: 400 })
     }
 
     // Perform detailed validation using validateYaml
@@ -87,14 +90,12 @@ export async function PUT(
     const defaults = type === 'agent' ? loadAgentDefaults(root) : undefined
     const validationResult = validateEntityFrontmatter(type, data, defaults)
 
-    // Variants save into their declaring file (#118, #123).
-    const { storageSlug } = resolveAddressedFile(root, type as EntityType, slug)
-
     const saved = saveWorkspaceEntity(root, {
       type: type as EntityType,
-      slug: storageSlug,
+      slug,
       data,
       content,
+      expectedRaw,
     })
 
     return NextResponse.json({
