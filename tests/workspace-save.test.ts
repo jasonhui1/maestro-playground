@@ -196,3 +196,75 @@ test('the editor keeps its own receipt if another writer saves before its HTTP r
   expect(state().conflict).toContain('Foreign version\n')
   expect(fs.readFileSync(file, 'utf8')).toContain('Foreign version\n')
 })
+
+test('saving an agent addressed with .md returns canonical slug agreeing with workspace listing (#159)', async () => {
+  const file = path.join(root, 'agents/rewriter.md')
+  const res = await put({ data: { name: 'Rewriter', model: 'test/model' }, content: 'Body\n' }, 'rewriter.md')
+  expect(res.status).toBe(200)
+  const receipt = await res.json()
+  expect(receipt.slug).toBe('rewriter')
+  expect(receipt.filePath).toBe(file)
+
+  const { loadWorkspace } = await import('../lib/fs/workspace')
+  const ws = loadWorkspace(root)
+  const listed = ws.agents.find(a => a.slug === receipt.slug)
+  expect(listed).toBeDefined()
+  expect(listed?.slug).toBe('rewriter')
+})
+
+test('existing agent file overwritten with .md address preserves canonical slug and file location (#159)', async () => {
+  const file = path.join(root, 'agents/existing.md')
+  fs.writeFileSync(file, original)
+  const res = await put({ data: { name: 'Existing', model: 'test/model' }, content: 'Updated\n', expectedRaw: original }, 'existing.md')
+  expect(res.status).toBe(200)
+  const receipt = await res.json()
+  expect(receipt.slug).toBe('existing')
+  expect(receipt.filePath).toBe(file)
+  expect(fs.readFileSync(file, 'utf8')).toContain('Updated\n')
+})
+
+test('internal dots in slug retain identity while stripping .md extension (#159)', async () => {
+  const file = path.join(root, 'agents/writer.v2.md')
+  const res = await put({ data: { name: 'Writer v2', model: 'test/model' }, content: 'Body\n' }, 'writer.v2.md')
+  expect(res.status).toBe(200)
+  const receipt = await res.json()
+  expect(receipt.slug).toBe('writer.v2')
+  expect(receipt.filePath).toBe(file)
+
+  const { loadWorkspace } = await import('../lib/fs/workspace')
+  const ws = loadWorkspace(root)
+  expect(ws.agents.some(a => a.slug === 'writer.v2')).toBe(true)
+})
+
+test('nested folder agent save with .md resolves to existing nested file and returns canonical slug (#159)', async () => {
+  const dir = path.join(root, 'agents/creative')
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, 'nested.md')
+  fs.writeFileSync(file, original)
+
+  const res = await put({ data: { name: 'Nested', model: 'test/model' }, content: 'Nested update\n' }, 'nested.md')
+  expect(res.status).toBe(200)
+  const receipt = await res.json()
+  expect(receipt.slug).toBe('nested')
+  expect(receipt.filePath).toBe(file)
+  expect(fs.existsSync(path.join(root, 'agents/nested.md'))).toBe(false)
+})
+
+test('variant addressed with .md resolves to declaring file and preserves declared identity (#159)', async () => {
+  const file = path.join(root, 'agents/creative/premortem.md')
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const raw = '---\nname: Premortem\nmodel: test/model\nvariants:\n  - id: rot\n---\nBody\n'
+  fs.writeFileSync(file, raw)
+
+  const data = { name: 'Premortem', model: 'test/model', variants: [{ id: 'rot' }] }
+  const res = await put({ data, content: 'Updated body\n' }, 'rot.md')
+  expect(res.status).toBe(200)
+  const receipt = await res.json()
+  expect(receipt).toMatchObject({ slug: 'premortem', filePath: file })
+})
+
+test('saving with a degenerate extension-only slug is explicitly refused (#159)', async () => {
+  const res = await put({ data: { name: 'Empty', model: 'test/model' }, content: 'Body\n' }, '.md')
+  expect(res.status).toBe(400)
+  expect((await res.json()).error).toMatch(/Invalid name/)
+})

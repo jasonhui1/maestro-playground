@@ -25,8 +25,9 @@ export function isValidEntityType(type: string): type is EntityType {
 }
 
 export function sanitizeSlug(slug: string) {
-  // Remove any path traversal characters and ensure it's just a filename
-  return path.basename(slug).replace(/[^\w.-]/g, '')
+  // Filename leaf without .md agrees with workspace identity (ADR-0012, #159).
+  const clean = path.basename(slug).replace(/[^\w.-]/g, '')
+  return clean.toLowerCase().endsWith('.md') ? clean.slice(0, -3) : clean
 }
 
 // A folder is a location, never an identity, so it gets its own sanitiser instead of
@@ -98,16 +99,17 @@ export function resolveAddressedFile(
   slug: string,
   variants?: Map<string, VariantSource>,
 ): { filePath: string; storageSlug: string } {
+  const cleanSlug = sanitizeSlug(slug)
   if (type === 'agent') {
-    const own = findBySlug(path.join(root, 'agents'), slug)
-    if (own) return { filePath: own, storageSlug: slug }
+    const own = findBySlug(path.join(root, 'agents'), cleanSlug)
+    if (own) return { filePath: own, storageSlug: cleanSlug }
 
-    const hit = (variants ?? variantIndex(root, 'agent')).get(slug)
+    const hit = (variants ?? variantIndex(root, 'agent')).get(cleanSlug)
     if (hit) {
       return { filePath: hit.filePath, storageSlug: hit.fileSlug }
     }
   }
-  return { filePath: resolveEntityPath(root, type, slug), storageSlug: slug }
+  return { filePath: resolveEntityPath(root, type, cleanSlug), storageSlug: cleanSlug }
 }
 
 export function findAgentFile(root: string, slug: string): string | undefined {

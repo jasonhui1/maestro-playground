@@ -63,6 +63,9 @@ function readCurrentRaw(filePath: string): string | null {
 
 export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder, expectedRaw }: SaveEntityRequest) {
   const cleanSlug = sanitizeSlug(slug)
+  if (!cleanSlug) {
+    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${slug}\``)
+  }
   if (expectedRaw !== undefined && expectedRaw !== null && typeof expectedRaw !== 'string') {
     throw new WorkspaceError('INVALID_CONTENT', 'expectedRaw must be a string or null')
   }
