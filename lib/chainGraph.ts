@@ -4,6 +4,7 @@ import { inputAcceptsMany, kindOf, allKinds, resolveNodeSkills, unknownSkillName
 import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 import { scanTokens, endpointOf, socketKey } from './tokens'
+import { wiredByIssues } from './dice'
 
 type AddIssue = (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void
 /** A ref's "not found" message, or the clash that left the name out of the load (#151). */
@@ -227,6 +228,7 @@ export function validateChain(
   }
 
   if (topoOrder(chain).length !== chain.nodes.length) add('Chain has a cycle')
+  for (const { nodeId, message } of wiredByIssues(chain, { agents })) add(message, { nodeId })
 
   validateZones(chain, add)
   validateSubchains(chain, chains, { add, warn, missing })

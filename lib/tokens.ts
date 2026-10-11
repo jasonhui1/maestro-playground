@@ -60,6 +60,9 @@ export function scanTokens(text: string): Token[] {
 /** Where an agent's dice roll lands (#153). */
 export const DICE_TOKEN = 'dice'
 
+/** The output socket carrying a dice node's roll to another node (#161). */
+export const DICE_SOCKET = 'dice'
+
 /** A prompt's slot names, deduped in first-seen order. */
 export function promptSlots(template: string): string[] {
   const names = scanTokens(template).flatMap(t => t.kind === 'slot' ? [t.name] : [])

@@ -1,5 +1,5 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
-import { agentSlots, socketKey } from './tokens'
+import { agentSlots, DICE_SOCKET, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
 import { toolNodeInputs } from './tools/spec'
@@ -99,7 +99,7 @@ function agentInputs(node: ChainNode, { agents, tools = [] }: WorkspaceLookup): 
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
-  const sockets = ['output', ...(a?.outputs ?? []).map(s => socketKey(s.name))]
+  const sockets = ['output', ...(a?.outputs ?? []).map(s => socketKey(s.name)), ...(a?.dice ? [DICE_SOCKET] : [])]
   return Array.from(new Set(sockets))
 }
 

@@ -6,7 +6,7 @@ import { discoverFiles, groupByName, type Loaded } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 import { resolveProvider } from '../provider'
-import { fillSlot } from '../tokens'
+import { DICE_SOCKET, fillSlot, socketKey } from '../tokens'
 import { normalizeDice } from '../dice'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
@@ -118,6 +118,12 @@ export function parseAgent(
     resolution.sources.model = 'built-in'
   }
 
+  const outputs = normalizeOutputs(merged.outputs)
+  const dice = normalizeDice(data.dice, filePath)
+  if (dice && outputs.some(o => socketKey(o.name) === DICE_SOCKET)) {
+    throw new Error(`${filePath}: output "${DICE_SOCKET}" is the socket that carries this agent's dice roll; rename the output.`)
+  }
+
   return {
     slug,
     name: merged.name,
@@ -128,7 +134,7 @@ export function parseAgent(
     tools: merged.tools ?? [],
     input_from: merged.input_from ?? 'user',
     output_format: merged.output_format ?? 'markdown',
-    outputs: normalizeOutputs(merged.outputs),
+    outputs,
     inputs: normalizeInputs(merged.inputs),
     max_tokens: merged.max_tokens,
     max_tool_turns: typeof merged.max_tool_turns === 'number' ? merged.max_tool_turns : undefined,
@@ -137,7 +143,7 @@ export function parseAgent(
     // Read off the same frontmatter as every other field, so a variant block is
     // subject to the same rules rather than a second, laxer parse (ADR-0013).
     variants: normalizeVariants(data.variants, filePath),
-    dice: normalizeDice(data.dice, filePath),
+    dice,
     filePath,
     rawContent: raw,
     isFavorite: false,
