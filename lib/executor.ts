@@ -130,7 +130,7 @@ export async function runChainGraph(
   const edgeValue = (e: typeof chain.edges[number]): string => {
     const src = nodeById.get(e.fromNode)
     if (!src) return ''
-    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
+    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue, dice)
     emitSectionWarnings(read, e.fromNode, e.toNode, e.toSocket, reportWarning)
     return read.value
   }
@@ -163,9 +163,8 @@ export async function runChainGraph(
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
     const effectiveAgent = withModelOverride(agent, modelOverride)
-    const roll = agent.dice ? dice[node.id] : undefined
-    if (agent.dice && !roll) throw new Error(`node "${node.id}" rolls dice, but the run pinned no roll for it`)
-    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue, roll)
+    if (agent.dice && !dice[node.id]) throw new Error(`node "${node.id}" rolls dice, but the run pinned no roll for it`)
+    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue, dice)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
     // two nodes naming the same agent may still produce two different system prompts.

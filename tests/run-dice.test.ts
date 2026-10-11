@@ -281,6 +281,54 @@ test('the agent editor round-trips the dice block', () => {
   assert.deepStrictEqual(parseAgent(file).dice, parseAgent(file, designer).dice)
 })
 
+test('a dice socket carries a roll into another node\'s slot, and its `by` rolls against it (#161)', async () => {
+  const wp = newWorkspace()
+  fs.writeFileSync(path.join(wp, 'agents/roles.md'), '---\nname: Roles\ndice:\n  role: [knight, thief, chef]\n---\nDesign {input}.\n')
+  fs.writeFileSync(path.join(wp, 'agents/profile.md'), `---
+name: Profile
+dice:
+  weapon:
+    by: role
+    values:
+      lance: { fits: [knight] }
+      sword cane: { fits: [thief] }
+---
+Built from:
+{design_dice}
+Rolled:
+{dice}
+`)
+  fs.writeFileSync(path.join(wp, 'chains/wired.md'), `---
+name: wired
+nodes:
+  - id: seed
+    kind: seed
+  - id: designer
+    kind: agent
+    agent: roles
+  - id: profile
+    kind: agent
+    agent: profile
+edges:
+  - from: seed
+    to: designer.input
+  - from: designer.dice
+    to: profile.design_dice
+---
+`)
+  const thief = await sse(await run({ chainName: 'wired', seedPrompt: 'X', dice: { role: 'thief' } }))
+  assert.strictEqual(outputOf(thief, 'profile'), 'Built from:\n- role: thief\nRolled:\n- weapon: sword cane')
+  const chef = await sse(await run({ chainName: 'wired', seedPrompt: 'X', dice: { role: 'chef' } }))
+  assert.strictEqual(outputOf(chef, 'profile'), 'Built from:\n- role: chef\nRolled:\n')
+
+  const source = await readMeta(runIdOf(thief))
+  for (const from of ['profile', 'designer']) {
+    const forked = await fork(source.runId, { from })
+    assert.deepStrictEqual((await readMeta(runIdOf(forked))).dice, source.dice, `fork from ${from}`)
+    assert.strictEqual(outputOf(forked, 'profile'), 'Built from:\n- role: thief\nRolled:\n- weapon: sword cane')
+  }
+})
+
 test('a subchain\'s inner node rolls under the subchain node\'s id, and that roll is the one it ran with', async () => {
   const wp = newWorkspace()
   fs.writeFileSync(path.join(wp, 'chains/inner.md'), `---

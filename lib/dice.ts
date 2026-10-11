@@ -1,7 +1,7 @@
 import { badRequest } from './refusal'
-import { DICE_TOKEN, replaceTokens } from './tokens'
+import { DICE_SOCKET, DICE_TOKEN, replaceTokens, socketKey } from './tokens'
 import { agentSlugOf, MAX_SUBCHAIN_DEPTH } from './nodeKinds'
-import type { AgentDef, AgentDice, ChainDef, DiceAxis, DiceRoll, Rarity, Refusal, RunDice } from './types'
+import type { AgentDef, AgentDice, ChainDef, ChainNode, DiceAxis, DiceRoll, Rarity, Refusal, RunDice } from './types'
 
 // Dice: named lists an agent file declares, rolled in code once per node per run, so each
 // copy of a variance group is handed its own values rather than asked to pick (#153).
@@ -77,17 +77,27 @@ function readValueMap(map: Record<string, unknown>, by: string | undefined, bad:
   }
 }
 
-/** `by` names another axis of the same block, one without a `by`, and every `fits` lists values it rolls. */
+/** A `by` naming an axis of the same block: no loop of `by`s back to this axis, and every `fits` lists values it rolls.
+ *  Any other `by` names an axis a chain wires in, checked there (#161). */
 function checkFits(axis: string, fits: NonNullable<DiceAxis['fits']>, dice: AgentDice, where: string): void {
   const bad = (why: string) => new Error(`${where}: dice axis "${axis}" ${why}.`)
   const named = dice[fits.by]
   if (fits.by === axis) throw bad(`by names "${axis}", which is itself`)
-  if (!named) throw bad(`by names "${fits.by}", which this block does not declare`)
-  if (named.fits) throw bad(`by names "${fits.by}", which has a by of its own`)
-  for (const [value, on] of Object.entries(fits.values)) {
-    const stray = on.find(v => !named.values.includes(v))
-    if (stray !== undefined) throw bad(`value "${value}" fits "${stray}", which "${fits.by}" does not roll`)
+  if (!named) return
+  for (let next = named.fits?.by; next !== undefined; next = dice[next]?.fits?.by) {
+    if (next === axis) throw bad(`by names "${fits.by}", whose by leads back to "${axis}"`)
   }
+  const stray = strayFit(fits, named)
+  if (stray) throw bad(`value "${stray.value}" fits "${stray.on}", which "${fits.by}" does not roll`)
+}
+
+/** The first `fits` entry naming a value the `by` axis does not roll. */
+function strayFit(fits: NonNullable<DiceAxis['fits']>, named: DiceAxis): { value: string; on: string } | undefined {
+  for (const [value, ons] of Object.entries(fits.values)) {
+    const on = ons.find(v => !named.values.includes(v))
+    if (on !== undefined) return { value, on }
+  }
+  return undefined
 }
 
 function readDraws(raw: unknown): DiceAxis['draws'] | undefined {
@@ -104,20 +114,31 @@ function drawCount(draws: DiceAxis['draws'], random: () => number): number {
   return min + Math.floor(random() * (max - min + 1))
 }
 
+interface RollOptions {
+  random?: () => number
+  /** Rolls of other nodes, read by a `by` naming an axis this block lacks (#161). */
+  wiredIn?: DiceRoll
+}
+
 /** One independent roll of every axis, pins laid over the declared values; a `by` axis rolls after the axis it names. */
-export function rollDice(dice: AgentDice, pins: DicePins = {}, random: () => number = Math.random): DiceRoll {
-  const roll: DiceRoll = {}
-  const axes = Object.entries(dice)
-  for (const [axis, def] of [...axes.filter(([, a]) => !a.fits), ...axes.filter(([, a]) => a.fits)]) {
-    roll[axis] = rollAxis(def, pins[axis], roll, random)
+export function rollDice(dice: AgentDice, pins: DicePins = {}, { random = Math.random, wiredIn = {} }: RollOptions = {}): DiceRoll {
+  const roll: DiceRoll = { ...wiredIn }
+  const rolled = new Set<string>()
+  const rollOne = (axis: string): void => {
+    if (rolled.has(axis)) return
+    rolled.add(axis)
+    const by = dice[axis].fits?.by
+    if (by !== undefined && dice[by]) rollOne(by)
+    roll[axis] = rollAxis(dice[axis], pins[axis], roll, random)
   }
-  return Object.fromEntries(axes.map(([axis]) => [axis, roll[axis]]))
+  Object.keys(dice).forEach(rollOne)
+  return Object.fromEntries(Object.keys(dice).map(axis => [axis, roll[axis]]))
 }
 
 /** Distinct draws weighted by rarity, among the pin or else the values that fit; none fitting draws nothing. */
 function rollAxis({ values, draws, rarity, fits }: DiceAxis, pin: DicePins[string] | undefined, rolled: DiceRoll, random: () => number): string[] {
   if (typeof pin === 'string') return [pin]
-  const fitsRoll = (v: string) => !fits?.values[v] || fits.values[v].some(on => rolled[fits.by].includes(on))
+  const fitsRoll = (v: string) => !fits?.values[v] || fits.values[v].some(on => rolled[fits.by]?.includes(on))
   const pool = pin ? [...pin] : values.filter(fitsRoll)
   const weight = (v: string) => RARITY_WEIGHT[rarity?.[v] ?? 'common']
   const picked: string[] = []
@@ -130,7 +151,7 @@ function rollAxis({ values, draws, rarity, fits }: DiceAxis, pin: DicePins[strin
 }
 
 /** The roll as prompt lines, one per axis; an axis that drew nothing says nothing. */
-function diceLines(roll: DiceRoll): string {
+export function diceLines(roll: DiceRoll): string {
   return Object.entries(roll).filter(([, v]) => v.length).map(([axis, v]) => `- ${axis}: ${v.join(', ')}`).join('\n')
 }
 
@@ -149,25 +170,76 @@ export function fillDice(prompt: string, roll: DiceRoll | undefined): string {
 
 interface DiceDefs { agents: AgentDef[]; chains: ChainDef[] }
 
-/** Every node that rolls in `chain`, subchains walked in, keyed as `RunDice` keys them. */
-export function diceNodes(chain: ChainDef, defs: DiceDefs, prefix = '', depth = 0): { key: string; dice: AgentDice }[] {
+/** A node that rolls, keyed as `RunDice` keys it, with the keys of the nodes wired into its dice socket. */
+interface DiceNode { key: string; dice: AgentDice; wiredFrom: string[] }
+
+/** Every node that rolls in `chain`, subchains walked in. */
+export function diceNodes(chain: ChainDef, defs: DiceDefs, prefix = '', depth = 0): DiceNode[] {
   if (depth > MAX_SUBCHAIN_DEPTH) return []
   return chain.nodes.flatMap(node => {
     if (node.kind === 'subchain') {
       const inner = defs.chains.find(c => c.slug === node.subchain)
       return inner ? diceNodes(inner, defs, `${prefix}${node.id}/`, depth + 1) : []
     }
-    const slug = agentSlugOf(node)
-    const dice = slug ? defs.agents.find(a => a.slug === slug)?.dice : undefined
-    return dice ? [{ key: `${prefix}${node.id}`, dice }] : []
+    const dice = diceOf(node, defs)
+    if (!dice) return []
+    return [{ key: `${prefix}${node.id}`, dice, wiredFrom: diceSources(node, chain, defs).map(s => `${prefix}${s.node.id}`) }]
   })
 }
 
-/** A run's rolls: `pinned` kept as they are, every other dice node rolled now. */
+/** A run's rolls: `pinned` kept as they are, every other dice node rolled now, after the nodes wired into its dice. */
 export function rollRunDice(chain: ChainDef, defs: DiceDefs, pinned: RunDice = {}, pins: DicePins = {}): RunDice {
   const rolls: RunDice = { ...pinned }
-  for (const { key, dice } of diceNodes(chain, defs)) rolls[key] ??= rollDice(dice, pins)
+  const nodes = diceNodes(chain, defs)
+  const byKey = new Map(nodes.map(n => [n.key, n]))
+  const visited = new Set<string>()
+  const roll = ({ key, dice, wiredFrom }: DiceNode): void => {
+    if (visited.has(key)) return
+    visited.add(key)
+    wiredFrom.forEach(from => { const source = byKey.get(from); if (source) roll(source) })
+    rolls[key] ??= rollDice(dice, pins, { wiredIn: Object.assign({}, ...wiredFrom.map(from => rolls[from])) })
+  }
+  nodes.forEach(roll)
   return rolls
+}
+
+function diceOf(node: ChainNode, defs: Pick<DiceDefs, 'agents'>): AgentDice | undefined {
+  const slug = agentSlugOf(node)
+  return slug ? defs.agents.find(a => a.slug === slug)?.dice : undefined
+}
+
+/** Each `by` an agent left to the wiring names an axis exactly one node wired into its dice socket rolls,
+ *  and every `fits` lists values that axis rolls (#161). */
+export function wiredByIssues(chain: ChainDef, defs: Pick<DiceDefs, 'agents'>): { nodeId: string; message: string }[] {
+  return chain.nodes.flatMap(node => {
+    const dice = diceOf(node, defs)
+    if (!dice) return []
+    const sources = diceSources(node, chain, defs)
+    return Object.entries(dice).flatMap(([axis, { fits }]) => {
+      if (!fits || dice[fits.by]) return []
+      const issue = (why: string) => ({ nodeId: node.id, message: `Node "${node.id}": dice axis "${axis}" ${why}` })
+      const rolling = sources.filter(s => s.dice[fits.by])
+      if (rolling.length === 0) {
+        return [issue(`rolls by "${fits.by}", which no node wired into its dice socket rolls; wire one in, or check the axis name`)]
+      }
+      if (rolling.length > 1) {
+        return [issue(`rolls by "${fits.by}", which ${rolling.length} nodes wired into its dice socket roll (${rolling.map(s => s.node.id).join(', ')}); wire in one`)]
+      }
+      const [{ node: src, dice: srcDice }] = rolling
+      const stray = strayFit(fits, srcDice[fits.by])
+      return stray ? [issue(`value "${stray.value}" fits "${stray.on}", which "${fits.by}" on node "${src.id}" does not roll`)] : []
+    })
+  })
+}
+
+/** The dice nodes wired into `node` through their dice socket. */
+function diceSources(node: ChainNode, chain: ChainDef, defs: Pick<DiceDefs, 'agents'>): { node: ChainNode; dice: AgentDice }[] {
+  return chain.edges.flatMap(e => {
+    if (e.toNode !== node.id || socketKey(e.fromSocket) !== DICE_SOCKET) return []
+    const src = chain.nodes.find(n => n.id === e.fromNode)
+    const dice = src && diceOf(src, defs)
+    return src && dice ? [{ node: src, dice }] : []
+  })
 }
 
 /** The rolls under subchain node `nodeId`, keyed as its own run keys them. */

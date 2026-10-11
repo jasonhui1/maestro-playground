@@ -1,7 +1,9 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { normalizeDice, rollDice, fillDice, readDicePins } from '../lib/dice'
+import { normalizeDice, rollDice, fillDice, readDicePins, rollRunDice } from '../lib/dice'
 import { agentSlots, promptSlots } from '../lib/tokens'
+import { validateChain } from '../lib/chainGraph'
+import { parseAgent } from '../lib/fs/parseAgent'
 import type { AgentDef, ChainDef } from '../lib/types'
 
 // Walks the values in order, so a roll is predictable: 0 picks the first remaining value.
@@ -31,7 +33,7 @@ test('a malformed dice block throws naming the file and axis', () => {
 
 test('a roll draws distinct values per axis', () => {
   const dice = normalizeDice({ styling: { values: ['a', 'b', 'c'], draws: 2 }, hair: ['bob', 'curls'] }, 'f.md')!
-  assert.deepStrictEqual(rollDice(dice, {}, alwaysFirst), { styling: ['a', 'b'], hair: ['bob'] })
+  assert.deepStrictEqual(rollDice(dice, {}, { random: alwaysFirst }), { styling: ['a', 'b'], hair: ['bob'] })
   for (let i = 0; i < 20; i++) {
     const { styling } = rollDice(dice)
     assert.strictEqual(new Set(styling).size, 2)
@@ -109,14 +111,91 @@ test('a malformed value map or `by` throws naming the file and axis', () => {
   assert.throws(() => weapon({ values: { lance: { colour: 'red' } } }), /axis "weapon" value "lance" may state only fits and rarity/)
   assert.throws(() => weapon({ values: { lance: { fits: ['knight'] } } }), /axis "weapon" value "lance" fits needs the axis's by/)
   assert.throws(() => weapon({ by: 'role', values: { lance: { fits: [] } } }), /axis "weapon" value "lance" fits must list/)
-  assert.throws(() => weapon({ by: 'tail', values: { lance: { fits: ['long'] } } }), /axis "weapon" by names "tail", which this block does not declare/)
   assert.throws(() => weapon({ by: 'role', values: { lance: { fits: ['knigth'] } } }), /axis "weapon" value "lance" fits "knigth", which "role" does not roll/)
   assert.throws(() => normalizeDice({ role: { by: 'role', values: { knight: null } } }, 'f.md'), /axis "role" by names "role", which is itself/)
   assert.throws(() => normalizeDice({
-    role: ['knight'],
-    weapon: { by: 'role', values: { lance: { fits: ['knight'] } } },
+    weapon: { by: 'grip', values: { lance: { fits: ['two-handed'] } } },
     grip: { by: 'weapon', values: { 'two-handed': { fits: ['lance'] } } },
-  }, 'f.md'), /axis "grip" by names "weapon", which has a by of its own/)
+  }, 'f.md'), /axis "weapon" by names "grip", whose by leads back to "weapon"/)
+})
+
+test('a `by` may name an axis that has a `by` of its own; each rolls after the one it names', () => {
+  // Declared last-first, so declaration order alone would roll grip before weapon.
+  const dice = normalizeDice({
+    grip: { by: 'weapon', values: { 'two-handed': { fits: ['lance'] }, 'one-handed': { fits: ['dagger'] } } },
+    weapon: { by: 'role', values: { lance: { fits: ['knight'] }, dagger: { fits: ['thief'] } } },
+    role: ['knight', 'thief'],
+  }, 'f.md')!
+  for (let i = 0; i < 20; i++) {
+    assert.deepStrictEqual(rollDice(dice, { role: 'knight' }), { grip: ['two-handed'], weapon: ['lance'], role: ['knight'] })
+    assert.deepStrictEqual(rollDice(dice, { role: 'thief' }).grip, ['one-handed'])
+  }
+})
+
+test('a `by` naming an axis the block does not declare loads, left for a chain to wire in (#161)', () => {
+  const dice = normalizeDice({
+    longing: ['flying'],
+    'unreal origin': { by: 'unreal', fits: ['halo'], values: { 'a city shares it': null, 'half of a pair': { fits: ['crown'] } } },
+  }, 'f.md')!
+  assert.deepStrictEqual(dice['unreal origin'].fits, { by: 'unreal', values: { 'a city shares it': ['halo'], 'half of a pair': ['crown'] } })
+  assert.deepStrictEqual(rollDice(dice, {}, { random: alwaysFirst }), { longing: ['flying'], 'unreal origin': [] }, 'nothing wired in, nothing fits')
+})
+
+// The profile is listed first, so its roll can only see the designer's if the designer rolls first.
+const wiredDefs = {
+  agents: [
+    { slug: 'designer', dice: normalizeDice({ role: ['knight', 'thief', 'chef'] }, 'designer.md') },
+    { slug: 'profile', dice: normalizeDice({ weapon: { by: 'role', values: { lance: { fits: ['knight'] }, 'sword cane': { fits: ['thief'] } } } }, 'profile.md') },
+  ] as AgentDef[],
+  chains: [],
+}
+const wiredChain = (edges: ChainDef['edges']) => ({
+  slug: 'c', name: 'c', description: '', filePath: '', edges,
+  nodes: [{ id: 'profile', kind: 'agent', agent: 'profile' }, { id: 'designer', kind: 'agent', agent: 'designer' }],
+}) as ChainDef
+const diceEdge = { fromNode: 'designer', fromSocket: 'dice', toNode: 'profile', toSocket: 'design' }
+
+test('a node rolls its `by` against the roll wired into its dice socket (#161)', () => {
+  const chain = wiredChain([diceEdge])
+  for (let i = 0; i < 20; i++) assert.deepStrictEqual(rollRunDice(chain, wiredDefs, {}, { role: 'thief' }).profile.weapon, ['sword cane'])
+  assert.deepStrictEqual(rollRunDice(chain, wiredDefs, {}, { role: 'chef' }).profile.weapon, [])
+  assert.deepStrictEqual(rollRunDice(chain, wiredDefs, { designer: { role: ['knight'] } }).profile.weapon, ['lance'], 'a pinned roll is the one wired in')
+  assert.deepStrictEqual(rollRunDice(wiredChain([]), wiredDefs, {}, { role: 'knight' }).profile.weapon, [], 'nothing wired in, nothing fits')
+})
+
+test('a dice node offers a dice socket; a chain checks every `by` it leaves to the wiring (#161)', () => {
+  const agent = (slug: string, systemPrompt: string, dice?: unknown) =>
+    ({ slug, name: slug, systemPrompt, skills: [], outputs: [], dice: normalizeDice(dice, `${slug}.md`) }) as unknown as AgentDef
+  const agents = [
+    agent('designer', 'Design.', { role: ['knight', 'thief'] }),
+    agent('judge', 'Judge.'),
+    agent('profile', 'From {design} and {other}.', { weapon: { by: 'role', values: { lance: { fits: ['knight'] } } } }),
+    agent('typo', 'From {design}.', { weapon: { by: 'role', values: { lance: { fits: ['knigth'] } } } }),
+  ]
+  const errorsOf = (nodes: [string, string][], edges: [string, string][]) => validateChain({
+    slug: 'c', name: 'c', description: '', filePath: '',
+    nodes: nodes.map(([id, a]) => ({ id, kind: 'agent', agent: a })),
+    edges: edges.map(([from, to]) => {
+      const [fromNode, fromSocket] = from.split('.'), [toNode, toSocket] = to.split('.')
+      return { fromNode, fromSocket, toNode, toSocket }
+    }),
+  } as ChainDef, { agents }).errors
+  const designerAndProfile: [string, string][] = [['d', 'designer'], ['j', 'judge'], ['p', 'profile']]
+
+  assert.deepStrictEqual(errorsOf(designerAndProfile, [['d.dice', 'p.design'], ['j.output', 'p.other']]), [])
+  assert.deepStrictEqual(errorsOf(designerAndProfile, [['j.dice', 'p.design'], ['d.output', 'p.other']]).filter(e => /j\.dice/.test(e)), ['Edge "j.dice": no such output socket'])
+  assert.deepStrictEqual(errorsOf(designerAndProfile, [['d.output', 'p.design'], ['j.output', 'p.other']]),
+    ['Node "p": dice axis "weapon" rolls by "role", which no node wired into its dice socket rolls; wire one in, or check the axis name'])
+  assert.deepStrictEqual(errorsOf([['d', 'designer'], ['e', 'designer'], ['p', 'profile']], [['d.dice', 'p.design'], ['e.dice', 'p.other']]),
+    ['Node "p": dice axis "weapon" rolls by "role", which 2 nodes wired into its dice socket roll (d, e); wire in one'])
+  assert.deepStrictEqual(errorsOf([['d', 'designer'], ['t', 'typo']], [['d.dice', 't.design']]),
+    ['Node "t": dice axis "weapon" value "lance" fits "knigth", which "role" on node "d" does not roll'])
+})
+
+test('an agent that rolls dice cannot also declare an output named dice (#161)', () => {
+  const file = (outputs: string, dice: string) => `---\nname: A\noutputs: [${outputs}]\n${dice}---\nX\n`
+  assert.throws(() => parseAgent('a.md', file('dice', 'dice:\n  hair: [bob]\n')), /a\.md: output "dice" is the socket that carries this agent's dice roll/)
+  assert.deepStrictEqual(parseAgent('a.md', file('dice', '')).outputs.map(o => o.name), ['output', 'dice'])
 })
 
 test('an axis-level `fits` covers every value that states none of its own', () => {
