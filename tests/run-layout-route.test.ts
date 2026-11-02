@@ -55,7 +55,13 @@ outputs:
   - name: hop 2
     node: second
     socket: summary
-nodes: []
+nodes:
+  - id: first
+    kind: agent
+    agent: first
+  - id: second
+    kind: agent
+    agent: second
 edges: []
 ---
 `
@@ -73,7 +79,13 @@ outputs:
     node: b
     socket: summary
     role: join
-nodes: []
+nodes:
+  - id: a
+    kind: agent
+    agent: a
+  - id: b
+    kind: agent
+    agent: b
 edges: []
 ---
 `
@@ -87,7 +99,10 @@ outputs:
   - name: reflection
     node: loop
     socket: summary
-nodes: []
+nodes:
+  - id: loop
+    kind: agent
+    agent: loop
 edges: []
 ---
 `
@@ -197,4 +212,18 @@ test('an unknown run 404s with a JSON error', async () => {
   const { status, body } = await callGET('does-not-exist')
   assert.strictEqual(status, 404)
   assert.deepStrictEqual(body, { error: 'Run not found' })
+})
+
+test('an old run reads its panels by the kinds it ran with, not the live chain\'s (#166)', async () => {
+  const wp = newWorkspace()
+  // Since the run, `first` became a gate: read live, its panel would pass the whole output through.
+  write(wp, 'chains/relay.md', timelineChain().replace('kind: agent\n    agent: first', 'kind: gate'))
+  writeRun(wp, meta({
+    runId: 'rekinded-run',
+    graph: { nodes: [{ id: 'first', kind: 'agent', agent: 'first' }, { id: 'second', kind: 'agent', agent: 'second' }], edges: [] },
+    agentOutputs: [output('first', 'noise\n\n## Summary\nalpha'), output('second', 'noise\n\n## Summary\nbeta')],
+  }))
+
+  const { body } = await callGET('rekinded-run')
+  assert.deepStrictEqual(body.panels.map((p: { text: string }) => p.text), ['alpha', 'beta'])
 })

@@ -1,19 +1,25 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { evalCondition } from '../lib/condition'
-import { AgentOutput } from '../lib/types'
+import { refReader } from '../lib/resolveNode'
+import { AgentOutput, ChainNode } from '../lib/types'
 
 test('condition', () => {
   function out(nodeId: string, output: string): AgentOutput {
     return { nodeId, agentName: nodeId, systemPrompt: '', input: '', output, tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' }
   }
-  const ctx = new Map<string, AgentOutput>([
+  const outputs = new Map<string, AgentOutput>([
     ['v', out('v', 'Result: VALID')],
     ['t', out('t', '## Verdict\nAPPROVED')],
     ['r', out('r', '## v1.2\nSHIPPED')],
     ['e', out('e', '')],
     ['ls::draft', out('ls::draft', 'CURRENT DRAFT')],
   ])
+  const nodes: ChainNode[] = [
+    ...['v', 't', 'r', 'e'].map((id): ChainNode => ({ id, kind: 'agent', agent: id })),
+    { id: 'ls', kind: 'loop-start', zone: 'z', state: ['draft'] },
+  ]
+  const ctx = refReader(new Map(nodes.map(n => [n.id, n])), { outputs })
 
   assert.strictEqual(evalCondition('{v.output} contains "valid"', ctx), true)   // case-insensitive
   assert.strictEqual(evalCondition('{v.output} == "result: valid"', ctx), true) // trimmed + ci

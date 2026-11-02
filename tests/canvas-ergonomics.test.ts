@@ -14,9 +14,9 @@ import { ReactFlowProvider } from '@xyflow/react'
 test('markdown section sockets render ## prefix and contract tooltip (#146)', () => {
   const handles: SocketHandle[] = [
     { id: 'topic', side: 'input' },
-    { id: 'output', side: 'output' },
-    { id: 'summary', side: 'output' },
-    { id: 'act-1', side: 'output' },
+    { id: 'output', side: 'output', reads: 'whole' },
+    { id: 'summary', side: 'output', reads: 'section' },
+    { id: 'act-1', side: 'output', reads: 'section' },
   ]
 
   const html = renderToStaticMarkup(
@@ -35,11 +35,11 @@ test('markdown section sockets render ## prefix and contract tooltip (#146)', ()
   assert.ok(html.includes('summary'), 'summary handle rendered')
   assert.ok(html.includes('act-1'), 'act-1 handle rendered')
   assert.ok(
-    html.includes('title="Extracts ## summary from output"'),
+    html.includes('title="Reads ## summary of output"'),
     'summary tooltip confirms extraction contract'
   )
   assert.ok(
-    html.includes('title="Extracts ## act-1 from output"'),
+    html.includes('title="Reads ## act-1 of output"'),
     'act-1 tooltip confirms extraction contract'
   )
 })
@@ -47,7 +47,7 @@ test('markdown section sockets render ## prefix and contract tooltip (#146)', ()
 // Loop state outputs wear amber tone and do not render markdown section prefix (#146).
 test('loop state outputs do not format as markdown sections (#146)', () => {
   const handles: SocketHandle[] = [
-    { id: 'draft', side: 'output' },
+    { id: 'draft', side: 'output', reads: 'keyed' },
   ]
 
   const html = renderToStaticMarkup(
@@ -64,7 +64,21 @@ test('loop state outputs do not format as markdown sections (#146)', () => {
 
   assert.ok(!html.includes('## draft'), 'loop state does not get ## prefix')
   assert.ok(html.includes('.draft'), 'loop state renders as .draft')
-  assert.ok(!html.includes('title="Extracts ## draft from output"'), 'loop state does not have section extraction tooltip')
+  assert.ok(!html.includes('title="Reads ## draft of output"'), 'loop state does not have section extraction tooltip')
+})
+
+// A subchain port is a keyed socket, not a section of the node's output (#166).
+test('subchain ports are not labelled or tooltipped as sections', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      ReactFlowProvider,
+      null,
+      React.createElement(Sockets, { handles: [{ id: 'hop 1', side: 'output', reads: 'keyed' }] })
+    )
+  )
+  assert.ok(html.includes('.hop 1'), 'a port renders as .hop 1')
+  assert.ok(!html.includes('## '), 'a port gets no ## prefix')
+  assert.ok(!html.includes('Reads ##'), 'a port has no section extraction tooltip')
 })
 
 // Branch outputs do not render markdown section extraction tooltips (#146).
@@ -88,9 +102,9 @@ test('branch and muted output sockets do not format as markdown sections (#146)'
   )
 
   assert.ok(caseHtml.includes('title="urgent"'), 'branch case dot tooltip is plain identifier')
-  assert.ok(!caseHtml.includes('Extracts ##'), 'branch case has no extraction tooltip')
+  assert.ok(!caseHtml.includes('Reads ##'), 'branch case has no extraction tooltip')
   assert.ok(defaultHtml.includes('title="default"'), 'branch default dot tooltip is plain identifier')
-  assert.ok(!defaultHtml.includes('Extracts ##'), 'branch default has no extraction tooltip')
+  assert.ok(!defaultHtml.includes('Reads ##'), 'branch default has no extraction tooltip')
 })
 
 // ModelPicker default styling uses flexible auto-fit width (#146).

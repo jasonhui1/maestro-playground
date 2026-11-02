@@ -36,7 +36,7 @@ test('a chain with no declared parameter has none', () => {
 
 test('readSocket reads a param node from the run-supplied value, not the file', () => {
   const node: ChainNode = { id: 'audience', kind: 'param' }
-  const read = readSocket(node, 'output', new Map(), 'SEED TEXT', () => '', 'a compiler')
+  const read = readSocket(node, 'output', { outputs: new Map(), seedPrompt: 'SEED TEXT', paramValue: 'a compiler' })
   assert.strictEqual(read.value, 'a compiler')
 })
 

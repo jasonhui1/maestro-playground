@@ -22,6 +22,10 @@ One kind's entry in the registry.
 
 A **socket** is a wiring endpoint on a node: output sockets (`output`, `summary`, any markdown header slice) and input sockets. A **slot** is a `{token}` in an agent's prompt; an agent node's input sockets are exactly its prompt's slots. "Socket" is the graph-side word, "slot" the prompt-side word for the same input on agent nodes.
 
+## Socket read
+
+What an edge from an output socket delivers, decided by its kind's `read` fact (#166): `seed`, `context` or `param` read the run's value; `pass-through` (gate, branch) the whole output whatever the socket; `keyed` (subchain ports, zone states) one record per socket; `sectioned` (agents and the rest) the whole output on `output`, the roll on `dice` when the node rolls, a `##` section otherwise. One reader, `readSocket`, serves edges, condition refs and **panels**; the canvas labels only a `section` socket as `## name`, and a fork edits only `whole` or `section` text, refusing keyed and roll sockets. _Avoid_: extract (only one of the reads extracts).
+
 ## Literal input
 
 A typed constant value explicitly saved under `node.inputs[slot]` in the chain definition. Dual-mode with wires (ComfyUI pattern): when disconnected, the saved literal supplies the slot value; when connected, the incoming wire takes strict precedence and the literal is ignored. Connecting and disconnecting preserves the saved text. An explicitly saved empty string `""` is a valid literal (checked via `Object.hasOwn(node.inputs, slot)`).

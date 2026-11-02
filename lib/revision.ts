@@ -1,8 +1,8 @@
-import { extractSectionPath, locateSectionPath, parseSectionPath, type ScannedHeading } from './graph'
+import { extractSectionPath, locateSectionPath, type ScannedHeading } from './graph'
 import { badRequest, conflict, unprocessable } from './refusal'
+import { isWholeOutput, socketKey } from './tokens'
+import type { SocketReading } from './nodeSockets'
 import type { Refusal } from './types'
-
-export const WHOLE_SOCKET = 'output'
 
 /** One fork revision for a node: whole text or edits keyed by socket (#160). */
 export type Revision = string | AddressedEdit[]
@@ -27,16 +27,14 @@ export function readRevision(value: unknown): Revision | Refusal {
   for (const [socket, raw] of entries) {
     const edit = readEdit(socket, raw)
     if ('error' in edit) return edit
-    const section = socket === WHOLE_SOCKET ? WHOLE_SOCKET : parseSectionPath(socket).join('/')
+    const section = socketKey(socket)
     if (section === '') return badRequest(`socket "${socket}" names no section`)
     const twin = bySection.get(section)
     if (twin !== undefined) return badRequest(`sockets "${twin}" and "${socket}" name the same section`)
     bySection.set(section, socket)
     edits.push(edit)
   }
-  if (bySection.has(WHOLE_SOCKET) && bySection.size > 1) {
-    return badRequest('the whole output and a section of it cannot be revised together')
-  }
+  if (edits.length > 1 && edits.some(edit => isWholeOutput(edit.socket))) return wholeWithSection()
   return edits
 }
 
@@ -48,11 +46,23 @@ function readEdit(socket: string, raw: unknown): AddressedEdit | Refusal {
   return badRequest(`the edit to "${socket}" must be text, or { text, was? }`)
 }
 
-/** The node's whole output with `revision` applied, or why it cannot be applied safely. */
-export function reviseOutput(original: string, revision: Revision): { output: string } | Refusal {
+function wholeWithSection(): Refusal {
+  return badRequest('the whole output and a section of it cannot be revised together')
+}
+
+/**
+ * The node's whole output with `revision` applied, or why it cannot be applied safely.
+ * `reads` is how the node's sockets read; only text an edge reads off the output is editable (#166).
+ */
+export function reviseOutput(
+  original: string, revision: Revision, reads: (socket: string) => SocketReading,
+): { output: string } | Refusal {
   if (typeof revision === 'string') return { output: revision }
 
-  const whole = revision.find(edit => edit.socket === WHOLE_SOCKET)
+  const fixed = revision.find(edit => reads(edit.socket) === 'keyed' || reads(edit.socket) === 'roll')
+  if (fixed) return unprocessable(`socket "${fixed.socket}" is not part of the node's output text`)
+  const whole = revision.find(edit => reads(edit.socket) === 'whole')
+  if (whole && revision.length > 1) return wholeWithSection()
   if (whole) return staleness(whole, original.trim()) ?? { output: whole.text }
 
   const located: { edit: AddressedEdit; heading: ScannedHeading }[] = []

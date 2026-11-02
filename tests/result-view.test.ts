@@ -15,7 +15,7 @@ import type { LayoutModel } from '../lib/layoutModel'
 function chain(over: Partial<ChainDef> = {}): ChainDef {
   return {
     slug: 'relay', name: 'telephone-relay', description: 'three restatements',
-    nodes: [], edges: [], filePath: '',
+    nodes: [{ id: 'a', kind: 'agent', agent: 'a' }, { id: 'b', kind: 'agent', agent: 'b' }], edges: [], filePath: '',
     view: 'timeline',
     outputs: [{ name: 'draft', node: 'a' }, { name: 'polish', node: 'b' }],
     ...over,

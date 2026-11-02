@@ -7,12 +7,12 @@ import { executeToolNode } from './tools/toolNode'
 import type { ToolContext } from './tools/context'
 import { agentPartSockets } from './tools/parts'
 import { injectSkills } from './prompt'
-import { resolveNodePrompt, readSocket } from './resolveNode'
+import { resolveNodePrompt, readSocket, refReader, type SocketEnv } from './resolveNode'
 import { SectionWarning, sameSectionWarning, emitSectionWarnings } from './sectionWarning'
 import { topoOrder, hasLiteralInput } from './chainGraph'
 import { pairedZones, type Zone } from './zones'
 import { evalCondition } from './condition'
-import { outputKey, socketKey, isWholeOutput } from './tokens'
+import { outputKey, runStateKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
 import { withModelOverride } from './modelOverride'
 import { kindOf, agentSlugOf, resolveNodeSkills, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
@@ -128,13 +128,15 @@ export async function runChainGraph(
     callbacks.onWarning?.(w)
   }
 
+  const readEnv: SocketEnv = { outputs: nodeOutputs, seedPrompt, readContext, paramValue, dice }
   const edgeValue = (e: typeof chain.edges[number]): string => {
     const src = nodeById.get(e.fromNode)
     if (!src) return ''
-    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue, dice)
+    const read = readSocket(src, e.fromSocket, readEnv)
     emitSectionWarnings(read, e.fromNode, e.toNode, e.toSocket, reportWarning)
     return read.value
   }
+  const refValue = refReader(nodeById, readEnv)
 
   // A join's section heading, so the synthesizer downstream can tell contributors apart.
   const joinLabel = (e: typeof chain.edges[number]): string => {
@@ -286,7 +288,7 @@ export async function runChainGraph(
         }
       }
       finalState = newState
-      if (evalCondition(zone.until, nodeOutputs)) break
+      if (evalCondition(zone.until, refValue)) break
       state.clear(); for (const [k, v] of newState) state.set(k, v)
     }
     setStateSockets(zone.endId, finalState, zone.startId)
@@ -298,7 +300,7 @@ export async function runChainGraph(
   // replay branched outputs (their out-edges are live)
   for (const o of startOutputs) {
     if (o.nodeId) {
-      nodeOutputs.set(o.nodeId, o)
+      nodeOutputs.set(runStateKey(o.nodeId), o)
       if (nodeById.get(o.nodeId)?.kind !== 'tool' || o.status === 'success') markOut(o.nodeId, () => true)
     }
     emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
@@ -351,12 +353,12 @@ export async function runChainGraph(
       const rec = await runToolNode(node)
       if (rec.status === 'success') markOut(nodeId, () => true)
     } else if (node.kind === 'gate') {
-      const pass = evalCondition(node.condition || '', nodeOutputs)
+      const pass = evalCondition(node.condition || '', refValue)
       const rec = controlOutput(nodeId, `gate: ${pass ? 'PASS' : 'BLOCK'}`, pass ? inValue(nodeId) : '', 'success')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (pass) markOut(nodeId, () => true)
     } else if (node.kind === 'branch') {
-      const active = (node.cases || []).find(c => evalCondition(c.condition, nodeOutputs))?.label ?? node.default
+      const active = (node.cases || []).find(c => evalCondition(c.condition, refValue))?.label ?? node.default
       const rec = controlOutput(nodeId, `branch: ${active ?? 'none'}`, inValue(nodeId), 'success')
       nodeOutputs.set(nodeId, rec); emit(nodeId, rec); callbacks.onDone(nodeId, rec)
       if (active) markOut(nodeId, e => socketKey(e.fromSocket) === socketKey(active))
@@ -400,7 +402,7 @@ export async function runChainGraph(
         for (const p of ref.outputs ?? []) {
           const inner = innerById.get(p.node)
           if (!inner) { outMap.set(p.name, ''); continue }
-          const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext, paramValue)
+          const read = readSocket(inner, p.socket ?? 'output', { outputs: byNode, seedPrompt, readContext, paramValue })
           // A skipped inner node produced no answer, so its missing heading is not a
           // convention violation — only a real answer can violate one (#40).
           if (byNode.get(p.node)?.status === 'success') {
