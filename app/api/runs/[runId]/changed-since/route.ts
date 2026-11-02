@@ -3,7 +3,6 @@ import { loadRunFor } from '@/lib/loadRun'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
 import { parseVersionKey } from '@/lib/runVersionModel'
-import { getVersionContent } from '@/lib/fs/versions'
 import { changedSince, findPreviousRun } from '@/lib/changedSince'
 
 export async function GET(
@@ -20,7 +19,7 @@ export async function GET(
 
   const getContent = (key: string, version: number) => {
     const { type, slug } = parseVersionKey(key)
-    return getVersionContent(ws.root, type, slug, version)
+    return ws.versions.read(type, slug, version)
   }
 
   const result = changedSince(prevMeta, runMeta, { getContent })

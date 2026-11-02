@@ -56,7 +56,7 @@ What a slug answers to under a type, decided once by `address()` in `lib/fs/addr
 
 ## Run folders
 
-The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions() }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
+The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions(), versions }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). `versions` is the same kind of seam over `.versions/` snapshots and pinned reads; `runFiles` is the one call for what a run reads — live or pinned definitions, its pins, and the entry file's version number (#169). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
 
 ## Variance group and spread
 

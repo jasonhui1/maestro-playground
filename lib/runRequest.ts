@@ -2,8 +2,7 @@ import { validateChain } from './chainGraph'
 import { parseModelOverride } from './modelOverride'
 import { parseImageOverride } from './imageOverride'
 import { resolveRunChain, type RunChainBody, type ResolvedRunKind } from './resolveRunChain'
-import { pinRunSnapshot } from './runVersions'
-import { versionKey } from './runVersionModel'
+import { runFiles } from './runFiles'
 import { badRequest } from './refusal'
 import { readDicePins } from './dice'
 import type { StartRunInput } from './runSession'
@@ -82,11 +81,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const dice = readDicePins(body.dice, chain, workspace)
   if ('error' in dice) return dice
 
-  const snapshot = pinRunSnapshot(ws.root, chain, workspace)
-  const versions = snapshot.versions
-  const versionNumber = versions[kind === 'agent' || kind === 'tool'
-    ? versionKey(kind, chain.slug)
-    : versionKey('chain', chain.slug)] ?? 0
+  const { versions, versionNumber, pinnedContext } = runFiles(ws, workspace, { kind: 'start', chain, entrypoint: { kind, slug: chain.slug } })
   const slug = typeof body.chainSlug === 'string'
     ? body.chainSlug
     : typeof body.slug === 'string'
@@ -105,7 +100,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
         ? { name: chain.parameter.name, value: body.paramValue }
         : undefined,
       context: body.context,
-      pinnedContext: snapshot.context,
+      pinnedContext,
       versions,
       versionNumber,
       modelOverride: cleanOverride,
