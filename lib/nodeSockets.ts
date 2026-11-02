@@ -1,5 +1,5 @@
 import { ChainNode } from './types'
-import { inputIsMulti, kindOf, WorkspaceLookup } from './nodeKinds'
+import { inputIsMulti, kindOf, socketReading, type SocketReading, WorkspaceLookup } from './nodeKinds'
 
 /** One socket of a node, as the canvas needs to draw it and an edge needs to name it. */
 export interface SocketHandle {
@@ -10,6 +10,8 @@ export interface SocketHandle {
   optional?: true
   /** This slot takes N incoming edges; every other takes one. Inputs only. */
   multi?: true
+  /** What an edge reading this socket receives, so the canvas never guesses a section (#166). Outputs only. */
+  reads?: SocketReading
 }
 
 // The one reader of a descriptor's socket facts (#114, ADR-0001).
@@ -22,7 +24,7 @@ export function socketHandles(node: ChainNode, workspace: WorkspaceLookup): Sock
       ...(s.optional ? { optional: true as const } : {}),
       ...(inputIsMulti(s, descriptor) ? { multi: true as const } : {}),
     })),
-    ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output' })),
+    ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output', reads: socketReading(node.kind, name) })),
   ]
 }
 

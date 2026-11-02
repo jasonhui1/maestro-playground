@@ -55,7 +55,13 @@ outputs:
   - name: hop 2
     node: second
     socket: summary
-nodes: []
+nodes:
+  - id: first
+    kind: agent
+    agent: first
+  - id: second
+    kind: agent
+    agent: second
 edges: []
 ---
 `
@@ -73,7 +79,13 @@ outputs:
     node: b
     socket: summary
     role: join
-nodes: []
+nodes:
+  - id: a
+    kind: agent
+    agent: a
+  - id: b
+    kind: agent
+    agent: b
 edges: []
 ---
 `
@@ -87,7 +99,10 @@ outputs:
   - name: reflection
     node: loop
     socket: summary
-nodes: []
+nodes:
+  - id: loop
+    kind: agent
+    agent: loop
 edges: []
 ---
 `

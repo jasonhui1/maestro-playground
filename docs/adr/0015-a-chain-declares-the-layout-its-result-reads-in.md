@@ -86,3 +86,8 @@ A declared socket the producer did not write resolves to nothing. That is a
 finished hop that dropped what it was asked for, not a hop still running, so a
 panel carries a state distinguishing the two; the executor already raises the
 matching section warning (#37).
+
+Superseded in part by #166: "reads no node kinds" no longer holds. A panel reads its
+socket through the edge's own reader, which dispatches on the node's kind, so a panel on
+a subchain port or a zone state shows what its edge delivered. Kinds still decide nothing
+about which panels exist or in what order.

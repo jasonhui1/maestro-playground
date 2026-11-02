@@ -1,5 +1,6 @@
 import { extractSectionPath, locateSectionPath, parseSectionPath, type ScannedHeading } from './graph'
 import { badRequest, conflict, unprocessable } from './refusal'
+import { isWholeOutput } from './tokens'
 import type { Refusal } from './types'
 
 export const WHOLE_SOCKET = 'output'
@@ -52,7 +53,7 @@ function readEdit(socket: string, raw: unknown): AddressedEdit | Refusal {
 export function reviseOutput(original: string, revision: Revision): { output: string } | Refusal {
   if (typeof revision === 'string') return { output: revision }
 
-  const whole = revision.find(edit => edit.socket === WHOLE_SOCKET)
+  const whole = revision.find(edit => isWholeOutput(edit.socket))
   if (whole) return staleness(whole, original.trim()) ?? { output: whole.text }
 
   const located: { edit: AddressedEdit; heading: ScannedHeading }[] = []

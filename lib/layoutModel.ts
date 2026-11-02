@@ -1,6 +1,7 @@
 import { ChainDef, ChainPort, AgentOutput, DiceRoll, RunDice } from './types'
-import { extractSection } from './graph'
 import { latestOutputsByNode } from './runHistoryState'
+import { readSocket } from './resolveNode'
+import { outputKey, recordKey } from './tokens'
 
 /** A layout a chain file may name in `view:`. Adding one is a branch here (ADR-0015). */
 export type DeclaredView = 'timeline' | 'columns' | 'sidebar'
@@ -50,14 +51,6 @@ export interface LayoutModel {
 
 const UNDECLARED: LayoutModel = { kind: 'undeclared', panels: [] }
 
-// `output` is the whole text; any other socket names a section of it, resolved the way
-// an edge resolves — so a panel holds what the next hop received (ADR-0015).
-function contentOf(output: AgentOutput | undefined, socket: string | undefined): string {
-  if (!output) return ''
-  if (!socket || socket === 'output') return output.output
-  return extractSection(output.output, socket)
-}
-
 function lineCount(text: string): number {
   const trimmed = text.trim()
   return trimmed === '' ? 0 : trimmed.split('\n').length
@@ -75,29 +68,41 @@ function stateOf(output: AgentOutput | undefined, text: string): PanelState {
   return text.trim() === '' ? 'empty' : 'filled'
 }
 
-function panelFor(port: ChainPort, output: AgentOutput | undefined, dice: RunDice, name = port.name): LayoutPanel {
-  const text = contentOf(output, port.socket)
+type Records = Map<string, AgentOutput>
+
+function recordsOf(outputs: AgentOutput[]): Records {
+  const records: Records = new Map()
+  for (const o of outputs) if (o.nodeId) records.set(recordKey(o.nodeId), o)
+  return records
+}
+
+// The text reads through the edge's reader, so a panel holds what the next hop received
+// (ADR-0015); a node with no record of its own (a loop-start) answers by its socket's record.
+function panelFor(chain: ChainDef, port: ChainPort, records: Records, dice: RunDice, name = port.name): LayoutPanel {
+  const socket = port.socket || 'output'
+  const output = records.get(port.node) ?? records.get(outputKey(port.node, socket))
+  const node = chain.nodes.find(n => n.id === port.node)
+  const text = output && node ? readSocket(node, socket, records, '', () => '', '', dice).value : ''
   const state = stateOf(output, text)
-  const panel: LayoutPanel = { name, node: port.node, socket: port.socket || 'output', text, lines: lineCount(text), state }
+  const panel: LayoutPanel = { name, node: port.node, socket, text, lines: lineCount(text), state }
   if (state === 'errored' && output?.error) panel.error = output.error
   if (port.role === 'join') panel.emphasis = 'join'
   if (dice[port.node]) panel.dice = dice[port.node]
   return panel
 }
 
-function panelsFor(ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
+function panelsFor(chain: ChainDef, ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
   // Last write wins: a loop-body node reports once per round, and the panel shows
   // where the node ended up rather than where it started.
-  const byNode = new Map<string, AgentOutput>()
-  for (const o of latestOutputsByNode(outputs)) if (o.nodeId) byNode.set(o.nodeId, o)
-
-  return ports.map(port => panelFor(port, byNode.get(port.node), dice))
+  const records = recordsOf(latestOutputsByNode(outputs))
+  return ports.map(port => panelFor(chain, port, records, dice))
 }
 
 // A loop-body node reports once per round; under `view: sidebar` each round is its
 // own panel rather than collapsing to the last write (ADR-0016 rule 4). A round
 // reported more than once (a retry) still collapses to its last write.
-function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
+function panelsForSidebar(chain: ChainDef, ports: ChainPort[], outputs: AgentOutput[], dice: RunDice): LayoutPanel[] {
+  const latest = recordsOf(latestOutputsByNode(outputs))
   return ports.flatMap(port => {
     const byRound = new Map<number, AgentOutput>()
     for (const o of outputs) {
@@ -105,7 +110,7 @@ function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[], dice: RunD
       byRound.set(o.round ?? 0, o)
     }
     return [...byRound.keys()].sort((a, b) => a - b).map((round): LayoutPanel => ({
-      ...panelFor(port, byRound.get(round), dice, `${port.name} · round ${round + 1}`),
+      ...panelFor(chain, port, new Map(latest).set(port.node, byRound.get(round)!), dice, `${port.name} · round ${round + 1}`),
       round,
     }))
   })
@@ -114,24 +119,25 @@ function panelsForSidebar(ports: ChainPort[], outputs: AgentOutput[], dice: RunD
 /**
  * Project a run's outputs onto the panels its chain declares (ADR-0015).
  *
- * Reads `view` and `outputs` only — never an edge or a node kind. A chain that
- * declares no layout is not opted in, and the caller renders it as the run trace.
+ * Reads `view` and `outputs`, never an edge; a node's kind only decides how its socket
+ * reads. A chain that declares no layout is not opted in, and the caller renders it as
+ * the run trace.
  */
 export function buildLayoutModel(chain: ChainDef, outputs: AgentOutput[], dice: RunDice = {}): LayoutModel {
   const ports = chain.outputs ?? []
   if (ports.length === 0) return UNDECLARED
 
   if (chain.view === 'timeline') {
-    const panels = panelsFor(ports, outputs, dice)
+    const panels = panelsFor(chain, ports, outputs, dice)
     panels[panels.length - 1].emphasis = 'last'
     return { kind: 'timeline', panels }
   }
 
   // A columns chain with no `role: join` port renders its columns and nothing
   // beneath them (ADR-0016) — there is no "last panel" fallback here.
-  if (chain.view === 'columns') return { kind: 'columns', panels: panelsFor(ports, outputs, dice) }
+  if (chain.view === 'columns') return { kind: 'columns', panels: panelsFor(chain, ports, outputs, dice) }
 
-  if (chain.view === 'sidebar') return { kind: 'sidebar', panels: panelsForSidebar(ports, outputs, dice) }
+  if (chain.view === 'sidebar') return { kind: 'sidebar', panels: panelsForSidebar(chain, ports, outputs, dice) }
 
   return UNDECLARED
 }

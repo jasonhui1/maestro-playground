@@ -1,8 +1,9 @@
-import { ChainDef, ChainNode, AgentDef, AgentOutput, RunDice } from './types'
+import { ChainDef, ChainNode, AgentDef, AgentOutput, DiceRoll, RunDice } from './types'
 import { extractSectionPath } from './graph'
-import { agentSlots, fillSlot, outputKey, isWholeOutput, socketKey, DICE_SOCKET } from './tokens'
+import { agentSlots, fillSlot, outputKey, isWholeOutput, socketKey, DICE_SOCKET, type Endpoint } from './tokens'
 import { emitSectionWarnings, type SectionWarning } from './sectionWarning'
 import { hasLiteralInput } from './chainGraph'
+import { kindOf, unhandledRead } from './nodeKinds'
 import { diceLines, fillDice } from './dice'
 
 // Pure — reporting the miss is the caller's job (#37).
@@ -13,10 +14,7 @@ export interface SocketRead {
   ambiguousSection?: string  // duplicate headings: warned on, first match used (#129)
 }
 
-// Resolves the value carried on a source node's socket.
-// seed -> seed prompt; context -> file; param -> the run's dropdown pick;
-// gate/branch -> their pass-through output (socket ignored); agent/decider ->
-// output (full), its roll on the dice socket (#161), or a named section.
+// What an edge from `src.socket` delivers; conditions and panels read through it too (#166).
 export function readSocket(
   src: ChainNode,
   socket: string,
@@ -26,28 +24,37 @@ export function readSocket(
   paramValue: string = '',
   dice: RunDice = {},
 ): SocketRead {
-  if (src.kind === 'seed') {
-    const o = nodeOutputs.get(src.id)
-    return { value: o ? o.output : seedPrompt }
+  const read = kindOf(src.kind).read
+  switch (read) {
+    case 'seed': return { value: nodeOutputs.get(src.id)?.output ?? seedPrompt }
+    case 'context': return { value: readContext(src.kind === 'context' ? src.file || '' : '') }
+    case 'param': return { value: paramValue }
+    case 'pass-through': return { value: nodeOutputs.get(src.id)?.output ?? '' }
+    case 'keyed': return { value: nodeOutputs.get(outputKey(src.id, socket))?.output ?? '' }
+    case 'sectioned': return readSectioned(nodeOutputs.get(src.id), socket, dice[src.id])
+    default: return unhandledRead(read)
   }
-  if (src.kind === 'context') return { value: readContext(src.file || '') }
-  if (src.kind === 'param') return { value: paramValue }
-  if (src.kind === 'subchain') {
-    const o = nodeOutputs.get(outputKey(src.id, socket))
-    return { value: o ? o.output : '' }
+}
+
+/** Reads a condition's `{node.socket}` refs the way their edges would (#166). */
+export function refReader(
+  nodes: Map<string, ChainNode>,
+  nodeOutputs: Map<string, AgentOutput>,
+  seedPrompt: string,
+  readContext: (file: string) => string,
+  paramValue: string = '',
+  dice: RunDice = {},
+): (ref: Endpoint) => string {
+  return ({ node, socket }) => {
+    const src = nodes.get(node)
+    return src ? readSocket(src, socket, nodeOutputs, seedPrompt, readContext, paramValue, dice).value : ''
   }
-  if (src.kind === 'loop-start' || src.kind === 'loop-end') {
-    const o = nodeOutputs.get(outputKey(src.id, socket))
-    return { value: o ? o.output : '' }
-  }
-  if (src.kind === 'gate' || src.kind === 'branch') {
-    const o = nodeOutputs.get(src.id)
-    return { value: o ? o.output : '' }
-  }
-  const o = nodeOutputs.get(src.id)
+}
+
+function readSectioned(o: AgentOutput | undefined, socket: string, roll: DiceRoll | undefined): SocketRead {
   if (!o) return { value: '' }
   if (isWholeOutput(socket)) return { value: o.output }
-  if (socketKey(socket) === DICE_SOCKET && dice[src.id]) return { value: diceLines(dice[src.id]) }
+  if (socketKey(socket) === DICE_SOCKET && roll) return { value: diceLines(roll) }
   const res = extractSectionPath(o.output, socket)
   if (res.status === 'missing') {
     return {

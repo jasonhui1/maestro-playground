@@ -1,5 +1,5 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
-import { agentSlots, DICE_SOCKET, socketKey } from './tokens'
+import { agentSlots, DICE_SOCKET, isWholeOutput, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
 import { toolNodeInputs } from './tools/spec'
@@ -41,6 +41,18 @@ export interface PaletteEntry {
 /** `body` runs each round, `boundary` frames the zone, `none` cannot sit inside a loop zone. */
 export type ZoneRole = 'body' | 'boundary' | 'none'
 
+/**
+ * What an edge reading this kind's output sockets receives (#166):
+ * `seed` the run's seed prompt, or what an `inputs:` port filled it with; `context` its file;
+ * `param` the run's parameter value; `pass-through` the whole output whatever the socket;
+ * `keyed` one record per socket (subchain ports, zone states); `sectioned` the whole output
+ * on `output`, the roll on `dice`, a `##` section on any other socket.
+ */
+export type OutputRead = 'seed' | 'context' | 'param' | 'pass-through' | 'keyed' | 'sectioned'
+
+/** How one output socket reads, per its kind's `OutputRead` — what the canvas labels it as. */
+export type SocketReading = 'whole' | 'section' | 'roll' | 'keyed'
+
 export interface NodeKindDescriptor {
   kind: ChainNodeKind
   /** Whether this kind can ever expose input sockets, independent of any one node's current data. */
@@ -51,6 +63,7 @@ export interface NodeKindDescriptor {
   acceptsLiterals: boolean
   /** The executor's zone body runs only the `body` kinds; any other kind in a zone never runs. */
   zoneRole: ZoneRole
+  read: OutputRead
   inputs(node: ChainNode, workspace: WorkspaceLookup): InputSocket[]
   outputs(node: ChainNode, workspace: WorkspaceLookup): string[]
   fields: FieldDescriptor[]
@@ -118,6 +131,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: false,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'seed',
     inputs: () => [],
     outputs: () => ['output'],
     fields: [],
@@ -128,6 +142,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: false,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'context',
     inputs: () => [],
     outputs: () => ['output'],
     fields: [{ key: 'file', codec: 'string', ref: 'context' }],
@@ -139,6 +154,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: false,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'param',
     inputs: () => [],
     outputs: () => ['output'],
     fields: [],
@@ -149,6 +165,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: true,
     zoneRole: 'body',
+    read: 'sectioned',
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [
@@ -163,6 +180,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: true,
     zoneRole: 'body',
+    read: 'sectioned',
     inputs: agentInputs,
     outputs: agentOutputs,
     fields: [
@@ -178,6 +196,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     // Its sockets read only wired values (#157).
     acceptsLiterals: false,
     zoneRole: 'body',
+    read: 'sectioned',
     inputs: (node, { tools = [] }) => {
       const tool = tools.find(t => node.kind === 'tool' && t.name === node.tool)
       return tool ? toolNodeInputs(tool).map(name => ({ name, optional: true })) : []
@@ -191,6 +210,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'pass-through',
     inputs: () => [{ name: 'in' }],
     outputs: () => ['output'],
     fields: [{ key: 'condition', codec: 'string' }],
@@ -201,6 +221,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'pass-through',
     inputs: () => [{ name: 'in' }],
     outputs: node =>
       node.kind === 'branch'
@@ -217,6 +238,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'boundary',
+    read: 'keyed',
     inputs: (node, { chain }) => zoneStateOf(node, chain).map(state => ({ name: zoneStateName(state) })),
     outputs: (node, { chain }) => zoneStateOf(node, chain).map(zoneStateName),
     fields: [{ key: 'state', codec: 'stateList' }],
@@ -226,6 +248,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'boundary',
+    read: 'keyed',
     inputs: (node, { chain }) => zoneStateOf(node, chain).map(accumulatingStateSocket),
     outputs: (node, { chain }) => zoneStateOf(node, chain).map(zoneStateName),
     fields: [
@@ -238,6 +261,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'keyed',
     inputs: (node, { chains }) => {
       const slug = node.kind === 'subchain' ? node.subchain : undefined
       const ref = chains.find(c => c.slug === slug)
@@ -257,6 +281,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'sectioned',
     multiInput: true,
     inputs: () => [{ name: 'in' }],
     outputs: () => ['output'],
@@ -268,6 +293,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'sectioned',
     inputs: () => [{ name: 'in' }],
     outputs: () => [],
     fields: [],
@@ -278,6 +304,7 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
     acceptsInputs: true,
     acceptsLiterals: false,
     zoneRole: 'none',
+    read: 'sectioned',
     inputs: () => [{ name: 'in' }],
     outputs: () => ['output'],
     fields: [{ key: 'prompt', codec: 'string' }],
@@ -292,6 +319,23 @@ export function fieldValue(node: ChainNode, field: FieldDescriptor): unknown {
 
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
+}
+
+export function socketReading(kind: ChainNodeKind, socket: string): SocketReading {
+  const read = registry[kind].read
+  switch (read) {
+    case 'seed': case 'context': case 'param': case 'pass-through': return 'whole'
+    case 'keyed': return 'keyed'
+    case 'sectioned':
+      if (isWholeOutput(socket)) return 'whole'
+      return socketKey(socket) === DICE_SOCKET ? 'roll' : 'section'
+    default: return unhandledRead(read)
+  }
+}
+
+/** Compile-time exhaustiveness: a new `OutputRead` that some reader does not handle fails to build. */
+export function unhandledRead(read: never): never {
+  throw new Error(`no reader for output read "${String(read)}"`)
 }
 
 export function inputIsMulti(input: InputSocket, descriptor: NodeKindDescriptor): boolean {

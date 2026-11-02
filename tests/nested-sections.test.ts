@@ -5,7 +5,7 @@ import { socketKey, outputKey, isWholeOutput, parseToken, endpointOf } from '../
 import { evalCondition } from '../lib/condition'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { validateChain } from '../lib/chainGraph'
-import { readSocket, resolveNodePrompt } from '../lib/resolveNode'
+import { readSocket, refReader, resolveNodePrompt } from '../lib/resolveNode'
 import { sectionWarningText, sameSectionWarning, emitSectionWarnings, type SectionWarning } from '../lib/sectionWarning'
 import { runChainGraph } from '../lib/executor'
 import { socketHandles } from '../lib/nodeSockets'
@@ -197,9 +197,11 @@ test('socketKey preserves / and does not collide with flat dash', () => {
 })
 
 test('evalCondition resolves nested section sockets', () => {
-  const ctx = new Map<string, AgentOutput>([
-    ['writer', makeOutput('writer', '## Act 2\n### Scene 3\nClimax reached')],
-  ])
+  const ctx = refReader(
+    new Map([['writer', { id: 'writer', kind: 'agent', agent: 'writer' } as ChainNode]]),
+    new Map([['writer', makeOutput('writer', '## Act 2\n### Scene 3\nClimax reached')]]),
+    '', () => '',
+  )
 
   assert.strictEqual(evalCondition('{writer.act-2/scene-3} == "climax reached"', ctx), true)
   assert.strictEqual(evalCondition('{writer.act-2/scene-3} contains "climax"', ctx), true)
@@ -211,7 +213,7 @@ test('buildLayoutModel projects nested section sockets onto panels', () => {
   const model = buildLayoutModel(
     {
       slug: 'c', name: 'c', description: '', filePath: '', isFavorite: false,
-      nodes: [], edges: [], view: 'timeline',
+      nodes: [{ id: 'writer', kind: 'agent', agent: 'writer' }], edges: [], view: 'timeline',
       outputs: [
         { name: 'scene', node: 'writer', socket: 'act-2/scene-3' },
         { name: 'missing', node: 'writer', socket: 'act-2/missing' },
@@ -513,7 +515,7 @@ test('socketHandles exposes path sockets with slashes on the canvas', () => {
   const handles = socketHandles(node, workspace)
   assert.deepStrictEqual(handles, [
     { id: 'topic', side: 'input' },
-    { id: 'output', side: 'output' },
-    { id: 'act-2/scene-3', side: 'output' },
+    { id: 'output', side: 'output', reads: 'whole' },
+    { id: 'act-2/scene-3', side: 'output', reads: 'section' },
   ])
 })

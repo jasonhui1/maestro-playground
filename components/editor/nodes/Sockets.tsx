@@ -26,10 +26,8 @@ function dotClass(handle: SocketHandle, tone: SocketTone): string {
   return `${shape} border-2 ${skin}`
 }
 
-function dotTitle(handle: SocketHandle, tone: SocketTone = 'default', isSection = false): string {
-  if (isSection && handle.side === 'output' && handle.id !== 'output' && tone !== 'loop' && tone !== 'muted') {
-    return `Extracts ## ${handle.id} from output`
-  }
+function dotTitle(handle: SocketHandle): string {
+  if (handle.reads === 'section') return `Extracts ## ${handle.id} from output`
   if (handle.optional) return `${handle.id} (optional)`
   if (handle.multi) return `${handle.id} (accepts many)`
   return handle.id
@@ -43,12 +41,10 @@ export function SocketDot({
   handle,
   tone = 'default',
   title,
-  isSection = false,
 }: {
   handle: SocketHandle
   tone?: SocketTone
   title?: string
-  isSection?: boolean
 }) {
   const isInput = handle.side === 'input'
   return (
@@ -56,7 +52,7 @@ export function SocketDot({
       type={isInput ? 'target' : 'source'}
       id={handle.id}
       position={isInput ? Position.Left : Position.Right}
-      title={title ?? dotTitle(handle, tone, isSection)}
+      title={title ?? dotTitle(handle)}
       style={{ [isInput ? 'left' : 'right']: -16, top: '50%', transform: 'translateY(-50%)' }}
       className={dotClass(handle, tone)}
     />
@@ -223,13 +219,11 @@ export function SocketList({
     <div className="flex flex-col gap-1.5 flex-1 min-w-0">
       {handles.map(h => {
         const isInput = h.side === 'input'
-        const isSection = !isInput && h.id !== 'output' && tone !== 'loop' && tone !== 'muted'
+        const isSection = h.reads === 'section'
         const label = isInput ? h.id : (isSection ? `## ${h.id}` : `.${h.id}`)
         // A tool part socket `tool.part` (#149): the tool dimmed, as a section's `##` is.
         const partDot = isInput ? h.id.indexOf('.') : -1
-        const tooltip = isSection
-          ? dotTitle(h, tone, true)
-          : (isInput ? dotTitle(h, tone) : label)
+        const tooltip = isSection || isInput ? dotTitle(h) : label
         const isWired = isInput && (wiredSockets?.has(h.id) ?? false)
         const isInputNodeKind = node !== undefined && kindOf(node.kind).acceptsLiterals
         const showLiteralInput = isInput && !isWired && isInputNodeKind && onChange !== undefined
@@ -267,7 +261,7 @@ export function SocketList({
                 value={literalValue}
               />
             )}
-            {!isInput && <SocketDot handle={h} tone={tone} isSection={isSection} title={tooltip} />}
+            {!isInput && <SocketDot handle={h} tone={tone} title={tooltip} />}
           </div>
         )
       })}
