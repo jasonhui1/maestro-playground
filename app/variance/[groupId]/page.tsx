@@ -6,6 +6,7 @@ import { CompareOverlay } from '@/components/result/CompareOverlay'
 import type { LayoutPanel } from '@/lib/layoutModel'
 import type { PanelDeck } from '@/lib/panelDeck'
 import type { VarianceGroup, VarianceNode } from '@/lib/variance'
+import { CostCell } from '@/components/CostCell'
 
 function runLabel(group: VarianceGroup, index: number): string {
   const run = group.runs[index]
@@ -83,7 +84,7 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
         </div>
         <div className="text-right text-xs text-zinc-500">
           <div>{group.completedRunCount} of {group.expectedRunCount} runs complete</div>
-          <div className="font-mono text-zinc-800">{group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : 'unpriced'}</div>
+          <CostCell cost={group} className="justify-end font-mono text-zinc-800" />
           {group.costWarning && <div className="text-amber-700">{group.costWarning}</div>}
         </div>
       </header>

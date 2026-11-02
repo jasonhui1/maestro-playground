@@ -1,6 +1,6 @@
 import { listSections } from './graph'
 import { badRequest, conflict, isRefusal, notFound } from './refusal'
-import { parseModelOverride } from './pricing'
+import { parseModelOverride } from './modelOverride'
 import type { SectionWarning } from './sectionWarning'
 import type { AgentOutput, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 

@@ -69,7 +69,8 @@ test('a variance group lists node spread, ordinary runs and their summed cost', 
   assert.ok(Math.abs((group.costUsd ?? 0) - 0.06) < Number.EPSILON)
 })
 
-test('one unpriced output makes the group total unpriced instead of silently partial', () => {
+// #133: a partial total never appears without a warning.
+test('one unpriced output keeps the priced sum and flags the group', () => {
   const unpriced = output('world-builder', 'shared')
   delete unpriced.costUsd
   const group = buildVarianceGroup([
@@ -77,8 +78,8 @@ test('one unpriced output makes the group total unpriced instead of silently par
     run(1, [unpriced]),
   ])
 
-  assert.strictEqual(group.costUsd, undefined)
-  assert.strictEqual(group.costWarning, 'one or more runs contain unpriced output')
+  assert.strictEqual(group.costUsd, 0.01)
+  assert.strictEqual(group.costWarning, 'no price for model')
 })
 
 test('a node missing any expected successful output has no spread instead of a partial-sample spread', () => {

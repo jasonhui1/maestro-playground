@@ -9,7 +9,7 @@ import type { VariantSource } from './variantIndex'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
 import { WorkspaceError } from './errors'
-import { knownModelCatalogue } from '../pricing'
+import { knownModelCatalogue } from '../modelOverride'
 import { resolveProvider } from '../provider'
 
 export * from './errors'

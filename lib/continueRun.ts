@@ -9,7 +9,7 @@ import { conflict, toResponse } from './refusal'
 import type { Workspace } from './runFolders'
 import { contextOverrides, loadContinuation, streamChainRun, type LiveWorkspace } from './runSession'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
-import { resolveContinuationModelOverride } from './pricing'
+import { resolveContinuationModelOverride } from './modelOverride'
 
 /** What a continuation does to a run: answer a hold (resume), reroll its candidates, promote a reply, or fork. */
 export type ContinuePlan =
