@@ -139,6 +139,18 @@ test('a turn continues an existing run rather than starting a new one', async ()
   assert.strictEqual((await readMeta(runId)).agentOutputs.length, 2)
 })
 
+test('a turn on a run whose outputs outnumber its logs is logged after the last log', async () => {
+  const wp = newWorkspace()
+  const first = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'one' }] }))
+  const runId = first[0].runId as string
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(wp)
+  const [only] = runs.read(runId).agentOutputs
+  runs.update(runId, { agentOutputs: [only, only] })
+
+  await sse(await post({ agentName: 'Lore Keeper', runId, messages: [{ role: 'user', content: 'two' }] }))
+  assert.deepStrictEqual(fs.readdirSync(path.join(wp, 'logs', runId)).filter(f => f.endsWith('.md')).map(f => f.slice(0, 2)), ['00', '01'])
+})
+
 test('a missing agent or an empty message list is refused before any model call', async () => {
   newWorkspace()
   assert.strictEqual((await post({ messages: [{ role: 'user', content: 'hi' }] })).status, 400)

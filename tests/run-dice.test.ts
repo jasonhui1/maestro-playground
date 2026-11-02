@@ -246,16 +246,6 @@ test('each copy of a variance group rolls its own, recorded in its meta.json and
   }
 })
 
-test('a fork keeps the pinned roll of every node, replayed or rerun', async () => {
-  newWorkspace()
-  const source = await readMeta(runIdOf(await sse(await run({ chainName: 'pair', seedPrompt: 'a festival' }))))
-  for (const from of ['second', 'seed']) {
-    const forked = await fork(source.runId, { from })
-    assert.deepStrictEqual((await readMeta(runIdOf(forked))).dice, source.dice, `fork from ${from}`)
-    assert.strictEqual(outputOf(forked, 'second'), source.agentOutputs.find(o => o.nodeId === 'second')!.output)
-  }
-})
-
 test('request pins fix or narrow an axis on every node declaring it; an undeclared axis is a 400', async () => {
   newWorkspace()
   const pinned = await readMeta(runIdOf(await sse(await run({

@@ -1,4 +1,4 @@
-import { test, afterEach, vi } from 'vitest'
+import { test, vi } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -10,20 +10,14 @@ import { requestEntry } from './helpers/requestWorkspace'
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, routes and logger are real.
-const ran: { slug: string; systemPrompt: string }[] = []
 vi.mock('@/lib/runner', () => ({
   runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
-    ran.push({ slug: agent.slug, systemPrompt })
     return {
       agentName: agent.name, systemPrompt, input: '', output: `## Candidate 1\nfrom ${agent.slug}\n\n## Candidate 2\nsecond from ${agent.slug}`,
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
     }
   },
 }))
-
-afterEach(() => {
-  ran.length = 0
-})
 
 const oneHold = `---
 name: held
@@ -45,38 +39,6 @@ edges:
     to: hold.in
   - from: hold
     to: after.direction
----
-`
-
-const twoHolds = `---
-name: held
-nodes:
-  - id: seed
-    kind: seed
-  - id: dec
-    kind: decider
-    agent: decider
-  - id: hold
-    kind: hold
-  - id: mid
-    kind: agent
-    agent: after
-  - id: hold2
-    kind: hold
-  - id: last
-    kind: agent
-    agent: after
-edges:
-  - from: seed
-    to: dec.input
-  - from: dec
-    to: hold.in
-  - from: hold
-    to: mid.direction
-  - from: mid
-    to: hold2.in
-  - from: hold2
-    to: last.direction
 ---
 `
 
@@ -125,86 +87,20 @@ async function readMeta(runId: string): Promise<RunMeta> {
   return runs.read(runId)
 }
 
-const logsOf = (wp: string, runId: string) =>
-  fs.readdirSync(path.join(wp, 'logs', runId)).filter(f => f.endsWith('.md')).sort()
 
-test('resume writes the hold log, runs what follows in the same folder, and completes', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  ran.length = 0
-
-  const events = await sse(await resume(runId, { direction: 'KEEP: halo\nKILL: stance' }))
-
-  assert.strictEqual(events[0].type, 'run_start')
-  assert.strictEqual(events[0].runId, runId)
-  assert.ok(events.some(e => e.type === 'layout'))
-  assert.strictEqual(events.at(-1)!.type, 'run_complete')
-  assert.strictEqual(events.at(-1)!.runId, runId)
-  assert.deepStrictEqual(ran.map(r => r.slug), ['after'], 'only nodes after the hold execute')
-  assert.ok(ran[0].systemPrompt.includes('<<KEEP: halo\nKILL: stance>>'), 'the Direction arrives verbatim')
-
-  assert.deepStrictEqual(logsOf(wp, runId), ['00-dec.md', '01-hold.md', '02-after.md'])
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
-  assert.strictEqual(holdLog.content.trim(), 'KEEP: halo\nKILL: stance')
-
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'complete')
-  assert.ok(meta.completedAt)
-  assert.deepStrictEqual(meta.agentOutputs.map(o => o.nodeId), ['dec', 'hold', 'after'])
-  assert.strictEqual(meta.holds?.length, 1)
-  assert.strictEqual(meta.holds![0].direction, 'KEEP: halo\nKILL: stance')
-  assert.ok(meta.holds![0].resolvedAt)
-})
-
-test('independent picks fork from one waiting hold and run together', async () => {
-  newWorkspace(oneHold)
-  const source = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
-  const hold = (await readMeta(source)).holds![0]!
-  runs.update(source, { holds: [{ ...hold, candidates: [...hold.candidates, { heading: 'Candidate 3', body: 'third route' }] }] })
-  const first = await resume(source, { holdId: 'hold', chosen: 'Candidate 1', direction: 'go', fork: true })
-  const second = await resume(source, { holdId: 'hold', chosen: 'Candidate 2', direction: 'go', fork: true })
-  const third = await resume(source, { holdId: 'hold', chosen: 'Candidate 3', direction: 'go', fork: true })
-  assert.strictEqual(first.status, 200)
-  assert.strictEqual(second.status, 200)
-  assert.strictEqual(third.status, 200)
-  const streams = await Promise.all([sse(first), sse(second), sse(third)])
-  const ids = streams.map(events => events[0]!.runId as string)
-  assert.strictEqual(new Set(ids).size, 3)
-  assert.ok(ids.every(id => id !== source))
-  assert.strictEqual((await readMeta(source)).status, 'waiting')
-  assert.strictEqual((await readMeta(source)).holds?.[0]?.resolvedAt, undefined)
-  assert.deepStrictEqual(await Promise.all(ids.map(async id => (await readMeta(id)).holds?.[0]?.chosen)),
-    ['Candidate 1', 'Candidate 2', 'Candidate 3'])
-})
-
-test('resume is refused while the run is running, or when it has no hold', async () => {
+// Decisions, replay and persistence are the continuation's, tested in continue-run.test.ts; this is parse → call → respond.
+test('resume streams the run to its end in the same folder', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
-  runs.update(runId, { status: 'running' })
-  assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
-  runs.update(runId, { status: 'complete', holds: [] })
-  assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
+
+  const events = await sse(await resume(runId, { direction: 'KEEP: halo' }))
+
+  assert.deepStrictEqual([events[0].type, events[0].runId], ['run_start', runId])
+  assert.deepStrictEqual([events.at(-1)!.type, events.at(-1)!.runId], ['run_complete', runId])
+  assert.strictEqual((await readMeta(runId)).status, 'complete')
 })
 
-test('resume without a direction is a bad request; an unknown run is not found', async () => {
-  newWorkspace(oneHold)
-  const runId = await startRun()
-  assert.strictEqual((await resume(runId, {})).status, 400)
-  assert.strictEqual((await readMeta(runId)).status, 'waiting', 'a refused resume changes nothing')
-  assert.strictEqual((await resume('no-such-run', { direction: 'x' })).status, 404)
-})
-
-test('independent resume requires a named hold and a pick', async () => {
-  newWorkspace(oneHold)
-  const source = await startRun()
-  assert.strictEqual((await resume(source, { direction: 'go', fork: true })).status, 400)
-  assert.strictEqual((await resume(source, { direction: 'go', chosen: 'Candidate 1', fork: 'yes' })).status, 400)
-  assert.strictEqual((await readMeta(source)).status, 'waiting')
-})
-
-test('resume keeps the version pins and the pre-hold logs the run started with', async () => {
+test('resume keeps the version pins and the pre-hold logs the run started with (ADR-0011)', async () => {
   const wp = newWorkspace(oneHold)
   const runId = await startRun()
   const before = await readMeta(runId)
@@ -222,145 +118,19 @@ test('resume keeps the version pins and the pre-hold logs the run started with',
   assert.ok((afterLog.data.version_number as number) > (before.versionNumber ?? 0), 'a post-hold log carries the version it ran with')
 })
 
-test('a chain with two holds pauses twice and resumes twice in one run', async () => {
-  const wp = newWorkspace(twoHolds)
-  const runId = await startRun()
-
-  const first = await sse(await resume(runId, { direction: 'first answer' }))
-  const waiting = first.at(-1)!
-  assert.strictEqual(waiting.type, 'run_waiting')
-  assert.strictEqual(waiting.runId, runId)
-  assert.strictEqual(waiting.nodeId, 'hold2')
-  let meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'waiting')
-  assert.deepStrictEqual(meta.holds?.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', true], ['hold2', false]])
-
-  ran.length = 0
-  const second = await sse(await resume(runId, { direction: 'second answer' }))
-  assert.strictEqual(second.at(-1)!.type, 'run_complete')
-  assert.deepStrictEqual(ran.map(r => r.slug), ['after'])
-  assert.ok(ran[0].systemPrompt.includes('<<second answer>>'))
-
-  assert.deepStrictEqual(logsOf(wp, runId), ['00-dec.md', '01-hold.md', '02-mid.md', '03-hold2.md', '04-last.md'])
-  meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'complete')
-  assert.deepStrictEqual(meta.holds?.map(h => [h.nodeId, h.direction]), [['hold', 'first answer'], ['hold2', 'second answer']])
-})
-
-test('resuming one of two wave-mate holds leaves the other open once, not twice', async () => {
-  newWorkspace(oneHold.replace('edges:\n', `  - id: hold2
-    kind: hold
-edges:
-  - from: dec
-    to: hold2.in
-`))
-  const runId = await startRun()
-  assert.strictEqual((await readMeta(runId)).holds?.length, 2)
-
-  const events = await sse(await resume(runId, { direction: 'answer' }))
-  assert.strictEqual(events.at(-1)!.type, 'run_waiting')
-
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'waiting')
-  assert.strictEqual(meta.holds?.length, 2)
-  assert.strictEqual(meta.holds!.filter(h => !h.resolvedAt).length, 1)
-})
-
-test('resume with chosen composes PICK, the candidate body, then the Direction (#96)', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  const waiting = await readMeta(runId)
-  assert.deepStrictEqual(waiting.holds![0].candidates, [
-    { heading: 'Candidate 1', body: 'from decider' },
-    { heading: 'Candidate 2', body: 'second from decider' },
-  ])
-  ran.length = 0
-
-  const events = await sse(await resume(runId, { chosen: 'Candidate 2', direction: 'KEEP: halo' }))
-  assert.strictEqual(events.at(-1)!.type, 'run_complete')
-
-  const expected = 'PICK: Candidate 2\nsecond from decider\n\nKEEP: halo'
-  assert.ok(ran[0].systemPrompt.includes(`<<${expected}>>`), 'greenlight-side reads the pick first')
-
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
-  assert.strictEqual(holdLog.content.trim(), expected)
-  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
-
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.holds![0].chosen, 'Candidate 2')
-  assert.strictEqual(meta.holds![0].direction, 'KEEP: halo')
-})
-
-test('a fork past an answered hold carries the hold, which can be answered again (#96, #103)', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  await sse(await resume(runId, { chosen: 'Candidate 2', direction: 'go' }))
-
-  const { POST } = await import('../app/api/runs/[runId]/fork/route')
-  const events = await sse(await POST({ json: async () => ({ from: 'after' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
-  const forkId = events[0].runId as string
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', forkId, '01-hold.md'), 'utf-8'))
-  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
-
-  const fork = await readMeta(forkId)
-  assert.strictEqual(fork.status, 'complete')
-  assert.deepStrictEqual(fork.holds!.map(h => [h.nodeId, h.chosen, !!h.resolvedAt]), [['hold', 'Candidate 2', true]])
-
-  const again = await resume(forkId, { direction: 'again' })
-  assert.strictEqual(again.status, 200, await again.clone().text())
-  await sse(again)
-})
-
-test('resume with a chosen that names no candidate is a bad request (#96)', async () => {
+test('a body resume cannot read is a bad request and changes nothing; an unknown run is not found', async () => {
   newWorkspace(oneHold)
   const runId = await startRun()
-  assert.strictEqual((await resume(runId, { chosen: 'Candidate 9', direction: 'x' })).status, 400)
-  assert.strictEqual((await resume(runId, { chosen: 7, direction: 'x' })).status, 400)
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'waiting', 'a refused resume changes nothing')
-  assert.strictEqual(meta.holds![0].chosen, undefined)
-})
-
-test('resume without chosen, or with a null one, leaves no pick in the record or the log (#96)', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  await sse(await resume(runId, { chosen: null, direction: 'go' }))
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
-  assert.strictEqual(holdLog.data.chosen, undefined)
-  assert.strictEqual((await readMeta(runId)).holds![0].chosen, undefined)
-})
-
-test('chosen matches a heading ignoring case and spacing, and records the heading as written (#96)', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  await sse(await resume(runId, { chosen: '  candidate   2 ', direction: 'go' }))
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
-  assert.ok(holdLog.content.startsWith('PICK: Candidate 2\n'))
-  assert.strictEqual(holdLog.data.chosen, 'Candidate 2')
-  assert.strictEqual((await readMeta(runId)).holds![0].chosen, 'Candidate 2')
-})
-
-test('resume with custom composes PICK: custom and the human\'s own text, and records it (#96)', async () => {
-  const wp = newWorkspace(oneHold)
-  const runId = await startRun()
-  ran.length = 0
-  await sse(await resume(runId, { custom: 'Halo as a pet that grows', direction: 'KEEP: gameplay' }))
-
-  const expected = 'PICK: custom\nHalo as a pet that grows\n\nKEEP: gameplay'
-  assert.ok(ran[0].systemPrompt.includes(`<<${expected}>>`))
-  const holdLog = matter(fs.readFileSync(path.join(wp, 'logs', runId, '01-hold.md'), 'utf-8'))
-  assert.strictEqual(holdLog.content.trim(), expected)
-
-  const hold = (await readMeta(runId)).holds![0]
-  assert.strictEqual(hold.custom, 'Halo as a pet that grows')
-  assert.strictEqual(hold.chosen, undefined)
-})
-
-test('resume refuses a custom pick sent with chosen, or a blank one (#96)', async () => {
-  newWorkspace(oneHold)
-  const runId = await startRun()
-  assert.strictEqual((await resume(runId, { chosen: 'Candidate 1', custom: 'mine', direction: 'x' })).status, 400)
-  assert.strictEqual((await resume(runId, { custom: '   ', direction: 'x' })).status, 400)
-  assert.strictEqual((await resume(runId, { custom: 7, direction: 'x' })).status, 400)
-  assert.strictEqual((await readMeta(runId)).status, 'waiting')
+  for (const body of [
+    {},
+    { chosen: 7, direction: 'x' },
+    { custom: '   ', direction: 'x' },
+    { custom: 7, direction: 'x' },
+    { direction: 'go', fork: true },
+    { direction: 'go', chosen: 'Candidate 1', fork: 'yes' },
+  ]) {
+    assert.strictEqual((await resume(runId, body)).status, 400, JSON.stringify(body))
+  }
+  assert.strictEqual((await readMeta(runId)).status, 'waiting', 'a refused resume changes nothing')
+  assert.strictEqual((await resume('no-such-run', { direction: 'x' })).status, 404)
 })

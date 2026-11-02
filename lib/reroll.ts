@@ -1,22 +1,19 @@
 import {
-  checkRevision, findCandidate, forksAt, readFeedback, readRevision, reopenHold, rerollHold, revisionOf, selectHold, selectOpenHold,
-  sliceCandidates, withFeedback,
+  checkRevision, findCandidate, readFeedback, readRevision, rerollHold, selectOpenHold, sliceCandidates, withFeedback,
 } from './hold'
-import { forkInput } from './fork'
-import { newRunId } from './logger'
 import { loadRunFor } from './loadRun'
 import { agentSlugOf } from './nodeKinds'
 import { buildLayoutModel } from './layoutModel'
-import { badRequest, conflict, isRefusal, toResponse, unprocessable } from './refusal'
+import { badRequest, isRefusal, toResponse, unprocessable } from './refusal'
 import { readSocket } from './resolveNode'
 import { runAgent } from './runner'
-import { withModelOverride } from './modelOverride'
 import { bindAgentTools } from './tools/registry'
 import { runToolContext } from './tools/context'
 import { sseResponse, type SseSend } from './sse'
-import { loadContinuation, newRunMeta, runStartEvent, type LiveWorkspace } from './runSession'
+import { runStartEvent, type LiveWorkspace } from './runSession'
+import type { StretchLog } from './stretchLog'
 import type { Workspace } from './runFolders'
-import type { AgentDef, AgentOutput, ChainEdge, ChainNode, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
+import type { AgentDef, AgentOutput, ChainDef, ChainEdge, ChainNode, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
 /** A reroll body, read: the hold, feedback to save first (omitted keeps it, `''` clears it), and the set it was asked from. */
 export interface RerollRequest {
@@ -89,31 +86,14 @@ export function rerollPrompt(systemPrompt: string, feedback: string | undefined,
     : systemPrompt
 }
 
-// Spend is summed over every record but a node reads as its last, so a failed attempt sits
-// just before the record it failed to replace (#134).
-function beforeLatest(outputs: AgentOutput[], nodeId: string, attempt: AgentOutput): AgentOutput[] {
-  const at = outputs.findLastIndex(o => o.nodeId === nodeId)
-  return [...outputs.slice(0, at), attempt, ...outputs.slice(at)]
-}
-
-const NO_CANDIDATES = 'Reroll produced no `## Candidate N` sections; the earlier candidates stay'
-
-/** Fresh candidates from the producer feeding a hold, streamed: in place (#134) or as a fork (#147). */
-export function reroll(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, request: RerollRequest): Response | Refusal {
-  const hold = selectHold(meta, request.holdId)
-  if ('error' in hold) return hold
-  return forksAt(hold, request.fork === true || request.like !== undefined)
-    ? rerollFork(ws, workspace, meta, hold, request)
-    : rerollInPlace(ws, workspace, meta, request)
-}
-
-/** What either kind of reroll settles before anything runs. */
-interface ReadyReroll extends RerollPlan {
+/** What a reroll settles before anything runs. */
+export interface ReadyReroll extends RerollPlan {
   agent: AgentDef
   like?: HoldCandidate
 }
 
-function readyReroll(workspace: LiveWorkspace, meta: RunMeta, hold: HoldRecord, request: RerollRequest): ReadyReroll | Refusal {
+/** The reroll `request` asks of `hold`, checked against the run and the workspace. */
+export function readyReroll(workspace: LiveWorkspace, meta: RunMeta, hold: HoldRecord, request: RerollRequest): ReadyReroll | Refusal {
   const like = request.like === undefined ? undefined : findCandidate(hold, request.like)
   if (request.like !== undefined && !like) return badRequest(`like names no candidate of hold ${hold.nodeId}`)
   const stale = checkRevision(hold, request.revision, like && { candidate: like })
@@ -121,29 +101,90 @@ function readyReroll(workspace: LiveWorkspace, meta: RunMeta, hold: HoldRecord, 
   const plan = planReroll(meta, hold)
   if ('error' in plan) return plan
   const slug = agentSlugOf(plan.producer)
-  const agentDef = workspace.agents.find(a => a.slug === slug)
-  if (!agentDef) return unprocessable(`Agent ${slug} is not in the workspace`)
-  return { ...plan, agent: withModelOverride(agentDef, meta.modelOverride), ...(like ? { like } : {}) }
+  const agent = workspace.agents.find(a => a.slug === slug)
+  if (!agent) return unprocessable(`Agent ${slug} is not in the workspace`)
+  return { ...plan, agent, ...(like ? { like } : {}) }
+}
+
+/** A reroll ready to stream: where it writes, what reruns, and the hold it refreshes. */
+export interface RerollStretch {
+  ws: Workspace
+  workspace: LiveWorkspace
+  source: RunMeta
+  chain: ChainDef
+  /** Opened already, unless this is a fork. */
+  log: StretchLog
+  ready: ReadyReroll
+  hold: HoldRecord
+  holds: HoldRecord[]
+  versionNumber: number
+  /** A fork's new folder, opened only once a fresh set is in hand, with the records it starts with (#147). */
+  fork?: { replay: AgentOutput[] }
+}
+
+const NO_CANDIDATES = 'Reroll produced no `## Candidate N` sections; the earlier candidates stay'
+
+/** The producer feeding the hold reruns once, then the stretch waits at the hold again (#134). */
+export function streamReroll(r: RerollStretch): Response {
+  const { log, chain, hold, holds, fork } = r
+  const { runId } = log
+  const { dice } = r.source
+  const replay = fork?.replay ?? []
+  return sseResponse(async send => {
+    send(runStartEvent(runId, dice))
+    send({ type: 'layout', model: buildLayoutModel(chain, fork ? replay : r.source.agentOutputs, dice) })
+    const logged = replay.flatMap(output => (output.nodeId ? [{ step: log.stepFor(output.nodeId), output }] : []))
+    let opened = !fork
+    let next = hold
+    try {
+      const step = log.start(r.ready.producer.id)
+      const { attempt, input } = await attemptReroll(send, r, step)
+      const rerolled = attempt.status === 'success' ? rerollHold(holds, hold, input) : undefined
+      if (!opened) {
+        if (!rerolled) {
+          send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
+          return
+        }
+        opened = log.open()
+        for (const { step: at, output } of logged) log.write(at, output)
+      }
+      log.write(step, attempt)
+
+      const recorded = [...log.read().agentOutputs, ...replay]
+      const agentOutputs = rerolled ? [...recorded, attempt] : beforeLatest(recorded, r.ready.producer.id, attempt)
+      if (rerolled) next = rerolled.record
+      log.close({ status: 'waiting', agentOutputs, holds: rerolled?.holds ?? holds })
+      send({ type: 'layout', model: buildLayoutModel(chain, agentOutputs, dice) })
+      if (!rerolled) send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
+    } catch (error) {
+      // In place the run waits on its old set; a fork already on disk is marked failed, not left looking unfinished.
+      if (!fork) log.close({ status: 'waiting' })
+      else if (opened) log.close({ status: 'error' })
+      send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: error instanceof Error ? error.message : String(error) })
+      if (fork) return
+    }
+    send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold: next })
+  })
 }
 
 /** One streamed attempt of the producer at `step`; a success with no candidates is marked failed (#134). */
 async function attemptReroll(
-  send: SseSend, ws: Workspace, workspace: LiveWorkspace, seedPrompt: string, runId: string,
-  { producer, edge, baseline, agent }: ReadyReroll, hold: HoldRecord, step: number, versionNumber: number,
+  send: SseSend, { ws, workspace, source, ready, hold, versionNumber }: RerollStretch, step: number,
 ): Promise<{ attempt: AgentOutput; input: string }> {
+  const { producer, edge, baseline, agent } = ready
   const { feedback } = hold
   send({ type: 'agent_start', agentName: agent.name, nodeId: producer.id, step, kind: producer.kind })
   const attempt = await runAgent(agent, rerollPrompt(baseline.systemPrompt, feedback, hold.like?.candidate), baseline.input, {
     onToken: (token, tokenType, turn) => send({ type: 'token', agentName: agent.name, nodeId: producer.id, token, tokenType, step, kind: producer.kind, turn }),
     // A fork's folder is not written until its set is in hand, so images land in the source run.
-    boundTools: bindAgentTools(agent, workspace.tools, { ...runToolContext(ws, runId), fixedParts: baseline.fixedParts }),
+    boundTools: bindAgentTools(agent, workspace.tools, { ...runToolContext(ws, source.runId), fixedParts: baseline.fixedParts }),
     onToolEvent: event => send({ ...event, nodeId: producer.id, step, kind: producer.kind }),
   })
   attempt.nodeId = producer.id
   if (baseline.fixedParts) attempt.fixedParts = baseline.fixedParts
   attempt.reroll = { holdId: hold.nodeId, ...(feedback ? { feedback } : {}) }
   if (versionNumber > 0) attempt.versionNumber = versionNumber
-  const input = readSocket(producer, edge.fromSocket, new Map([[producer.id, attempt]]), seedPrompt, () => '').value
+  const input = readSocket(producer, edge.fromSocket, new Map([[producer.id, attempt]]), source.seedPrompt, () => '').value
   if (attempt.status === 'success' && sliceCandidates(input).length === 0) {
     attempt.status = 'error'
     attempt.error = NO_CANDIDATES
@@ -152,87 +193,11 @@ async function attemptReroll(
   return { attempt, input }
 }
 
-/** Request feedback is saved before generating; a failed attempt keeps it and the old set (#134). */
-function rerollInPlace(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, request: RerollRequest): Response | Refusal {
-  const open = selectOpenHold(meta, request.holdId)
-  if ('error' in open) return open
-  const plan = readyReroll(workspace, meta, open, request)
-  if ('error' in plan) return plan
-  const continuation = loadContinuation(ws.root, workspace, meta)
-  if ('error' in continuation) return continuation
-  const { chain, versionNumber } = continuation
-
-  const { record: hold, holds } = request.feedback === undefined
-    ? { record: open, holds: meta.holds ?? [] }
-    : withFeedback(meta.holds ?? [], open, request.feedback)
-  if (!ws.runs.claim(meta.runId, { holds })) return conflict('Run is running')
-
-  const { runs } = ws
-  const { runId } = meta
-  return sseResponse(async send => {
-    send(runStartEvent(runId, meta.dice))
-    send({ type: 'layout', model: buildLayoutModel(chain, meta.agentOutputs, meta.dice) })
-    let next = hold
-    try {
-      const step = runs.nextStep(runId)
-      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, meta.runId, plan, hold, step, versionNumber)
-      runs.writeStep(runId, step, attempt)
-
-      const rerolled = attempt.status === 'success' ? rerollHold(holds, hold, input) : undefined
-      const agentOutputs = rerolled ? [...runs.read(runId).agentOutputs, attempt] : beforeLatest(runs.read(runId).agentOutputs, plan.producer.id, attempt)
-      if (rerolled) next = rerolled.record
-      runs.update(runId, { status: 'waiting', agentOutputs, holds: rerolled?.holds ?? holds })
-      send({ type: 'layout', model: buildLayoutModel(chain, agentOutputs, meta.dice) })
-      if (!rerolled) send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
-    } catch (error) {
-      runs.update(runId, { status: 'waiting' })
-      send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: error instanceof Error ? error.message : String(error) })
-    }
-    send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold: next })
-  })
-}
-
-/** A new run of `source`'s hold reopened on a fresh set; a failed attempt writes no run (#147). */
-function rerollFork(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, source: HoldRecord, request: RerollRequest): Response | Refusal {
-  const plan = readyReroll(workspace, meta, source, request)
-  if ('error' in plan) return plan
-  const start = forkInput(ws, workspace, meta, { anchors: [source.nodeId], modelOverride: meta.modelOverride })
-  if ('error' in start) return start
-
-  // The source's own rerolls answered its hold; this one starts again from the original record.
-  const replay = (start.replay ?? []).map(o => (o.nodeId === plan.producer.id ? plan.baseline : o))
-  // Feedback and `like` belong to one hold, so the fork's come from the request alone.
-  const hold = reopenHold(source)
-  delete hold.feedback
-  delete hold.like
-  if (request.feedback) hold.feedback = request.feedback
-  if (plan.like) hold.like = { candidate: plan.like, revision: revisionOf(source) }
-
-  const runId = newRunId()
-  return sseResponse(async send => {
-    send(runStartEvent(runId, start.dice))
-    send({ type: 'layout', model: buildLayoutModel(start.chain, replay, start.dice) })
-    let created = false
-    try {
-      const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, meta.runId, plan, hold, replay.length, start.versionNumber)
-      if (attempt.status !== 'success') {
-        send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
-        return
-      }
-      const agentOutputs = [...replay, attempt]
-      const rerolled = rerollHold([...start.holds ?? [], hold], hold, input)
-      ws.runs.create({ ...newRunMeta(runId, start), agentOutputs, holds: rerolled.holds })
-      created = true
-      agentOutputs.forEach((output, step) => ws.runs.writeStep(runId, step, output))
-      ws.runs.update(runId, { status: 'waiting' })
-      send({ type: 'layout', model: buildLayoutModel(start.chain, agentOutputs, start.dice) })
-      send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold: rerolled.record })
-    } catch (error) {
-      // A run already on disk is marked failed rather than left looking unfinished.
-      if (created) ws.runs.update(runId, { status: 'error' })
-      send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: error instanceof Error ? error.message : String(error) })
-    }
-  })
+// Spend is summed over every record but a node reads as its last, so a failed attempt sits
+// just before the record it failed to replace (#134).
+function beforeLatest(outputs: AgentOutput[], nodeId: string, attempt: AgentOutput): AgentOutput[] {
+  const at = outputs.findLastIndex(o => o.nodeId === nodeId)
+  return [...outputs.slice(0, at), attempt, ...outputs.slice(at)]
 }
 
 /** Saves an open hold's reroll feedback without generating; `''` clears it (#134). */

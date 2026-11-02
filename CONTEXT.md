@@ -94,7 +94,7 @@ A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates 
 
 **Fork** revisits a run's history without rewriting it: a new run of the same recorded graph whose `branchedFromRunId` names the source and `branchedFromNode` the anchor, the promoted node or the answered hold. It replays every output but the anchor and its descendants (a node's repeated records collapse to the latest), then the anchor's new output; holds below the anchor are asked again. Promote forks on a finished run or past an answered hold; resume forks when the hold is already answered or when `fork: true` is requested for a waiting hold; a reroll forks under the same rule, or when it asks for more `like` a candidate (#147). The source run keeps its history (#99, #76). A **branch** is the older form, anchored by `branchedFromStep` and replayed from a client-supplied list. _Avoid_: rewind, parent run.
 
-A **continuation** is one of resume, promote or fork handed to `continueRun` as a plan — `answer`, `promote` or `fork` — which decides in place or fork and streams the stretch. In place, the earlier records replay as the very objects on disk, so they are never logged again (#107).
+A **continuation** is one of resume, promote, fork or reroll handed to `continueRun` as a plan — `answer`, `promote`, `fork` or `reroll` — which decides in place or fork once, builds the replay set, and writes and streams the **stretch** — what one request runs, written to the run's own folder or a new one (#162). A reroll's stretch reruns one producer, then stops. In place, the earlier records replay as the very objects on disk, so they are never logged again (#107).
 
 ## Static vs dynamic width
 

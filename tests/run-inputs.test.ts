@@ -120,7 +120,8 @@ test('empty text is a value; null leaves the input to seedPrompt', async () => {
   assert.strictEqual(writerDone(events).output, 'Story:  / Audience: FALLBACK')
 })
 
-test('the values are pinned with the run: a fork replays the same inputs', async () => {
+// A continuation replaying them is tested in continue-run.test.ts.
+test('the values are pinned with the run', async () => {
   newWorkspace()
   const runId = (await sse(await run({ chainName: 'writer-chain', seedPrompt: 'SEED', inputs: { story: 'a knight', audience: 'kids' } }))).at(-1)!.runId as string
 
@@ -128,14 +129,7 @@ test('the values are pinned with the run: a fork replays the same inputs', async
   const meta = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId }) })).json() as RunMeta
   assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'story-seed')?.output, 'a knight')
   assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'audience-seed')?.output, 'kids')
-
-  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
-  const forked = await sse(await fork({ json: async () => ({ from: 'writer' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
-  assert.strictEqual(writerDone(forked).output, 'Story: a knight / Audience: kids')
   assert.deepStrictEqual(meta.inputs, { story: 'a knight', audience: 'kids' })
-
-  const reseeded = await sse(await fork({ json: async () => ({ from: 'story-seed' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
-  assert.strictEqual(writerDone(reseeded).output, 'Story: a knight / Audience: kids', 'a rerun seed reads its pinned input, not seedPrompt')
 })
 
 test('the workspace chain list carries each chain\'s inputs in file order', async () => {
