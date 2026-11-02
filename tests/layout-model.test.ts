@@ -3,9 +3,12 @@ import assert from 'node:assert'
 import { buildLayoutModel, failLayoutModel, isRenderableLayout } from '../lib/layoutModel'
 import type { AgentOutput, ChainDef, ChainPort } from '../lib/types'
 
+// Every port binds an agent node, so its socket reads the way an agent's edge does (#166).
 function chain(over: Partial<ChainDef> = {}): ChainDef {
+  const ids = [...new Set((over.outputs ?? []).map(p => p.node))]
   return {
-    slug: 'relay', name: 'relay', description: '', nodes: [], edges: [],
+    slug: 'relay', name: 'relay', description: '', edges: [],
+    nodes: ids.map(id => ({ id, kind: 'agent', agent: 'relay' })),
     filePath: '', isFavorite: false, ...over,
   }
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { diskRunFolders } from '../lib/runFolders'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -62,7 +63,7 @@ test('renaming a variant rewrites its id in the declaring file and every chain n
   const chainPath = write(wp, 'chains/decision.md', CHAIN)
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'rot', 'decay')
+  const result = renameWorkspaceEntity(wp, 'agent', 'rot', 'decay', diskRunFolders(wp))
 
   assert.strictEqual(result.filePath, agentPath, 'a variant has no file of its own to move')
   assert.ok(fs.existsSync(agentPath))
@@ -90,7 +91,7 @@ test('the plan for a variant names the declaring file among the files it will to
   const chainPath = write(wp, 'chains/decision.md', CHAIN)
 
   const { planRename } = await rename()
-  const plan = planRename(wp, 'agent', 'rot', 'decay')
+  const plan = planRename(wp, 'agent', 'rot', 'decay', diskRunFolders(wp))
 
   assert.strictEqual(plan.variantOf, 'premortem')
   assert.deepStrictEqual(plan.rewrites.map(r => r.filePath), [agentPath, chainPath])
@@ -109,7 +110,7 @@ test('renaming a file that declares variants moves the file and its history, and
   snapshotVersion(wp, 'agent', 'premortem', 'v1 body')
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'premortem', 'post-mortem')
+  const result = renameWorkspaceEntity(wp, 'agent', 'premortem', 'post-mortem', diskRunFolders(wp))
 
   assert.strictEqual(result.filePath, path.join(wp, 'agents', 'panel', 'post-mortem.md'))
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel', 'premortem.md')))
@@ -134,7 +135,7 @@ test('a variant rename leaves past run pins untouched, and the runs still resolv
   snapshotVersion(wp, 'agent', 'premortem', 'the pinned bytes')
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'rot', 'decay')
+  const result = renameWorkspaceEntity(wp, 'agent', 'rot', 'decay', diskRunFolders(wp))
 
   // A run keys on the declaring file's slug (ADR-0011), which the rename never touched.
   assert.deepStrictEqual(result.plan.runs, [])
@@ -150,13 +151,13 @@ test('a rename is refused when the new name is taken by a file or by a variant, 
   const { planRename } = await rename()
 
   // variant → an existing agent file
-  assert.throws(() => planRename(wp, 'agent', 'rot', 'optimist'), (err: Error) =>
+  assert.throws(() => planRename(wp, 'agent', 'rot', 'optimist', diskRunFolders(wp)), (err: Error) =>
     /already/i.test(err.message) && err.message.includes('optimist.md'))
   // variant → a sibling variant
-  assert.throws(() => planRename(wp, 'agent', 'rot', 'burnout'), (err: Error) =>
+  assert.throws(() => planRename(wp, 'agent', 'rot', 'burnout', diskRunFolders(wp)), (err: Error) =>
     /already/i.test(err.message) && err.message.includes('premortem.md'))
   // file → a variant declared in another file
-  assert.throws(() => planRename(wp, 'agent', 'optimist', 'rot'), (err: Error) =>
+  assert.throws(() => planRename(wp, 'agent', 'optimist', 'rot', diskRunFolders(wp)), (err: Error) =>
     /already/i.test(err.message) && err.message.includes('premortem.md'))
 })
 
@@ -174,7 +175,7 @@ test('a failure part-way leaves no half-renamed variant behind', async () => {
   }) as typeof fs.writeFileSync)
 
   const { renameWorkspaceEntity } = await rename()
-  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'rot', 'decay'), /disk full/)
+  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'rot', 'decay', diskRunFolders(wp)), /disk full/)
 
   assert.strictEqual(read(chainPath), CHAIN, 'the rewritten call site was rolled back')
   assert.strictEqual(read(agentPath), PREMORTEM, 'the declaring file still names the old variant')
@@ -189,8 +190,8 @@ test('a malformed variants block blocks no rename — not its own file, not an u
 
   // The load-time check already reports the malformed file (ADR-0012); it must not also
   // stop the user editing it, or anything else, back into shape.
-  assert.strictEqual(planRename(wp, 'agent', 'rot', 'decay').variantOf, 'premortem')
-  renameWorkspaceEntity(wp, 'agent', 'broken', 'mended')
+  assert.strictEqual(planRename(wp, 'agent', 'rot', 'decay', diskRunFolders(wp)).variantOf, 'premortem')
+  renameWorkspaceEntity(wp, 'agent', 'broken', 'mended', diskRunFolders(wp))
   assert.ok(fs.existsSync(path.join(wp, 'agents', 'mended.md')))
 })
 
@@ -200,8 +201,8 @@ test('a variant named in prompt prose is reported, never rewritten', async () =>
   const readerPath = write(wp, 'agents/reader.md', '---\nname: Reader\n---\nSee {rot.output}.\n')
 
   const { planRename, renameWorkspaceEntity } = await rename()
-  assert.deepStrictEqual(planRename(wp, 'agent', 'rot', 'decay').manual.map(m => m.filePath), [readerPath])
+  assert.deepStrictEqual(planRename(wp, 'agent', 'rot', 'decay', diskRunFolders(wp)).manual.map(m => m.filePath), [readerPath])
 
-  renameWorkspaceEntity(wp, 'agent', 'rot', 'decay')
+  renameWorkspaceEntity(wp, 'agent', 'rot', 'decay', diskRunFolders(wp))
   assert.ok(read(readerPath).includes('{rot.output}'), 'the prose placeholder is left for the user')
 })

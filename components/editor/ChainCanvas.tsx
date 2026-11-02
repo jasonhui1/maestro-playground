@@ -8,7 +8,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
-import { computeZoneFrames } from '@/lib/zoneFrames'
+import { zoneFrames } from '@/lib/zoneLayout'
 import { edgeFromConnection } from '@/lib/editorOps'
 import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
@@ -166,14 +166,14 @@ interface ChainCanvasProps {
   currentInstance: number
   onInstance: (i: number) => void
   readOnly?: boolean
-  onAddNode?: (kind: ChainNodeKind, pos: [number, number], extra?: Partial<ChainNode>) => void
-  onAddLoopZone?: (pos: [number, number]) => void
+  onQuickAdd?: (item: QuickAddItem, pos: [number, number]) => void
   agents?: { slug: string; name: string }[]
   contextFiles?: { slug: string; name: string }[]
   onRun?: () => void
 }
 
-import QuickAddMenu, { type QuickAddItem } from './QuickAddMenu'
+import QuickAddMenu from './QuickAddMenu'
+import type { QuickAddItem } from '@/lib/editorOps'
 
 function edgeId(e: ChainEdge): string {
   return `${e.fromNode}.${e.fromSocket}->${e.toNode}.${e.toSocket}`
@@ -223,29 +223,19 @@ function CanvasContent(props: ChainCanvasProps) {
     if (!menuPos) return
     const flowPos = screenToFlowPosition({ x: menuPos.clientX, y: menuPos.clientY })
     const pos: [number, number] = [Math.round(flowPos.x), Math.round(flowPos.y)]
-    if (item.type === 'agent') {
-      props.onAddNode?.('agent', pos, { agent: item.slug })
-    } else if (item.type === 'source-seed') {
-      props.onAddNode?.('seed', pos)
-    } else if (item.type === 'source-context') {
-      props.onAddNode?.('context', pos, item.file ? { file: item.file } : undefined)
-    } else if (item.type === 'control-loop') {
-      props.onAddLoopZone?.(pos)
-    } else if (item.type === 'control-gate') {
-      props.onAddNode?.('gate', pos)
-    }
+    props.onQuickAdd?.(item, pos)
     setMenuPos(null)
-  }, [menuPos, screenToFlowPosition, props.onAddNode, props.onAddLoopZone])
+  }, [menuPos, screenToFlowPosition, props.onQuickAdd])
 
   // The nodes are projected from the chain on every render rather than mirrored into
   // state, so a caller handing us a fresh `selectedIds` array costs one recompute
   // instead of an effect that re-fires into "Maximum update depth exceeded" (#64).
   const base = useMemo<Node[]>(() => {
-    const frames: Node[] = computeZoneFrames(chainNodes).map(f => ({
-      id: `zone-frame-${f.zone}`,
+    const frames: Node[] = zoneFrames(chainNodes).map(f => ({
+      id: `zone-frame-${f.id}`,
       type: 'zoneFrame',
       position: { x: f.x, y: f.y },
-      data: { zone: f.zone, width: f.width, height: f.height },
+      data: { zone: f.id, width: f.width, height: f.height },
       selectable: false,
       draggable: false,
       zIndex: -1,

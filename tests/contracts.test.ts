@@ -43,7 +43,7 @@ vi.mock('@/lib/logger', async (importOriginal) => {
 })
 
 const fake = fakeModel(contractModelResponder)
-vi.mock('@/lib/chatCall', () => ({ createChatCall: fake.createChatCall }))
+requestEntry.model = fake.model
 
 beforeAll(() => {
   delete process.env.AI_MODEL_OVERRIDE

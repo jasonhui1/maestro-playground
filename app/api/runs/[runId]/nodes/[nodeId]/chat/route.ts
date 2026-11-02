@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
-import { runAgent } from '@/lib/runner'
-import { bindAgentTools } from '@/lib/tools/registry'
+import { runAgentTurn } from '@/lib/agentTurn'
 import { runToolContext } from '@/lib/tools/context'
 import { appendTurn, chatSpeaker, chatTranscript, readChatRequest } from '@/lib/nodeChat'
 import { loadRunFor } from '@/lib/loadRun'
@@ -31,11 +30,12 @@ export async function POST(
 
   return sseResponse(async send => {
     try {
-      const result = await runAgent(agent, target.record.systemPrompt, message, {
+      const result = await runAgentTurn(ws.model, {
+        agent, systemPrompt: target.record.systemPrompt, input: message,
         history: chatTranscript(target.record, message),
-        onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
         // A node keeps the tools it ran with when a human follows up (#112).
-        boundTools: bindAgentTools(agent, tools, { ...runToolContext(ws, meta.runId), fixedParts: target.record.fixedParts }),
+        tools: { defs: tools, context: { ...runToolContext(ws, meta.runId), fixedParts: target.record.fixedParts } },
+        onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
         onToolEvent: event => send(event),
       })
       if (result.status !== 'success') {

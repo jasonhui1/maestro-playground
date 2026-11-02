@@ -12,7 +12,7 @@ When you add a kind, the work falls into three buckets:
 |---|---|---|
 | **Compiler-enforced** | Won't build until you do it | `ChainNodeKind` + `ChainNode` union, registry entry, `nodeTypes` map entry (bound to the right component), executor dispatch arm |
 | **Manual content** | Wiring is forced, but you write the actual code | the component's rendering body; the dispatch arm's behaviour |
-| **Auto-derived** | Free from the descriptor | serialize/parse, palette, socket rendering, validation capabilities |
+| **Auto-derived** | Free from the descriptor | serialize/parse, palette groups and order, socket rendering, validation capabilities, run-version pinning of `ref` fields |
 
 The compiler now walks you to *every* wiring site — miss one and it won't build, and a mis-wire (right key, wrong component) is a type error too. The auto-derived tier is the payoff of the registry: define the descriptor's `fields` and `palette`, and persistence + the palette + socket wiring follow with no extra edits.
 
@@ -47,12 +47,16 @@ export type ChainNodeKind = 'seed' | 'context' | /* … */ | 'report' | 'note'
   note: {
     kind: 'note',
     acceptsInputs: false,
+    acceptsLiterals: false,                       // only agent/decider take saved literal inputs
+    zoneRole: 'none',                             // 'body' only for kinds the executor's zone body runs
     inputs: () => [],
     outputs: () => [],
     fields: [{ key: 'text', codec: 'string' }],   // must match the union variant
-    palette: { label: 'Note', category: 'Annotation' },
+    palette: { label: 'Note', category: 'Annotation', order: 70 },
   },
 ```
+
+`acceptsLiterals` and `zoneRole` are required, so the compiler asks. Validation (literal inputs, "cannot sit inside loop zone"), the executor's readiness check and the socket UI all read them. A kind with `zoneRole: 'body'` must also have a zone-body arm in `runZone`. `palette.order` sorts the whole palette; a new `category` shows up on its own, at its first entry's position.
 
 `fields` codecs (`string | number | stringList | cases`) drive serialize/parse automatically. `palette` (optional) makes it appear in the NodePalette. If a field needs a codec that doesn't exist yet, add it to `FieldCodec` and handle it in both `serializeFieldValue` (serializeChain) and `coerceField` (parseChain).
 
@@ -109,7 +113,8 @@ Per ADR-0001, behaviour lives here, not in the descriptor. The dispatch is an `i
 ## Checklist
 
 - [ ] `ChainNodeKind` string + `ChainNode` union variant (fields match the descriptor)
-- [ ] `registry` descriptor in `lib/nodeKinds.ts` (compiler-forced)
+- [ ] `registry` descriptor in `lib/nodeKinds.ts` (compiler-forced; includes `acceptsLiterals`, `zoneRole`, `palette.order`)
+- [ ] A field that names a workspace file gets `ref` — rename, delete-refusal and run-version pinning follow (`runFiles.collectTouchedFiles` handles `context`/`chain`/`agent` refs; a new ref type needs an arm in `walkNode`)
 - [ ] `XxxNode.tsx` component typed `EditorNodeDataOf<'xxx'>` (no cast)
 - [ ] Render sockets through `<Sockets handles={data.sockets} />` — no `<Handle>` in the component
 - [ ] Register in the `nodeTypes` map (compiler-forced; mis-wire is a type error)

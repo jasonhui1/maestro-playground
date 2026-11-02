@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -24,7 +25,7 @@ const chain: ChainDef = {
 // Stub runner: echoes the resolved system prompt as its output, records call order.
 const seenPrompts: Record<string, string> = {}
 const order: string[] = []
-const stub = (async (a: AgentDef, systemPrompt: string) => {
+const stub = (async ({ agent: a, systemPrompt: systemPrompt }: AgentTurn) => {
   order.push(a.slug)
   seenPrompts[a.slug] = systemPrompt
   return { agentName: a.name, systemPrompt, input: '', output: `OUT(${a.slug}):${systemPrompt}`,

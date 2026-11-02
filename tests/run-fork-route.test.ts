@@ -1,40 +1,21 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import matter from 'gray-matter'
-import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
+import type { RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (
-    agent: { slug: string; name: string },
-    systemPrompt: string,
-    userMessage: string,
-    options: { history?: ChatMessage[] } = {},
-  ): Promise<AgentOutput> => {
-    const base = {
-      agentName: agent.name, systemPrompt, input: userMessage,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
-    }
-    if (options.history) {
-      const n = options.history.filter(m => m.role === 'user').length - 1
-      return { ...base, output: `revised ${n}`, status: 'success' }
-    }
-    ran.push({ slug: agent.slug, systemPrompt })
-    const output = agent.slug === 'decider'
-      ? `## Candidate 1\none [${systemPrompt}]\n\n## Candidate 2\ntwo`
-      : agent.slug === 'sections'
-        ? '## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.'
-        : `from ${agent.slug} <<${systemPrompt}>>`
-    return { ...base, output, status: 'success' }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug, system }) => {
+  ran.push({ slug: agentSlug!, systemPrompt: system })
+  return answer(agentSlug === 'decider' ? `## Candidate 1\none [${system}]\n\n## Candidate 2\ntwo` : `from ${agentSlug} <<${system}>>`)
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -68,10 +49,6 @@ edges:
 ---
 `
 
-const withSecondHold = chain
-  .replace('edges:\n', '  - id: hold2\n    kind: hold\n  - id: last\n    kind: agent\n    agent: after\nedges:\n')
-  .replace(/---\n$/, '  - from: after\n    to: hold2.in\n  - from: hold2\n    to: last.direction\n---\n')
-
 function newWorkspace(chainText = chain): string {
   const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-run-fork-'))
   requestEntry.root = wp
@@ -84,7 +61,6 @@ function newWorkspace(chainText = chain): string {
   write('agents/prop.md', '---\nname: Prop\n---\npropose {input}\n')
   write('agents/decider.md', '---\nname: Decider\n---\ndecide {input}\n')
   write('agents/after.md', '---\nname: After\n---\nbuild on {direction}\n')
-  write('agents/sections.md', '---\nname: Sections\n---\nstructured {input}\n')
   return wp
 }
 
@@ -111,18 +87,8 @@ async function resume(runId: string, body: object): Promise<Response> {
   return POST({ json: async () => body } as Req, { params: Promise.resolve({ runId }) })
 }
 
-async function chat(runId: string, nodeId: string, message: string): Promise<void> {
-  const { POST } = await import('../app/api/runs/[runId]/nodes/[nodeId]/chat/route')
-  await sse(await POST({ json: async () => ({ message }) } as Req, { params: Promise.resolve({ runId, nodeId }) }))
-}
-
-async function promote(runId: string, nodeId: string, body: object = {}): Promise<Response> {
-  const { POST } = await import('../app/api/runs/[runId]/nodes/[nodeId]/promote/route')
-  return POST({ json: async () => body } as Req, { params: Promise.resolve({ runId, nodeId }) })
-}
-
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   return runs.read(runId)
 }
 
@@ -131,8 +97,6 @@ async function listRuns(query: string): Promise<RunMeta[]> {
   return (await GET({ url: `http://x/api/runs?${query}` } as Req)).json()
 }
 
-const logsOf = (wp: string, runId: string) =>
-  fs.readdirSync(path.join(wp, 'logs', runId)).filter(f => f.endsWith('.md')).sort()
 
 /** A run answered at its hold and complete. */
 async function completeRun(): Promise<string> {
@@ -141,132 +105,6 @@ async function completeRun(): Promise<string> {
   assert.strictEqual((await readMeta(runId)).status, 'complete')
   return runId
 }
-
-test('promote on a complete run forks at the node; the source run is unchanged but for the flag', async () => {
-  const wp = newWorkspace()
-  const sourceId = await completeRun()
-  await chat(sourceId, 'prop', 'push')
-  const before = await readMeta(sourceId)
-  const sourceLogs = logsOf(wp, sourceId)
-  ran.length = 0
-
-  const events = await sse(await promote(sourceId, 'prop'))
-
-  const forkId = events[0].runId as string
-  assert.notStrictEqual(forkId, sourceId)
-  assert.strictEqual(events.at(-1)!.type, 'run_waiting', 'the fork reaches the hold again')
-  assert.strictEqual(events.at(-1)!.runId, forkId)
-  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'], 'only the node\'s descendants run')
-  assert.ok(ran[0].systemPrompt.includes('revised 1'))
-
-  const fork = await readMeta(forkId)
-  assert.strictEqual(fork.branchedFromRunId, sourceId)
-  assert.strictEqual(fork.branchedFromNode, 'prop')
-  assert.strictEqual(fork.branchedFromStep, undefined)
-  assert.strictEqual(fork.status, 'waiting')
-  assert.deepStrictEqual(fork.agentOutputs.map(o => o.nodeId), ['prop', 'dec'], 'the revision replaces the node; its descendants are dropped')
-  assert.strictEqual(fork.agentOutputs[0].output, 'revised 1')
-  assert.ok(fork.agentOutputs[0].priorTranscript?.length, 'the argument travels with the revision')
-  assert.deepStrictEqual(fork.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', false]])
-  assert.deepStrictEqual(logsOf(wp, forkId), ['00-prop.md', '01-dec.md'])
-  assert.deepStrictEqual(fork.graph, before.graph)
-
-  const source = await readMeta(sourceId)
-  assert.strictEqual(source.status, 'complete')
-  assert.deepStrictEqual(logsOf(wp, sourceId), sourceLogs)
-  assert.deepStrictEqual(source.agentOutputs.map(o => o.output), before.agentOutputs.map(o => o.output))
-  assert.deepStrictEqual(source.holds, before.holds)
-  assert.strictEqual(source.agentOutputs.find(o => o.nodeId === 'prop')!.conversation![1].promoted, true)
-})
-
-test('promote past an answered hold on a waiting run forks, keeping holds above the node', async () => {
-  newWorkspace(withSecondHold)
-  const sourceId = await startRun()
-  await sse(await resume(sourceId, { direction: 'first answer' }))
-  assert.strictEqual((await readMeta(sourceId)).status, 'waiting')
-  await chat(sourceId, 'after', 'push')
-  await chat(sourceId, 'prop', 'push')
-
-  const inPlace = await sse(await promote(sourceId, 'after'))
-  assert.strictEqual(inPlace[0].runId, sourceId, 'a hold below the node only stays in place')
-
-  const events = await sse(await promote(sourceId, 'prop'))
-  const forkId = events[0].runId as string
-  assert.notStrictEqual(forkId, sourceId)
-  const fork = await readMeta(forkId)
-  assert.strictEqual(fork.branchedFromNode, 'prop')
-  assert.deepStrictEqual(fork.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', false]], 'answered holds below the node are asked again')
-  assert.strictEqual((await readMeta(sourceId)).status, 'waiting', 'the source stays where it was')
-})
-
-test('a second resume of an answered hold forks with the new answer', async () => {
-  const wp = newWorkspace()
-  const sourceId = await completeRun()
-  const before = await readMeta(sourceId)
-  ran.length = 0
-
-  const events = await sse(await resume(sourceId, { chosen: 'Candidate 2', direction: 'second answer' }))
-
-  const forkId = events[0].runId as string
-  assert.notStrictEqual(forkId, sourceId)
-  assert.strictEqual(events.at(-1)!.type, 'run_complete')
-  assert.deepStrictEqual(ran.map(r => r.slug), ['after'], 'only what follows the hold runs')
-  assert.ok(ran[0].systemPrompt.includes('PICK: Candidate 2\ntwo\n\nsecond answer'))
-
-  const fork = await readMeta(forkId)
-  assert.strictEqual(fork.branchedFromRunId, sourceId)
-  assert.strictEqual(fork.branchedFromNode, 'hold')
-  assert.strictEqual(fork.status, 'complete')
-  assert.deepStrictEqual(fork.agentOutputs.map(o => o.nodeId), ['prop', 'dec', 'hold', 'after'])
-  assert.strictEqual(fork.holds!.length, 1)
-  assert.strictEqual(fork.holds![0].chosen, 'Candidate 2')
-  assert.strictEqual(fork.holds![0].direction, 'second answer')
-  assert.ok(fork.holds![0].resolvedAt)
-  assert.deepStrictEqual(logsOf(wp, forkId), ['00-prop.md', '01-dec.md', '02-hold.md', '03-after.md'])
-  assert.strictEqual(matter(fs.readFileSync(path.join(wp, 'logs', forkId, '02-hold.md'), 'utf-8')).data.chosen, 'Candidate 2')
-
-  assert.deepStrictEqual(await readMeta(sourceId), before, 'the source run is untouched')
-})
-
-test('a re-answer with a custom pick drops the earlier chosen heading', async () => {
-  newWorkspace()
-  const sourceId = await completeRun()
-  const events = await sse(await resume(sourceId, { custom: 'mine', direction: 'x' }))
-  const hold = (await readMeta(events[0].runId as string)).holds![0]
-  assert.strictEqual(hold.custom, 'mine')
-  assert.strictEqual(hold.chosen, undefined)
-})
-
-test('with several holds, a re-answer names the hold; an answered one on a waiting run forks', async () => {
-  newWorkspace(withSecondHold)
-  const sourceId = await startRun()
-  await sse(await resume(sourceId, { direction: 'first answer' }))
-
-  const events = await sse(await resume(sourceId, { holdId: 'hold', direction: 'again' }))
-  const forkId = events[0].runId as string
-  assert.notStrictEqual(forkId, sourceId)
-  const fork = await readMeta(forkId)
-  assert.strictEqual(fork.branchedFromNode, 'hold')
-  assert.deepStrictEqual(fork.holds!.map(h => [h.nodeId, h.direction ?? null]), [['hold', 'again'], ['hold2', null]])
-
-  await sse(await resume(sourceId, { direction: 'second answer' }))
-  const source = await readMeta(sourceId)
-  assert.strictEqual(source.status, 'complete')
-  assert.strictEqual((await resume(sourceId, { direction: 'which?' })).status, 400, 'two answered holds: holdId is required')
-  assert.strictEqual((await resume(sourceId, { holdId: 'nope', direction: 'x' })).status, 404)
-  const again = await sse(await resume(sourceId, { holdId: 'hold2', direction: 'third' }))
-  assert.strictEqual((await readMeta(again[0].runId as string)).branchedFromNode, 'hold2')
-})
-
-test('a fork is refused while the source run is running', async () => {
-  newWorkspace()
-  const sourceId = await completeRun()
-  await chat(sourceId, 'prop', 'push')
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
-  runs.update(sourceId, { status: 'running' })
-  assert.strictEqual((await resume(sourceId, { direction: 'x' })).status, 409)
-  assert.strictEqual((await promote(sourceId, 'prop')).status, 409)
-})
 
 test('the run list filters by branchedFromRunId', async () => {
   newWorkspace()
@@ -284,36 +122,16 @@ async function fork(runId: string, body: object): Promise<Response> {
   return POST({ json: async () => body } as Req, { params: Promise.resolve({ runId }) })
 }
 
-test('fork from a node reruns it and its descendants, keeping answered holds above (#103)', async () => {
-  newWorkspace(withSecondHold)
-  const sourceId = await startRun()
-  await sse(await resume(sourceId, { direction: 'first answer' }))
-  ran.length = 0
-
-  const events = await sse(await fork(sourceId, { from: 'after' }))
-  assert.deepStrictEqual(ran.map(r => r.slug), ['after'])
-  assert.strictEqual(events.at(-1)!.type, 'run_waiting', 'the hold below the anchor is asked again')
-
-  const forked = await readMeta(events[0].runId as string)
-  assert.strictEqual(forked.branchedFromRunId, sourceId)
-  assert.strictEqual(forked.branchedFromNode, 'after')
-  assert.deepStrictEqual(forked.holds!.map(h => [h.nodeId, !!h.resolvedAt]), [['hold', true], ['hold2', false]])
-})
-
-test('fork with revisions replays the revised text and reruns only what it feeds (#103)', async () => {
+// Decisions, replay and persistence are the continuation's, tested in continue-run.test.ts. Here: parse → call → respond,
+// the run list, and the version store a pinned fork reads.
+test('a fork streams a new run branched from the source', async () => {
   newWorkspace()
   const sourceId = await completeRun()
-  ran.length = 0
-
-  const events = await sse(await fork(sourceId, { revisions: { prop: 'my own proposal' } }))
-  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'])
-  assert.ok(ran[0].systemPrompt.includes('my own proposal'))
-
-  const forked = await readMeta(events[0].runId as string)
-  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
-  assert.strictEqual(prop.output, 'my own proposal')
-  assert.strictEqual(prop.tokensIn, 0)
-  assert.strictEqual(forked.branchedFromNode, 'prop')
+  const events = await sse(await fork(sourceId, { from: 'after' }))
+  const forkId = events[0].runId as string
+  assert.notStrictEqual(forkId, sourceId)
+  assert.strictEqual(events.at(-1)!.type, 'run_complete')
+  assert.strictEqual((await readMeta(forkId)).branchedFromRunId, sourceId)
 })
 
 test('a fork runs current files by default, or the source run\'s pins when asked (#103, ADR-0011)', async () => {
@@ -340,19 +158,19 @@ test('a pinned fork refuses when a pinned version is gone (#103)', async () => {
   assert.strictEqual((await fork(sourceId, { from: 'after', versions: 'pinned' })).status, 422)
 })
 
-test('fork refuses a request it cannot read against the run (#103)', async () => {
+test('fork refuses a body it cannot read; an unknown run is not found (#103, #160)', async () => {
   newWorkspace()
   const sourceId = await completeRun()
-  assert.strictEqual((await fork(sourceId, {})).status, 400, 'from or revisions is required')
-  assert.strictEqual((await fork(sourceId, { from: 'nope' })).status, 404)
-  assert.strictEqual((await fork(sourceId, { revisions: { hold: 'x' } })).status, 400, 'a hold is answered through resume')
-  assert.strictEqual((await fork(sourceId, { revisions: { prop: 3 } })).status, 400)
-  assert.strictEqual((await fork(sourceId, { from: 'prop', revisions: { prop: 'x' } })).status, 400)
-  assert.strictEqual((await fork(sourceId, { from: 'prop', versions: 'latest' })).status, 400)
+  for (const body of [
+    {},
+    { revisions: { prop: 3 } },
+    { from: 'prop', revisions: { prop: 'x' } },
+    { from: 'prop', versions: 'latest' },
+    { revisions: { prop: { output: 'All', notes: 'Part' } } },
+  ]) {
+    assert.strictEqual((await fork(sourceId, body)).status, 400, JSON.stringify(body))
+  }
   assert.strictEqual((await fork('no-such-run', { from: 'prop' })).status, 404)
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
-  runs.update(sourceId, { status: 'running' })
-  assert.strictEqual((await fork(sourceId, { from: 'prop' })).status, 409)
 })
 
 test('/api/run refuses the retired branch request rather than running from scratch (#103)', async () => {
@@ -361,116 +179,6 @@ test('/api/run refuses the retired branch request rather than running from scrat
   const res = await POST({ json: async () => ({ chainName: 'held', seedPrompt: 'go', branchOutputs: [] }) } as Req)
   assert.strictEqual(res.status, 400)
   assert.deepStrictEqual(ran, [])
-})
-
-const structuredChain = `---
-name: held
-view: columns
-outputs:
-  - name: Pitch
-    node: prop
-    socket: pitch
-  - name: Notes
-    node: prop
-    socket: notes
-nodes:
-  - id: seed
-    kind: seed
-  - id: prop
-    kind: agent
-    agent: sections
-  - id: dec
-    kind: decider
-    agent: decider
-  - id: hold
-    kind: hold
-  - id: after
-    kind: agent
-    agent: after
-edges:
-  - from: seed
-    to: prop.input
-  - from: prop
-    to: dec.input
-  - from: dec
-    to: hold.in
-  - from: hold
-    to: after.direction
----
-`
-
-test('fork with addressed revisions splices into the node output and preserves unedited sections (#160)', async () => {
-  newWorkspace(structuredChain)
-  const sourceId = await completeRun()
-
-  const { GET: getLayout } = await import('../app/api/runs/[runId]/layout/route')
-  const layout = await (await getLayout({} as Req, { params: Promise.resolve({ runId: sourceId }) })).json() as { panels: { name: string; node: string; socket: string; text: string }[] }
-  assert.deepStrictEqual(layout.panels.map(p => [p.name, p.node, p.socket, p.text]), [
-    ['Pitch', 'prop', 'pitch', 'Original pitch.'],
-    ['Notes', 'prop', 'notes', 'Original notes.'],
-  ])
-
-  ran.length = 0
-  const events = await sse(await fork(sourceId, { revisions: { prop: { notes: 'Edited notes.' } } }))
-  const forkId = events[0].runId as string
-  assert.notStrictEqual(forkId, sourceId)
-  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'], 'only prop descendants rerun')
-  assert.ok(ran[0].systemPrompt.includes('Edited notes.'))
-
-  const forked = await readMeta(forkId)
-  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
-  assert.strictEqual(prop.output, '## Pitch\nOriginal pitch.\n\n## Notes\nEdited notes.')
-
-  const eventsBoth = await sse(await fork(sourceId, {
-    revisions: {
-      prop: {
-        pitch: { text: 'Edited pitch.', was: 'Original pitch.' },
-        notes: { text: 'Edited notes.', was: 'Original notes.' },
-      },
-    },
-  }))
-  const forkedBoth = await readMeta(eventsBoth[0].runId as string)
-  assert.strictEqual(
-    forkedBoth.agentOutputs.find(o => o.nodeId === 'prop')!.output,
-    '## Pitch\nEdited pitch.\n\n## Notes\nEdited notes.'
-  )
-
-  const stale = await fork(sourceId, {
-    revisions: { prop: { notes: { text: 'Edited notes.', was: 'Something else' } } },
-  })
-  assert.strictEqual(stale.status, 409)
-
-  const missing = await fork(sourceId, {
-    revisions: { prop: { missing: 'Edited' } },
-  })
-  assert.strictEqual(missing.status, 422)
-
-  const injectedHeading = await fork(sourceId, {
-    revisions: { prop: { notes: 'Edited notes.\n\n## Smuggled\nAttack' } },
-  })
-  assert.strictEqual(injectedHeading.status, 422)
-
-  const overlap = await fork(sourceId, {
-    revisions: { prop: { output: 'All', notes: 'Part' } },
-  })
-  assert.strictEqual(overlap.status, 400)
-})
-
-test('fork with addressed revision on an undeclared chain replaces whole output via socket output (#160)', async () => {
-  newWorkspace()
-  const sourceId = await completeRun()
-  const { GET: getLayout } = await import('../app/api/runs/[runId]/layout/route')
-  const layout = await (await getLayout({} as Req, { params: Promise.resolve({ runId: sourceId }) })).json() as { kind: string; panels: unknown[] }
-  assert.strictEqual(layout.kind, 'undeclared')
-
-  ran.length = 0
-  const events = await sse(await fork(sourceId, {
-    revisions: { prop: { output: 'trace output replacement' } },
-  }))
-  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'])
-  const forked = await readMeta(events[0].runId as string)
-  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
-  assert.strictEqual(prop.output, 'trace output replacement')
 })
 
 test('capabilities reports addressedRevisions: true (#160)', async () => {

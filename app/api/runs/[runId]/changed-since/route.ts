@@ -3,8 +3,8 @@ import { loadRunFor } from '@/lib/loadRun'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { toResponse } from '@/lib/refusal'
 import { parseVersionKey } from '@/lib/runVersionModel'
-import { getVersionContent } from '@/lib/fs/versions'
-import { changedSince, findPreviousRun } from '@/lib/changedSince'
+import { changedSince } from '@/lib/changedSince'
+import { runIndex } from '@/lib/runIndex'
 
 export async function GET(
   req: NextRequest,
@@ -15,12 +15,11 @@ export async function GET(
   const runMeta = loadRunFor(ws.runs, runId)
   if ('error' in runMeta) return toResponse(runMeta)
 
-  const allRuns = ws.runs.list()
-  const prevMeta = findPreviousRun(allRuns, runMeta)
+  const prevMeta = runIndex(ws.runs).previous(runMeta)
 
   const getContent = (key: string, version: number) => {
     const { type, slug } = parseVersionKey(key)
-    return getVersionContent(ws.root, type, slug, version)
+    return ws.versions.read(type, slug, version)
   }
 
   const result = changedSince(prevMeta, runMeta, { getContent })

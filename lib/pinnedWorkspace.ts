@@ -1,7 +1,6 @@
 import path from 'path'
 import { unprocessable } from './refusal'
 import matter from 'gray-matter'
-import { getVersionContent } from './fs/versions'
 import { parseAgentFile } from './fs/parseAgent'
 import { parseSkill } from './fs/parseSkill'
 import { parseTool } from './fs/parseTool'
@@ -9,6 +8,7 @@ import { parseChain } from './fs/parseChain'
 import { parseVersionKey } from './runVersionModel'
 import type { RunDefinitions } from './runDefinitions'
 import type { Refusal } from './types'
+import type { VersionedRoot } from './versionStore'
 
 export interface PinnedWorkspace extends RunDefinitions {
   /** Pinned context files by slug, as the executor's context overrides take them. */
@@ -38,14 +38,14 @@ const PINNABLE: Record<string, {
  * what a fork asked for with `versions: 'pinned'` runs against. A pin whose version is gone refuses.
  */
 export function pinnedWorkspace(
-  root: string,
+  { root, versions: store }: VersionedRoot,
   live: Defs & { defaults: Record<string, unknown> },
   versions: Record<string, number>,
 ): PinnedWorkspace | Refusal {
   const pins: { type: string; slug: string; raw: string }[] = []
   for (const [key, version] of Object.entries(versions)) {
     const { type, slug } = parseVersionKey(key)
-    const raw = getVersionContent(root, type, slug, version)
+    const raw = store.read(type, slug, version)
     if (raw === null) return unprocessable(`Pinned ${key} v${version} is missing`)
     pins.push({ type, slug, raw })
   }

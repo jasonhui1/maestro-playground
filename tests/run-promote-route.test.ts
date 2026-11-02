@@ -1,10 +1,12 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
+import type { ChatMessage, RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -12,29 +14,15 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
 const chats: ChatMessage[][] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (
-    agent: { slug: string; name: string },
-    systemPrompt: string,
-    userMessage: string,
-    options: { history?: ChatMessage[] } = {},
-  ): Promise<AgentOutput> => {
-    const base = {
-      agentName: agent.name, systemPrompt, input: userMessage,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
-    }
-    if (options.history) {
-      chats.push(options.history)
-      const n = options.history.filter(m => m.role === 'user').length - 1 // the turn number
-      return { ...base, output: `revised ${n}`, thought: `why ${n}`, status: 'success' }
-    }
-    ran.push({ slug: agent.slug, systemPrompt })
-    const output = agent.slug === 'decider'
-      ? `## Candidate 1\nbuilt on [${systemPrompt}]`
-      : `first from ${agent.slug}`
-    return { ...base, output, status: 'success' }
-  },
-}))
+requestEntry.model = fakeModel(({ messages, agentSlug, system }) => {
+  if (messages.some(m => m.role === 'assistant')) {
+    chats.push(messages as ChatMessage[])
+    const n = messages.filter(m => m.role === 'user').length - 1 // the turn number
+    return answer(`<thought>why ${n}</thought>revised ${n}`)
+  }
+  ran.push({ slug: agentSlug!, systemPrompt: system })
+  return answer(agentSlug === 'decider' ? `## Candidate 1\nbuilt on [${system}]` : `first from ${agentSlug}`)
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -127,7 +115,7 @@ async function promote(runId: string, nodeId: string, body: object = {}): Promis
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   return runs.read(runId)
 }
 
@@ -136,63 +124,18 @@ const logsOf = (wp: string, runId: string) =>
 const logOf = (wp: string, runId: string, file: string) =>
   matter(fs.readFileSync(path.join(wp, 'logs', runId, file), 'utf-8'))
 
-test('promote makes the latest reply the output, reruns to the hold, and keeps the run waiting', async () => {
-  const wp = newWorkspace()
+// Decisions, replay and persistence are the continuation's, tested in continue-run.test.ts. Here: parse → call → respond,
+// and what node chat, layout and export read after a promote.
+test('promote streams the rerun in the same run, back to the hold', async () => {
+  newWorkspace()
   const runId = await startRun()
-  const before = await readMeta(runId)
-  const logsBefore = logsOf(wp, runId)
   await chat(runId, 'prop', 'push harder')
-  await chat(runId, 'prop', 'again')
-  ran.length = 0
 
   const events = await sse(await promote(runId, 'prop'))
 
-  assert.strictEqual(events[0].type, 'run_start')
-  assert.strictEqual(events.at(-1)!.type, 'run_waiting')
-  assert.strictEqual(events.at(-1)!.runId, runId)
-  assert.strictEqual(events.at(-1)!.nodeId, 'hold')
-  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'], 'only the nodes between the proposer and the hold run')
-  assert.ok(ran[0].systemPrompt.includes('revised 2'), 'the decider reads the promoted reply')
-  assert.ok(ran[0].systemPrompt.includes('first from prop'), 'a sibling proposer replays its output')
-
-  const logs = logsOf(wp, runId)
-  assert.deepStrictEqual(logs.slice(0, logsBefore.length), logsBefore, 'earlier logs stay as earlier steps')
-  const added = logs.slice(logsBefore.length)
-  assert.deepStrictEqual(added.map(f => f.replace(/^\d+-/, '')), ['prop.md', 'j.md', 'dec.md'])
-  assert.ok(logOf(wp, runId, added[0]).content.trim().endsWith('## Output\n\nrevised 2'))
-
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'waiting')
-  assert.strictEqual(meta.holds?.length, 1, 'the hold record is replaced, not duplicated')
-  assert.ok(!meta.holds![0].resolvedAt)
-  assert.ok(meta.holds![0].candidates[0].body.includes('revised 2'), 'candidates reflect the new verdict')
-  assert.notStrictEqual(meta.holds![0].reachedAt, before.holds![0].reachedAt)
-
-  const ids = meta.agentOutputs.map(o => o.nodeId)
-  for (const id of ['prop', 'j', 'dec']) assert.strictEqual(ids.filter(x => x === id).length, 2, `${id} keeps its earlier record`)
-  assert.deepStrictEqual(ids.slice(-3), ['prop', 'j', 'dec'], 'records follow log order')
-  const latest = (id: string) => meta.agentOutputs.findLast(o => o.nodeId === id)!
-  assert.strictEqual(latest('prop').output, 'revised 2')
-  assert.strictEqual(latest('dec').output, meta.holds![0].input)
-  assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'dec')!.output, before.holds![0].input)
-})
-
-test('the promoted turn is flagged in the source conversation and its log', async () => {
-  const wp = newWorkspace()
-  const runId = await startRun()
-  const propLog = logsOf(wp, runId).find(f => f.endsWith('-prop.md'))!
-  await chat(runId, 'prop', 'push harder')
-  await chat(runId, 'prop', 'again')
-
-  await sse(await promote(runId, 'prop', { turn: 1 }))
-
-  const meta = await readMeta(runId)
-  const source = meta.agentOutputs.find(o => o.nodeId === 'prop')!
-  assert.deepStrictEqual(source.conversation!.map(m => m.promoted ?? false), [false, true, false, false])
-  assert.strictEqual(meta.agentOutputs.findLast(o => o.nodeId === 'prop')!.output, 'revised 1', 'turn picks an earlier reply')
-  const log = logOf(wp, runId, propLog).content
-  assert.match(log, /### Turn 1[\s\S]*promoted[\s\S]*### Turn 2/)
-  assert.doesNotMatch(log.split('### Turn 2')[1], /promoted/)
+  assert.deepStrictEqual([events[0].type, events[0].runId], ['run_start', runId])
+  assert.deepStrictEqual([events.at(-1)!.type, events.at(-1)!.runId, events.at(-1)!.nodeId], ['run_waiting', runId, 'hold'])
+  assert.strictEqual((await readMeta(runId)).agentOutputs.findLast(o => o.nodeId === 'prop')!.output, 'revised 1')
 })
 
 test('layout and markdown export read the promoted outputs', async () => {
@@ -222,31 +165,13 @@ test('layout and markdown export read the promoted outputs', async () => {
   assert.ok(!md.includes(staleDec), 'the stale verdict does not show')
 })
 
-test('promote is refused while the run is running', async () => {
+test('a body promote cannot read is a bad request; an unknown run is not found', async () => {
   newWorkspace()
   const runId = await startRun()
   await chat(runId, 'prop', 'push')
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
-
-  runs.update(runId, { status: 'running' })
-  assert.strictEqual((await promote(runId, 'prop')).status, 409)
-  assert.strictEqual((await promote('no-such-run', 'prop')).status, 404)
-})
-
-test('promote needs a reply to promote, from a proposer in the run', async () => {
-  newWorkspace()
-  const runId = await startRun()
-  assert.strictEqual((await promote(runId, 'prop')).status, 400, 'no conversation yet')
-  await chat(runId, 'prop', 'push')
-  assert.strictEqual((await promote(runId, 'prop', { turn: 2 })).status, 400)
-  assert.strictEqual((await promote(runId, 'prop', { turn: 0 })).status, 400)
   assert.strictEqual((await promote(runId, 'prop', { turn: 'one' })).status, 400)
-  assert.strictEqual((await promote(runId, 'j')).status, 400)
-  assert.strictEqual((await promote(runId, 'nope')).status, 404)
-
-  const meta = await readMeta(runId)
-  assert.strictEqual(meta.status, 'waiting', 'a refused promote changes nothing')
-  assert.ok(!meta.agentOutputs.some(o => o.conversation?.some(m => m.promoted)))
+  assert.strictEqual((await promote('no-such-run', 'prop')).status, 404)
+  assert.strictEqual((await readMeta(runId)).status, 'waiting')
 })
 
 test('a chat after promote still knows the argument that led to the promoted reply', async () => {

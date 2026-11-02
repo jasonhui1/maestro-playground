@@ -10,17 +10,12 @@ import type { AgentDef, AgentOutput, RunMeta } from '../lib/types'
 import { continueRun } from '../lib/continueRun'
 import { parseChainContent } from '../lib/parseChain'
 import type { LiveWorkspace } from '../lib/runSession'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
-vi.mock('@/lib/fs/versions', () => ({ snapshotVersion: () => 1 }))
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: any, systemPrompt: string, input: string): Promise<AgentOutput> => ({
-    agentName: agent.name, systemPrompt, input,
-    output: agent.slug === 'decider' ? '## Candidate 1\nan idea' : `from ${agent.slug}`,
-    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
-  }),
-}))
+const fake = fakeModel(({ agentSlug }) => answer(agentSlug === 'decider' ? '## Candidate 1\nan idea' : `from ${agentSlug}`))
+requestEntry.model = fake.model
 
 function makeOutput(nodeId: string, output: string, opts: Partial<AgentOutput> = {}): AgentOutput {
   return {
@@ -522,7 +517,7 @@ describe('route GET /api/runs/[runId]/comparison (#130)', () => {
   test('400 when run is not a fork (#130)', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-diff-route-'))
     requestEntry.root = wp
-    const ws = diskWorkspace(wp)
+    const ws = diskWorkspace(wp, fake.model)
 
     ws.runs.create({
       runId: 'fresh-run',
@@ -552,7 +547,7 @@ describe('route GET /api/runs/[runId]/comparison (#130)', () => {
   test('200 with complete comparison projection (#130)', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-diff-route-'))
     requestEntry.root = wp
-    const ws = diskWorkspace(wp)
+    const ws = diskWorkspace(wp, fake.model)
 
     const graph = {
       nodes: [
@@ -618,7 +613,7 @@ describe('route GET /api/runs/[runId]/comparison (#130)', () => {
   test('200 even if source run was deleted when sourceOutputs baseline is stored (#130)', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-diff-route-'))
     requestEntry.root = wp
-    const ws = diskWorkspace(wp)
+    const ws = diskWorkspace(wp, fake.model)
 
     ws.runs.create({
       runId: 'fork-with-deleted-source',
@@ -682,7 +677,7 @@ edges:
   } as unknown as LiveWorkspace
 
   test('answering an already-answered hold creates a fork with provenance & source baseline (#130)', async () => {
-    const ws = memoryWorkspace(defs)
+    const ws = memoryWorkspace(defs, fake.model)
     const sourceMeta: RunMeta = {
       runId: 'source-held',
       chainName: 'held',
@@ -739,7 +734,7 @@ edges:
   })
 
   test('promoting a node conversation turn creates a fork with provenance & source baseline (#130)', async () => {
-    const ws = memoryWorkspace(defs)
+    const ws = memoryWorkspace(defs, fake.model)
     const sourceMeta: RunMeta = {
       runId: 'source-promote',
       chainName: 'held',

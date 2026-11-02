@@ -65,11 +65,10 @@ test('readPick: refusals are Refusal values', () => {
   assert.strictEqual(readPick(hold('gate'), undefined, undefined), undefined)
 })
 
-test('answerHold: an open hold resumes and its record is replaced in the list', () => {
+test('answerHold: an open hold\'s record is replaced in the list', () => {
   const other = answered('first')
   const open = hold('gate')
   const answer = answerHold([other, open], open, 'go', { custom: 'my idea' })
-  assert.strictEqual(answer.mode, 'resume')
   assert.strictEqual(answer.holds[0], other)
   assert.strictEqual(answer.holds[1], answer.record)
   assert.strictEqual(answer.record.custom, 'my idea')
@@ -77,10 +76,9 @@ test('answerHold: an open hold resumes and its record is replaced in the list', 
   assert.strictEqual(answer.output.output, 'PICK: custom\nmy idea\n\ngo')
 })
 
-test('answerHold: an answered hold forks and drops its earlier answer', () => {
+test('answerHold: re-answering a hold drops its earlier answer', () => {
   const done = hold('gate', { chosen: 'Candidate 1', direction: 'old', resolvedAt: 'x' })
   const answer = answerHold([done], done, 'new')
-  assert.strictEqual(answer.mode, 'fork')
   assert.strictEqual(answer.record.chosen, undefined)
   assert.strictEqual(answer.record.direction, 'new')
   assert.strictEqual(answer.output.output, 'new')

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { RunMeta } from '@/lib/types';
 import { AgentStreamOutput } from '@/components/AgentStreamOutput';
+import { statusStyle } from '@/lib/runStatus';
 import { 
   X, 
   Clock, 
@@ -33,13 +34,6 @@ interface Version {
 }
 
 type Tab = 'runs' | 'versions';
-
-const STATUS_DOT: Record<RunMeta['status'], string> = {
-  running: 'bg-blue-500 animate-pulse',
-  waiting: 'bg-amber-500',
-  complete: 'bg-green-500',
-  error: 'bg-red-500',
-}
 
 export function HistoryPane({ entityType, slug, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('runs');
@@ -230,7 +224,7 @@ export function HistoryPane({ entityType, slug, onClose }: Props) {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${STATUS_DOT[run.status]}`} />
+                          <span className={`w-2 h-2 rounded-full ${statusStyle(run.status).dotBgClass}`} />
                           <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-tight">
                             {run.chainName || 'Single Agent'}
                           </span>

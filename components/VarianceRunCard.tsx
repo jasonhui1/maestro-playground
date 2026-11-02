@@ -3,8 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
-import { varianceGroupStatus, type VarianceGroup } from '@/lib/variance'
-import { formatDuration, formatClockTime, formatDate, getRunDurationMs, STATUS_CONFIG } from '@/components/RunCard'
+import type { VarianceGroup } from '@/lib/variance'
+import { summarizeRun } from '@/lib/runLedger'
+import { statusStyle } from '@/lib/runStatus'
+import { formatDuration, formatClockTime, formatDate } from '@/lib/timeFormat'
+import { CostCell } from '@/components/CostCell'
 
 export interface VarianceRunCardProps {
   group: VarianceGroup
@@ -16,14 +19,8 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
   const spreads = group.nodes.flatMap(node => node.spread === undefined ? [] : [node.spread])
   const widest = spreads.length > 0 ? Math.max(...spreads).toFixed(2) : 'n/a'
 
-  const varianceStatus = varianceGroupStatus(group)
-  const statusStyle = STATUS_CONFIG[varianceStatus] ?? STATUS_CONFIG.running
-
-  const totalSteps = group.runs.reduce((sum, r) => sum + r.agentOutputs.length, 0)
-  const totalTokens = group.runs.reduce((acc, r) =>
-    acc + r.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
-  , 0)
-  const durationMs = group.runs.reduce((max, r) => Math.max(max, getRunDurationMs(r)), 0)
+  const ledger = summarizeRun(group)
+  const style = statusStyle(ledger.status)
 
   const startedAt = group.runs[0]?.startedAt || ''
   const href = `/variance/${encodeURIComponent(group.groupId)}`
@@ -38,9 +35,9 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
       >
         <td className="py-3 px-4 whitespace-nowrap">
           <div className="flex items-center gap-1.5">
-            <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
-              <span className={`text-[10px] leading-none ${statusStyle.dotClass}`}>●</span>
-              <span>{statusStyle.label}</span>
+            <span className={`inline-flex items-center gap-1 text-xs font-medium ${style.textClass}`}>
+              <span className={`text-[10px] leading-none ${style.dotClass}`}>●</span>
+              <span>{style.label}</span>
             </span>
             <span className="rounded border border-violet-200 bg-violet-50 px-1 py-0.2 text-[9px] font-medium text-violet-700">
               ×{group.expectedRunCount}
@@ -97,29 +94,27 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span
             className="font-mono text-xs text-zinc-700"
-            title={`${totalSteps} total steps across ${group.runs.length} runs`}
+            title={`${ledger.steps} total steps across ${group.runs.length} runs`}
           >
-            {totalSteps}
+            {ledger.steps}
           </span>
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-700">
-            {totalTokens > 0 ? totalTokens.toLocaleString() : '0'}
+            {ledger.tokens > 0 ? ledger.tokens.toLocaleString() : '0'}
           </span>
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          <span className="font-mono text-xs text-zinc-900 font-medium">
-            {group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : '—'}
-          </span>
+          <CostCell cost={ledger} className="font-mono text-xs text-zinc-900 font-medium justify-end" />
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <div className="flex items-center justify-end gap-2">
             <div className="flex flex-col items-end">
               <span className="font-mono text-xs font-medium text-zinc-900">
-                {formatDuration(durationMs)}
+                {formatDuration(ledger.durationMs)}
               </span>
               {startedAt && (
                 <time
@@ -190,11 +185,11 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Total Tokens</span>
-                  <span className="font-mono font-medium text-zinc-800">{totalTokens.toLocaleString()}</span>
+                  <span className="font-mono font-medium text-zinc-800">{ledger.tokens.toLocaleString()}</span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Total Cost</span>
-                  <span className="font-mono font-medium text-zinc-800">{group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : 'unpriced'}</span>
+                  <CostCell cost={ledger} className="font-mono font-medium text-zinc-800" />
                 </div>
               </div>
             </div>

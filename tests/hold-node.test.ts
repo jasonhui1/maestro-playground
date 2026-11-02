@@ -22,7 +22,7 @@ test('hold descriptor: one input `in`, one output `output`, a prompt field, unde
   assert.deepStrictEqual(d.outputs(node, ws), ['output'])
   assert.deepStrictEqual(d.fields, [{ key: 'prompt', codec: 'string' }])
   assert.strictEqual(d.acceptsInputs, true)
-  assert.deepStrictEqual(d.palette, { label: 'Hold', category: 'Control flow' })
+  assert.deepStrictEqual(d.palette, { label: 'Hold', category: 'Control flow', order: 33 })
 })
 
 test('a chain file with a hold round-trips byte-identically', () => {

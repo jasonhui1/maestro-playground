@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import type { ChainDef } from '../lib/types'
-import { runAgent } from '../lib/runner'
+import type { RunAgentTurn } from '../lib/agentTurn'
 
 test('report-executor', async () => {
   async function run() {
@@ -12,7 +12,7 @@ test('report-executor', async () => {
       edges: [{ fromNode: 'seed', fromSocket: 'output', toNode: 'r', toSocket: 'in' }],
     }
     let called = 0
-    const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
+    const runFn: RunAgentTurn = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
       chain, { root: process.cwd() },

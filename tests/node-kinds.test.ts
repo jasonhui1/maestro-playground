@@ -129,7 +129,8 @@ test('node-kinds', () => {
     report: { label: 'Report', category: 'Output' },
   }
   for (const [kind, entry] of Object.entries(expectedPalette)) {
-    assert.deepStrictEqual(kindOf(kind as ChainNodeKind).palette, entry, `palette mismatch for ${kind}`)
+    const { label, category } = kindOf(kind as ChainNodeKind).palette!
+    assert.deepStrictEqual({ label, category }, entry, `palette mismatch for ${kind}`)
   }
   assert.strictEqual(kindOf('loop-start').palette, undefined)
   assert.strictEqual(kindOf('loop-end').palette, undefined)

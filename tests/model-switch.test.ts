@@ -4,42 +4,21 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import type { AgentDef, AgentOutput, ChainDef, RunMeta } from '../lib/types'
-import { knownModelCatalogue, resolveContinuationModelOverride, calcCost, PRICED_MODELS } from '../lib/pricing'
+import type { ChainDef, RunMeta } from '../lib/types'
+import { PRICED_MODELS } from '../lib/pricing'
+import { knownModelCatalogue, resolveContinuationModelOverride } from '../lib/modelOverride'
 import { buildRunFrame } from '../lib/runFrame'
 import { emptyNodeState, RunStateMap } from '../lib/runState'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 const ranAgents: { slug: string; model: string; modelSource?: string }[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: AgentDef, systemPrompt: string, userMessage: string): Promise<AgentOutput> => {
-    ranAgents.push({
-      slug: agent.slug,
-      model: agent.model,
-      modelSource: agent.resolution?.sources.model,
-    })
-    const isDecider = agent.slug === 'decider'
-    const output = isDecider
-      ? '## Candidate 1\noption one\n\n## Candidate 2\noption two'
-      : `output from ${agent.slug}`
-    return {
-      agentName: agent.name,
-      systemPrompt,
-      input: userMessage,
-      output,
-      tokensIn: 100,
-      tokensOut: 200,
-      costUsd: calcCost(agent.model, 100, 200) ?? 0,
-      latencyMs: 42,
-      model: agent.model,
-      modelSource: agent.resolution?.sources.model,
-      timestamp: new Date().toISOString(),
-      status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agent }) => {
+  ranAgents.push({ slug: agent.slug, model: agent.model, modelSource: agent.resolution?.sources.model })
+  return answer(agent.slug === 'decider' ? '## Candidate 1\noption one\n\n## Candidate 2\noption two' : `output from ${agent.slug}`, [100, 200])
+}).model
 
 const ORIGINAL_ENV = {
   AI_PROVIDER: process.env.AI_PROVIDER,

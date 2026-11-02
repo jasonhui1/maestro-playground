@@ -2,20 +2,22 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+export interface VersionEntry {
+  version: number;
+  timestamp: string;
+  hash: string;
+}
+
 interface VersionIndex {
   latestVersion: number;
-  versions: {
-    version: number;
-    timestamp: string;
-    hash: string;
-  }[];
+  versions: VersionEntry[];
 }
 
 export function getVersionsDir(root: string, type: string, slug: string): string {
   return path.join(root, '.versions', type, slug);
 }
 
-function calculateHash(content: string): string {
+export function calculateHash(content: string): string {
   return crypto.createHash('md5').update(content).digest('hex');
 }
 
@@ -75,7 +77,7 @@ export function getVersionContent(root: string, type: string, slug: string, vers
   return fs.readFileSync(versionPath, 'utf-8');
 }
 
-export function listVersions(root: string, type: string, slug: string): VersionIndex['versions'] {
+export function listVersions(root: string, type: string, slug: string): VersionEntry[] {
   const versionsDir = getVersionsDir(root, type, slug);
   const indexPath = path.join(versionsDir, 'index.json');
   
@@ -83,7 +85,7 @@ export function listVersions(root: string, type: string, slug: string): VersionI
   try {
     const index: VersionIndex = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
     return index.versions.reverse(); // Newest first
-  } catch (e) {
+  } catch {
     return [];
   }
 }

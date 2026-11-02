@@ -1,6 +1,6 @@
 import matter from 'gray-matter'
 import { ChainDef, ChainNode, ChainEdge, BranchCase } from './types'
-import { kindOf, FieldCodec } from './nodeKinds'
+import { kindOf, fieldValue, FieldCodec } from './nodeKinds'
 
 function serializeFieldValue(value: unknown, codec: FieldCodec): unknown {
   if (value === undefined) return undefined
@@ -14,7 +14,7 @@ function serializeNode(n: ChainNode): Record<string, unknown> {
   if (n.zone !== undefined) out.zone = n.zone
   if (n.inputs && Object.keys(n.inputs).length > 0) out.inputs = n.inputs
   for (const f of kindOf(n.kind).fields) {
-    const value = serializeFieldValue((n as unknown as Record<string, unknown>)[f.key], f.codec)
+    const value = serializeFieldValue(fieldValue(n, f), f.codec)
     if (value !== undefined) out[f.key] = value
   }
   return out

@@ -1,6 +1,8 @@
-import { ChainNode, ChainEdge, ChainDef } from './types'
-import { inputAcceptsMany } from './nodeKinds'
+import { ChainNode, ChainEdge, ChainDef, ChainNodeKind } from './types'
+import { inputAcceptsMany, type WorkspaceLookup } from './nodeKinds'
 import { edgeShapeError } from './chainGraph'
+import { isBoundary, renameZone, zoneNames } from './zones'
+import { adoptOnDrop } from './zoneLayout'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
   const set = new Set(existing)
@@ -14,15 +16,15 @@ export function uniqueNodeId(kind: string, existing: string[]): string {
 // never in the node-id list, so checking node ids alone hands back an already-used zone
 // id — two loops collapsing into one zone. Callers that add/paste zones must pass this.
 export function reservedIds(nodes: ChainNode[]): string[] {
-  const zones = new Set<string>()
-  for (const n of nodes) if (n.zone) zones.add(n.zone)
-  return [...nodes.map(n => n.id), ...zones]
+  return [...nodes.map(n => n.id), ...zoneNames(nodes)]
 }
 
-export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
+// The chain's identity (slug, interface) without its graph; the graph is the live one passed alongside.
+export type ConnectWorkspace = Omit<WorkspaceLookup, 'chain'> & { chain: Omit<ChainDef, 'nodes' | 'edges'> }
+
+export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge, workspace: ConnectWorkspace): ChainEdge[] {
   const dst = nodes.find(n => n.id === edge.toNode)
-  const chain: ChainDef = { slug: '', name: '', description: '', filePath: '', nodes, edges }
-  const isMulti = dst ? inputAcceptsMany(dst, edge.toSocket, { chain, agents: [], chains: [] }) : false
+  const isMulti = dst ? inputAcceptsMany(dst, edge.toSocket, { ...workspace, chain: { ...workspace.chain, nodes, edges } }) : false
   if (isMulti) {
     const dup = edges.some(e =>
       e.fromNode === edge.fromNode && e.fromSocket === edge.fromSocket &&
@@ -31,6 +33,16 @@ export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainE
   }
   const kept = edges.filter(e => !(e.toNode === edge.toNode && e.toSocket === edge.toSocket))
   return [...kept, edge]
+}
+
+// A new node's id is minted against the full id space, so it can never take a zone's id.
+function addNodeOfKind(
+  nodes: ChainNode[],
+  kind: ChainNodeKind,
+  pos: [number, number],
+  extra?: Partial<ChainNode>,
+): ChainNode[] {
+  return [...nodes, { id: uniqueNodeId(kind, reservedIds(nodes)), kind, pos, ...extra } as ChainNode]
 }
 
 export function deleteNode(
@@ -51,15 +63,6 @@ export function deleteEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
   )
 }
 
-export function renameZone(
-  nodes: ChainNode[],
-  oldZone: string,
-  newZone: string,
-): ChainNode[] {
-  if (!oldZone || oldZone === newZone) return nodes
-  return nodes.map(n => (n.zone === oldZone ? { ...n, zone: newZone } : n))
-}
-
 export function updateNode(
   nodes: ChainNode[],
   id: string,
@@ -68,7 +71,7 @@ export function updateNode(
   const target = nodes.find(n => n.id === id)
   if (
     target &&
-    (target.kind === 'loop-start' || target.kind === 'loop-end') &&
+    isBoundary(target) &&
     patch.zone !== undefined &&
     target.zone &&
     patch.zone !== target.zone
@@ -79,12 +82,18 @@ export function updateNode(
   return nodes.map(n => (n.id === id ? { ...n, ...patch } : n))
 }
 
+// Every dropped body node re-adopts against the moved layout, so a group drag can't leave a stale zone.
 export function moveMany(
   nodes: ChainNode[],
   updates: { id: string; pos: [number, number] }[],
 ): ChainNode[] {
   const m = new Map(updates.map(u => [u.id, u.pos]))
-  return nodes.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n))
+  const moved = nodes.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n))
+  return moved.map(n => {
+    if (!m.has(n.id) || isBoundary(n)) return n
+    const { zone } = adoptOnDrop(moved, n.id, m.get(n.id)!)
+    return zone === n.zone ? n : { ...n, zone }
+  })
 }
 
 export function makeLoopZone(existingIds: string[], pos: [number, number]): ChainNode[] {
@@ -149,6 +158,23 @@ export function pasteSubgraph(
   return { nodes, edges, newIds: [...idMap.values()] }
 }
 
+export type QuickAddItem =
+  | { type: 'agent'; slug: string }
+  | { type: 'source-seed' }
+  | { type: 'source-context'; file?: string }
+  | { type: 'control-loop' }
+  | { type: 'control-gate' }
+
+function quickAddOp(item: QuickAddItem, pos: [number, number]): EditorOp {
+  switch (item.type) {
+    case 'agent': return editorOps.addNode('agent', pos, { agent: item.slug })
+    case 'source-seed': return editorOps.addNode('seed', pos)
+    case 'source-context': return editorOps.addNode('context', pos, item.file ? { file: item.file } : undefined)
+    case 'control-loop': return editorOps.addLoopZone(pos)
+    case 'control-gate': return editorOps.addNode('gate', pos)
+  }
+}
+
 export interface EditorGraph {
   nodes: ChainNode[]
   edges: ChainEdge[]
@@ -160,10 +186,10 @@ export type EditorOpType =
   | 'setGraph'
   | 'addNode'
   | 'addLoopZone'
+  | 'moveNode'
   | 'connect'
   | 'deleteNode'
   | 'deleteEdge'
-  | 'moveNode'
   | 'moveMany'
   | 'updateNode'
   | 'renameZone'
@@ -187,17 +213,18 @@ export const editorOps = {
     type: 'setGraph',
     apply: g => ({ ...g, nodes, edges }),
   }),
-  addNode: (node: ChainNode): EditorOp => ({
+  addNode: (kind: ChainNodeKind, pos: [number, number], extra?: Partial<ChainNode>): EditorOp => ({
     type: 'addNode',
-    apply: g => ({ ...g, nodes: [...g.nodes, node] }),
+    apply: g => ({ ...g, nodes: addNodeOfKind(g.nodes, kind, pos, extra) }),
   }),
+  quickAdd: quickAddOp,
   addLoopZone: (pos: [number, number]): EditorOp => ({
     type: 'addLoopZone',
     apply: g => ({ ...g, nodes: [...g.nodes, ...makeLoopZone(reservedIds(g.nodes), pos)] }),
   }),
-  connect: (edge: ChainEdge): EditorOp => ({
+  connect: (edge: ChainEdge, workspace: ConnectWorkspace): EditorOp => ({
     type: 'connect',
-    apply: g => ({ ...g, edges: connectEdge(g.nodes, g.edges, edge) }),
+    apply: g => ({ ...g, edges: connectEdge(g.nodes, g.edges, edge, workspace) }),
   }),
   deleteNode: (id: string): EditorOp => ({
     type: 'deleteNode',
@@ -210,19 +237,16 @@ export const editorOps = {
     type: 'deleteEdge',
     apply: g => ({ ...g, edges: deleteEdge(g.edges, edge) }),
   }),
-  moveNode: (id: string, pos: [number, number]): EditorOp => ({
-    type: 'moveNode',
-    apply: g => ({
-      ...g,
-      nodes: updateNode(g.nodes, id, { pos }),
-    }),
-  }),
   moveMany: (updates: { id: string; pos: [number, number] }[]): EditorOp => ({
     type: 'moveMany',
     apply: g => ({
       ...g,
       nodes: moveMany(g.nodes, updates),
     }),
+  }),
+  moveNode: (id: string, pos: [number, number]): EditorOp => ({
+    type: 'moveNode',
+    apply: g => ({ ...g, nodes: updateNode(g.nodes, id, adoptOnDrop(g.nodes, id, pos)) }),
   }),
   updateNode: (id: string, patch: Partial<ChainNode>): EditorOp => ({
     type: 'updateNode',

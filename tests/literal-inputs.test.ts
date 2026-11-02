@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { parseChainContent } from '../lib/parseChain'
@@ -17,7 +18,7 @@ function agent(slug: string, prompt: string): AgentDef {
 
 const noop = { onStart() {}, onToken() {}, onDone() {} }
 
-const stub = (async (a: AgentDef, sp: string) => ({
+const stub = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => ({
   agentName: a.name, systemPrompt: sp, input: '', output: `OUT(${a.slug})`,
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
 })) as never

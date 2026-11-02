@@ -4,12 +4,8 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { NextRequest } from 'next/server'
-import {
-  resolveAddressedFile,
-  findAgentFile,
-  declaringAgentSlug,
-  type EntityType,
-} from '../lib/fs/workspace'
+import type { EntityType } from '../lib/fs/workspace'
+import { address } from '../lib/fs/address'
 import { snapshotVersion } from '../lib/fs/versions'
 import { GET as versionsGET } from '../app/api/workspace/[type]/[slug]/versions/route'
 import { GET as watchGET } from '../app/api/watch/route'
@@ -51,8 +47,13 @@ const PREMORTEM = [
   '',
 ].join('\n')
 
-// #118, #123: resolveAddressedFile across regular agents, variants, and other entity types.
-test('resolveAddressedFile maps variants to declaring file and preserves entity slugs', () => {
+function assertAddress(got: { filePath: string; storageSlug: string }, filePath: string, storageSlug: string) {
+  assert.strictEqual(got.filePath, filePath)
+  assert.strictEqual(got.storageSlug, storageSlug)
+}
+
+// #118, #123: address across regular agents, variants, and other entity types.
+test('address maps variants to declaring file and preserves entity slugs', () => {
   const wp = newWorkspace()
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
   const plainPath = write(wp, 'agents/plain.md', '---\nname: Plain\n---\nPlain agent body.\n')
@@ -63,46 +64,45 @@ test('resolveAddressedFile maps variants to declaring file and preserves entity 
   const contextPath = write(wp, 'context/brand.md', 'Brand guidelines.\n')
 
   // Agent variant resolves to declaring file
-  const variantRes = resolveAddressedFile(wp, 'agent', 'rot')
+  const variantRes = address(wp, 'agent', 'rot')
   assert.strictEqual(variantRes.filePath, agentPath)
   assert.strictEqual(variantRes.storageSlug, 'premortem')
 
   // Regular agent resolves to its own file
-  const plainRes = resolveAddressedFile(wp, 'agent', 'plain')
+  const plainRes = address(wp, 'agent', 'plain')
   assert.strictEqual(plainRes.filePath, plainPath)
   assert.strictEqual(plainRes.storageSlug, 'plain')
 
   // Other entity types
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'skill', 'concise'), { filePath: skillPath, storageSlug: 'concise' })
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'chain', 'decision'), { filePath: chainPath, storageSlug: 'decision' })
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'template', 'base'), { filePath: templatePath, storageSlug: 'base' })
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'tool', 'search'), { filePath: toolPath, storageSlug: 'search' })
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'context', 'brand'), { filePath: contextPath, storageSlug: 'brand' })
+  assertAddress(address(wp, 'skill', 'concise'), skillPath, 'concise')
+  assertAddress(address(wp, 'chain', 'decision'), chainPath, 'decision')
+  assertAddress(address(wp, 'template', 'base'), templatePath, 'base')
+  assertAddress(address(wp, 'tool', 'search'), toolPath, 'search')
+  assertAddress(address(wp, 'context', 'brand'), contextPath, 'brand')
 
   // Custom variants map override and own-file precedence (#118, #123)
   const customVariants = new Map([['custom', { filePath: agentPath, fileSlug: 'premortem' }]])
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'agent', 'custom', customVariants), { filePath: agentPath, storageSlug: 'premortem' })
+  assertAddress(address(wp, 'agent', 'custom', { variants: customVariants }), agentPath, 'premortem')
   const shadowVariants = new Map([['plain', { filePath: agentPath, fileSlug: 'premortem' }]])
-  assert.deepStrictEqual(resolveAddressedFile(wp, 'agent', 'plain', shadowVariants), { filePath: plainPath, storageSlug: 'plain' })
+  assertAddress(address(wp, 'agent', 'plain', { variants: shadowVariants }), plainPath, 'plain')
 
   // Invalid entity type throws
-  assert.throws(() => resolveAddressedFile(wp, 'invalid' as EntityType, 'foo'), /Invalid entity type/)
+  assert.throws(() => address(wp, 'invalid' as EntityType, 'foo'), /Invalid entity type/)
 })
 
-// #118, #123: findAgentFile and declaringAgentSlug over resolveAddressedFile.
-test('findAgentFile and declaringAgentSlug resolve variants and report undefined when missing', () => {
+// #118, #123: address reports a variant's declaring file, and `new` for a missing name.
+test('address resolves variants to their declaring file and reports new when missing', () => {
   const wp = newWorkspace()
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
   const plainPath = write(wp, 'agents/plain.md', '---\nname: Plain\n---\nPlain agent body.\n')
 
-  assert.strictEqual(findAgentFile(wp, 'rot'), agentPath)
-  assert.strictEqual(declaringAgentSlug(wp, 'rot'), 'premortem')
+  assertAddress(address(wp, 'agent', 'rot'), agentPath, 'premortem')
+  assert.strictEqual(address(wp, 'agent', 'rot').kind, 'variant')
 
-  assert.strictEqual(findAgentFile(wp, 'plain'), plainPath)
-  assert.strictEqual(declaringAgentSlug(wp, 'plain'), 'plain')
+  assertAddress(address(wp, 'agent', 'plain'), plainPath, 'plain')
+  assert.strictEqual(address(wp, 'agent', 'plain').kind, 'file')
 
-  assert.strictEqual(findAgentFile(wp, 'missing'), undefined)
-  assert.strictEqual(declaringAgentSlug(wp, 'missing'), undefined)
+  assert.strictEqual(address(wp, 'agent', 'missing').kind, 'new')
 })
 
 // #118: tolerant variant index does not fail lookups when sibling agent files are malformed.
@@ -114,16 +114,10 @@ test('malformed variants block in one file does not break lookups of other agent
   const plainPath = write(wp, 'agents/plain.md', '---\nname: Plain\n---\nPlain agent body.\n')
 
   // Variant lookup in premortem succeeds despite broken files
-  assert.strictEqual(findAgentFile(wp, 'rot'), agentPath)
-  assert.strictEqual(declaringAgentSlug(wp, 'rot'), 'premortem')
+  assertAddress(address(wp, 'agent', 'rot'), agentPath, 'premortem')
 
   // Regular agent lookup succeeds
-  assert.strictEqual(findAgentFile(wp, 'plain'), plainPath)
-  assert.strictEqual(declaringAgentSlug(wp, 'plain'), 'plain')
-
-  const res = resolveAddressedFile(wp, 'agent', 'rot')
-  assert.strictEqual(res.filePath, agentPath)
-  assert.strictEqual(res.storageSlug, 'premortem')
+  assertAddress(address(wp, 'agent', 'plain'), plainPath, 'plain')
 })
 
 // #123: variant versions query uses storageSlug to access declaring file snapshots.
@@ -162,7 +156,7 @@ test('watching a variant resolves to declaring file and streams updates', async 
   const wp = newWorkspace()
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
 
-  const { filePath } = resolveAddressedFile(wp, 'agent', 'rot')
+  const { filePath } = address(wp, 'agent', 'rot')
   assert.strictEqual(filePath, agentPath)
 
   const ac = new AbortController()
@@ -214,7 +208,7 @@ test('watching a variant resolves to declaring file and streams updates', async 
 })
 
 // #118, #123: entity route GET/PUT/PATCH operate on declaring file without ternaries.
-test('entity route GET, PUT, and PATCH handle variants via resolveAddressedFile', async () => {
+test('entity route GET, PUT, and PATCH handle variants via address', async () => {
   const wp = newWorkspace()
   const agentPath = write(wp, 'agents/premortem.md', PREMORTEM)
 

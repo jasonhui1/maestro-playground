@@ -26,8 +26,9 @@ export function isModelPriced(model: string): boolean {
   return lookupPrice(model) !== undefined
 }
 
-export function priceWarningFor(model: string): string | undefined {
-  return isModelPriced(model) ? undefined : `no price for ${model}`
+/** The one wording for "these models have no price", whether for a single output or a whole run. */
+export function unpricedWarning(models: string[]): string {
+  return `no price for ${models.length > 0 ? models.join(', ') : 'an unnamed model'}`
 }
 
 export function calcCost(model: string, tokensIn: number, tokensOut: number): number | undefined {
@@ -36,72 +37,10 @@ export function calcCost(model: string, tokensIn: number, tokensOut: number): nu
   return p.input * tokensIn + p.output * tokensOut
 }
 
+/** An output's cost and its warning from one price lookup. */
+export function priceUsage(model: string, tokensIn: number, tokensOut: number): { costUsd?: number; costWarning?: string } {
+  const costUsd = calcCost(model, tokensIn, tokensOut)
+  return costUsd === undefined ? { costWarning: unpricedWarning([model]) } : { costUsd }
+}
+
 export const PRICED_MODELS: string[] = Object.keys(PRICING)
-
-export function parseModelOverride(val: unknown): { valid: true; value?: string | null } | { valid: false; error: string } {
-  if (val === undefined) return { valid: true }
-  if (val === null) return { valid: true, value: null }
-  if (typeof val === 'string' && val.trim()) return { valid: true, value: val.trim() }
-  return { valid: false, error: 'modelOverride must be a non-empty string or null' }
-}
-
-export function knownModelCatalogue(declaredModels: string[] = [], configuredModel?: string): string[] {
-  const set = new Set<string>(PRICED_MODELS)
-  if (configuredModel?.trim()) set.add(configuredModel.trim())
-  for (const m of declaredModels) {
-    if (m?.trim()) set.add(m.trim())
-  }
-  return Array.from(set)
-}
-
-export function resolveContinuationModelOverride(
-  sourceOverride: string | undefined,
-  requestOverride: string | null | undefined,
-): string | undefined {
-  if (requestOverride === undefined) return sourceOverride
-  if (requestOverride === null) return undefined
-  const clean = requestOverride.trim()
-  return clean ? clean : sourceOverride
-}
-
-// #145
-export function summarizeRunCost(outputs: Array<{ costUsd?: number; model?: string }>): {
-  totalCost: number
-  pricedCount: number
-  unpricedCount: number
-  unpricedModels: string[]
-  /** Textual fallback for plain strings, exports, or non-rich renderings (#145). */
-  formatted: string
-} {
-  let totalCost = 0
-  let pricedCount = 0
-  let unpricedCount = 0
-  const unpricedSet = new Set<string>()
-
-  for (const o of outputs) {
-    if (typeof o.costUsd === 'number') {
-      pricedCount++
-      totalCost += o.costUsd
-    } else {
-      unpricedCount++
-      if (o.model?.trim()) {
-        unpricedSet.add(o.model.trim())
-      }
-    }
-  }
-
-  const unpricedModels = Array.from(unpricedSet)
-  const formatted = pricedCount === 0
-    ? 'unpriced'
-    : unpricedCount > 0
-      ? `$${totalCost.toFixed(4)} (+${unpricedCount} unpriced)`
-      : `$${totalCost.toFixed(4)}`
-
-  return {
-    totalCost,
-    pricedCount,
-    unpricedCount,
-    unpricedModels,
-    formatted,
-  }
-}

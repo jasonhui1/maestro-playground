@@ -1,4 +1,5 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -16,7 +17,7 @@ const model = fakeModel(({ last, tools, hooks }) => {
   hooks?.onToken?.('Mirna owns it.', 'output')
   return answer('<thought>weighing</thought>Mirna owns it.', [30, 7])
 })
-vi.mock('@/lib/chatCall', () => ({ createChatCall: model.createChatCall }))
+requestEntry.model = model.model
 
 const seen = model.seen
 const roles = (i: number) => seen[i].messages.map(m => m.role)
@@ -52,7 +53,7 @@ async function sse(res: Response): Promise<Event[]> {
 }
 
 const readMeta = async (runId: string): Promise<RunMeta> =>
-  (await import('../lib/runFolders')).diskWorkspace(requestEntry.root).runs.read(runId)
+  (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel).runs.read(runId)
 
 test('a chat turn streams tokens, splits the thought, and lands in the run', async () => {
   newWorkspace()
@@ -139,10 +140,34 @@ test('a turn continues an existing run rather than starting a new one', async ()
   assert.strictEqual((await readMeta(runId)).agentOutputs.length, 2)
 })
 
+test('a turn on a run whose outputs outnumber its logs is logged after the last log', async () => {
+  const wp = newWorkspace()
+  const first = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'one' }] }))
+  const runId = first[0].runId as string
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(wp, noModel)
+  const [only] = runs.read(runId).agentOutputs
+  runs.update(runId, { agentOutputs: [only, only] })
+
+  await sse(await post({ agentName: 'Lore Keeper', runId, messages: [{ role: 'user', content: 'two' }] }))
+  assert.deepStrictEqual(fs.readdirSync(path.join(wp, 'logs', runId)).filter(f => f.endsWith('.md')).map(f => f.slice(0, 2)), ['00', '01'])
+})
+
 test('a missing agent or an empty message list is refused before any model call', async () => {
   newWorkspace()
   assert.strictEqual((await post({ messages: [{ role: 'user', content: 'hi' }] })).status, 400)
   assert.strictEqual((await post({ agentName: 'Lore Keeper', messages: [] })).status, 400)
   assert.strictEqual((await post({ agentName: 'nobody', messages: [{ role: 'user', content: 'hi' }] })).status, 404)
   assert.strictEqual(seen.length, 0)
+})
+
+test("an agent whose name differs from its slug finds its chat in its history and its chat list (#168)", async () => {
+  newWorkspace()
+  const runId = (await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'hi' }] }))).at(-1)!.runId as string
+
+  assert.deepStrictEqual((await readMeta(runId)).entrypoint, { kind: 'chat', slug: 'lore-keeper' })
+  const { GET } = await import('../app/api/runs/route')
+  const list = async (query: string) =>
+    ((await (await GET({ url: `http://localhost/api/runs?${query}` } as import('next/server').NextRequest)).json()) as RunMeta[]).map(r => r.runId)
+  assert.deepStrictEqual(await list('entityType=agent&slug=lore-keeper'), [runId])
+  assert.deepStrictEqual(await list('kind=chat&slug=lore-keeper'), [runId])
 })

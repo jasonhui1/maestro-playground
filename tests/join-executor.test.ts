@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -13,7 +14,7 @@ const agents = [
   agent('w3', 'W3', 'W3: {task}'), agent('syn', 'SYN', 'SYN: {panel}'),
 ]
 const noop = { onStart() {}, onToken() {}, onDone() {} }
-const stub = (async (a: AgentDef, sys: string) => ({
+const stub = (async ({ agent: a, systemPrompt: sys }: AgentTurn) => ({
   agentName: a.name, systemPrompt: sys, input: '', output: `out-${a.slug}`,
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
 } as AgentOutput)) as never

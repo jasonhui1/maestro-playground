@@ -2,8 +2,9 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import yaml from 'js-yaml'
 import path from 'path'
-import { resolveAddressedFile, resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, EntityType } from './workspace'
+import { resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, ENTITY_TYPES, EntityType } from './workspace'
 import { WorkspaceError, WorkspaceSaveConflict } from './errors'
+import { addressExisting, type Address } from './address'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
@@ -20,6 +21,15 @@ export interface SaveEntityRequest {
   folder?: string
   /** Omitted: legacy unconditional save. Null: create only. String: exact approved file text. */
   expectedRaw?: string | null
+}
+
+/** The file text for a save. The one place frontmatter is validated (#164). */
+function fileText(data: Record<string, unknown>, content: string) {
+  const validation = validateYaml(yaml.dump(data))
+  if (!validation.valid) {
+    throw new WorkspaceError('INVALID_CONTENT', `Invalid YAML frontmatter: ${validation.error}`)
+  }
+  return matter.stringify(content, data)
 }
 
 /** The names an agent file answers to: its variants, or its own slug when it has none (ADR-0013). */
@@ -61,30 +71,24 @@ function readCurrentRaw(filePath: string): string | null {
   }
 }
 
-export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder, expectedRaw }: SaveEntityRequest) {
-  const cleanSlug = sanitizeSlug(slug)
-  if (!cleanSlug) {
-    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${slug}\``)
-  }
+/**
+ * Writes where a slug already points — a variant into its declaring file (ADR-0013). The one
+ * write path: `expectedRaw` conditions it as `SaveEntityRequest` says; `raw` is the receipt (#158).
+ */
+export function saveAddressed(
+  root: string,
+  type: EntityType,
+  target: Pick<Address, 'filePath' | 'storageSlug'>,
+  data: Record<string, unknown>,
+  content: string,
+  expectedRaw?: string | null,
+) {
+  const { filePath, storageSlug } = target
   if (expectedRaw !== undefined && expectedRaw !== null && typeof expectedRaw !== 'string') {
     throw new WorkspaceError('INVALID_CONTENT', 'expectedRaw must be a string or null')
   }
-
-  // Validate frontmatter data if it's provided as a string
-  // But here it's an object, so we should stringify it and check if it's valid YAML
-  const frontmatterString = yaml.dump(data)
-  const validation = validateYaml(frontmatterString)
-  if (!validation.valid) {
-    throw new WorkspaceError('INVALID_CONTENT', `Invalid YAML frontmatter: ${validation.error}`)
-  }
-
-  const addressed = resolveAddressedFile(root, type, cleanSlug)
-  const storageSlug = addressed.storageSlug
-  const filePath = folder === undefined ? addressed.filePath : resolveEntityPath(root, type, storageSlug, folder)
-
+  const text = fileText(data, content)
   if (type === 'agent') assertAgentNamesFree(root, filePath, storageSlug, data.variants)
-
-  const fileContent = matter.stringify(content, data)
 
   // No awaits between resolution, comparison and write: cooperating requests in one engine
   // process cannot interleave. Direct disk writers do not share that guarantee (#158).
@@ -92,15 +96,28 @@ export function saveWorkspaceEntity(root: string, { type, slug, data, content, f
     const currentRaw = readCurrentRaw(filePath)
     if (currentRaw !== expectedRaw) throw new WorkspaceSaveConflict(storageSlug, currentRaw)
   }
+  // A save may be the first write into a type, so it makes the type directory itself.
+  fs.mkdirSync(path.join(root, ENTITY_TYPES[type]), { recursive: true })
   try {
-    fs.writeFileSync(filePath, fileContent, { encoding: 'utf-8', flag: expectedRaw === null ? 'wx' : 'w' })
+    fs.writeFileSync(filePath, text, { encoding: 'utf-8', flag: expectedRaw === null ? 'wx' : 'w' })
   } catch (err) {
     if (expectedRaw === null && (err as NodeJS.ErrnoException).code === 'EEXIST') {
       throw new WorkspaceSaveConflict(storageSlug, readCurrentRaw(filePath))
     }
     throw err
   }
-  return { filePath, slug: storageSlug, raw: fileContent }
+  return { filePath, slug: storageSlug, raw: text }
+}
+
+/** Places a file by slug and folder without consulting variants, so a create can never land in a declaring file. */
+export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder, expectedRaw }: SaveEntityRequest) {
+  const cleanSlug = sanitizeSlug(slug)
+  if (!cleanSlug) {
+    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${slug}\``)
+  }
+  // resolveEntityPath handles sanitization and security checks
+  const filePath = resolveEntityPath(root, type, cleanSlug, folder)
+  return saveAddressed(root, type, { filePath, storageSlug: cleanSlug }, data, content, expectedRaw)
 }
 
 export function createWorkspaceEntity(root: string, { type, name, slug, folder }: CreationParams) {
@@ -133,14 +150,6 @@ export function createWorkspaceEntity(root: string, { type, name, slug, folder }
   const { systemPrompt, content, ...data } = template
   const body = String(systemPrompt || content || '')
 
-  // Creation claims a new file name; it must not edit an existing variant's owner (#158).
-  if (type === 'agent') {
-    const addressed = resolveAddressedFile(root, type, cleanSlug)
-    if (addressed.storageSlug !== cleanSlug) {
-      throw new WorkspaceError('ALREADY_EXISTS', `an agent named \`${cleanSlug}\` already exists: ${relativePosix(path.join(root, ENTITY_DIRS.agent), addressed.filePath)}`)
-    }
-  }
-
   return saveWorkspaceEntity(root, {
     type,
     slug: cleanSlug,
@@ -161,10 +170,11 @@ export function createWorkspaceFolder(root: string, type: string, folder: string
 // A move only ever changes the path a slug resolves to (ADR-0012): the slug, .versions
 // history, and every chain reference by slug are untouched.
 export function moveWorkspaceEntity(root: string, type: EntityType, slug: string, folder: string) {
-  const currentPath = resolveEntityPath(root, type, slug)
-  if (!fs.existsSync(currentPath)) {
-    throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
+  const found = addressExisting(root, type, slug)
+  if (found.kind === 'variant') {
+    throw new WorkspaceError('INVALID_NAME', `"${slug}" is a variant declared in ${found.storageSlug}.md — edit that file instead.`)
   }
+  const currentPath = found.filePath
 
   // resolveFolderPath already confines destDir to the type directory, and a
   // basename carries no path separators, so targetPath can't escape it either.

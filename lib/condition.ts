@@ -1,6 +1,7 @@
-import { AgentOutput } from './types'
-import { extractSection } from './graph'
-import { tokenAt, endpointOf, outputKey, isWholeOutput } from './tokens'
+import { tokenAt, endpointOf, type Endpoint } from './tokens'
+
+/** What a `{node.socket}` ref reads: the run's socket reader, so a condition sees what an edge would (#166). */
+export type RefReader = (ref: Endpoint) => string
 
 type Tok =
   | { t: 'ref'; node: string; socket: string }
@@ -40,22 +41,14 @@ function tokenize(s: string): Tok[] {
   return toks
 }
 
-export function evalCondition(expr: string, nodeOutputs: Map<string, AgentOutput>): boolean {
+export function evalCondition(expr: string, read: RefReader): boolean {
   let toks: Tok[]
   try { toks = tokenize(expr) } catch { return false }
   let pos = 0
   const peek = () => toks[pos]
   const next = () => toks[pos++]
   const norm = (s: string) => s.trim().toLowerCase()
-  const resolve = (tk: Tok): string => {
-    if (tk.t !== 'ref') return ''
-    const compoundKey = outputKey(tk.node, tk.socket)
-    const compoundOut = nodeOutputs.get(compoundKey)
-    if (compoundOut) return compoundOut.output || ''
-    const o = nodeOutputs.get(tk.node)
-    if (!o) return ''
-    return isWholeOutput(tk.socket) ? (o.output || '') : extractSection(o.output || '', tk.socket)
-  }
+  const resolve = (tk: Tok): string => tk.t === 'ref' ? read({ node: tk.node, socket: tk.socket }) : ''
 
   function parseOr(): boolean {
     let v = parseAnd()

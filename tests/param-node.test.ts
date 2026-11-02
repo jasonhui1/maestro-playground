@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { readSocket, resolveNodePrompt } from '../lib/resolveNode'
@@ -36,7 +37,7 @@ test('a chain with no declared parameter has none', () => {
 
 test('readSocket reads a param node from the run-supplied value, not the file', () => {
   const node: ChainNode = { id: 'audience', kind: 'param' }
-  const read = readSocket(node, 'output', new Map(), 'SEED TEXT', () => '', 'a compiler')
+  const read = readSocket(node, 'output', { outputs: new Map(), seedPrompt: 'SEED TEXT', paramValue: 'a compiler' })
   assert.strictEqual(read.value, 'a compiler')
 })
 
@@ -72,7 +73,7 @@ test('runChainGraph threads the chosen parameter value into the agent that reads
     ],
   }
   let seenPrompt = ''
-  const stub = (async (a: AgentDef, systemPrompt: string) => {
+  const stub = (async ({ agent: a, systemPrompt: systemPrompt }: AgentTurn) => {
     seenPrompt = systemPrompt
     return { agentName: a.name, systemPrompt, input: '', output: 'OUT',
       tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput

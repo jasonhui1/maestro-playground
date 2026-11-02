@@ -1,11 +1,19 @@
-import { test } from 'vitest'
+import { test, vi, afterEach } from 'vitest'
 import assert from 'node:assert'
-import { runAgent, DEFAULT_MAX_TOOL_TURNS } from '../lib/runner'
+import { runAgentTurn, DEFAULT_MAX_TOOL_TURNS, type AgentTurn } from '../lib/agentTurn'
 import { splitThought } from '../lib/modelStream'
 import { isTransient, withRetry } from '../lib/retry'
-import { ChatCall, ChatCallRequest, ChatCallResponse, AssistantWireMessage } from '../lib/tools/loop'
-import { BoundTool } from '../lib/tools/registry'
-import { AgentDef, ToolDef } from '../lib/types'
+import { calcCost } from '../lib/pricing'
+import type { ChatCall, ChatCallRequest, ChatCallResponse, AssistantWireMessage } from '../lib/tools/loop'
+import type { ToolOutcome } from '../lib/tools/registry'
+import type { ToolContext } from '../lib/tools/context'
+import type { AgentDef, ToolDef } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
+
+const { retrieve, draw } = vi.hoisted(() => ({ retrieve: vi.fn(), draw: vi.fn() }))
+vi.mock('../lib/tools/retrieveExecutor', () => ({ retrieveExecutor: retrieve }))
+vi.mock('../lib/tools/novelaiExecutor', () => ({ novelaiExecutor: draw }))
+afterEach(() => vi.resetAllMocks())
 
 // ---- fixtures ---------------------------------------------------------------
 
@@ -17,13 +25,19 @@ const toolDef: ToolDef = {
   filePath: '',
 }
 
-function bound(execute: BoundTool['execute']): BoundTool {
-  return {
-    def: toolDef,
-    jsonSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-    execute,
-  }
+const drawDef: ToolDef = {
+  slug: 'novelai', name: 'novelai', executor: 'novelai', params: {}, config: {}, description: 'Draw.', filePath: '',
 }
+
+/** The workspace's tools, with retrieve answering as `execute` does. */
+function tools(execute: () => string): NonNullable<AgentTurn['tools']> {
+  retrieve.mockImplementation(execute)
+  return { defs: [toolDef, drawDef], context: { workspacePath: '/ws' } }
+}
+
+/** `turn` on a model that answers every call with `chatCall`. */
+const run = (chatCall: ChatCall, turn: Partial<AgentTurn> & { agent?: AgentDef } = {}) =>
+  runAgentTurn(() => chatCall, { agent: agentDef(), systemPrompt: 'be brief', input: 'go', ...turn })
 
 function agentDef(over: Partial<AgentDef> = {}): AgentDef {
   return {
@@ -130,10 +144,7 @@ async function main() {
       () => response(callRetrieve('c1', 'Gilded Flagon owner'), [100, 20]),
       () => response(assistant({ content: '<thought>grounded now</thought>Mirna owns it.' }), [300, 40]),
     ])
-    const out = await runAgent(
-      agentDef(), 'be brief', 'Follow your instructions.',
-      { boundTools: [bound(() => 'Owned by Mirna Copperhand.')], chatCall },
-    )
+    const out = await run(chatCall, { agent: agentDef({ tools: ['retrieve'] }), tools: tools(() => 'Owned by Mirna Copperhand.') })
 
     assert.strictEqual(out.status, 'success')
     assert.strictEqual(out.output, 'Mirna owns it.', 'output is final text only')
@@ -159,10 +170,7 @@ async function main() {
       () => response(callRetrieve('c1', 'lore'), [100, 20]),
       () => { throw new Error('502 bad gateway') },
     ])
-    const out = await runAgent(
-      agentDef(), 'be brief', 'go',
-      { boundTools: [bound(() => 'a result')], chatCall },
-    )
+    const out = await run(chatCall, { agent: agentDef({ tools: ['retrieve'] }), tools: tools(() => 'a result') })
 
     assert.strictEqual(out.status, 'error')
     assert.strictEqual(out.output, '')
@@ -180,10 +188,7 @@ async function main() {
       () => response(callRetrieve('c1', 'lore')),
       () => response(assistant({ content: 'Answered without it.' })),
     ])
-    const out = await runAgent(
-      agentDef(), 'be brief', 'go',
-      { boundTools: [bound(() => { throw new Error('folder missing') })], chatCall },
-    )
+    const out = await run(chatCall, { agent: agentDef({ tools: ['retrieve'] }), tools: tools(() => { throw new Error('folder missing') }) })
 
     assert.strictEqual(out.status, 'success', 'a failed tool does not fail the node')
     assert.strictEqual(out.output, 'Answered without it.')
@@ -197,10 +202,7 @@ async function main() {
       () => response(callRetrieve('c1', 'one')),
       () => response(assistant({ content: 'Final.' })),
     ])
-    const out = await runAgent(
-      agentDef({ max_tool_turns: 1 }), 'be brief', 'go',
-      { boundTools: [bound(() => 'r')], chatCall },
-    )
+    const out = await run(chatCall, { agent: agentDef({ tools: ['retrieve'], max_tool_turns: 1 }), tools: tools(() => 'r') })
 
     assert.strictEqual(out.status, 'success')
     assert.strictEqual(out.output, 'Final.')
@@ -215,7 +217,7 @@ async function main() {
     const { chatCall, requests } = fakeChat([
       () => response(assistant({ content: '<thought>easy</thought>Mirna owns it.' }), [12, 5]),
     ])
-    const out = await runAgent(agentDef(), 'be brief', 'who owns it?', { chatCall })
+    const out = await run(chatCall, { input: 'who owns it?' })
 
     assert.strictEqual(requests.length, 1, 'no tools -> the loop settles on the first turn')
     assert.deepStrictEqual(requests[0].tools, [], 'an empty tool set is declared as empty')
@@ -232,7 +234,7 @@ async function main() {
     const { chatCall } = fakeChat([
       () => response(assistant({ content: 'Answer.', reasoning: 'weighed it up' })),
     ])
-    const out = await runAgent(agentDef(), 'be brief', 'go', { chatCall })
+    const out = await run(chatCall)
     assert.strictEqual(out.output, 'Answer.')
     assert.strictEqual(out.thought, 'weighed it up')
   }
@@ -240,8 +242,8 @@ async function main() {
   // no tools — history replaces the system/user pair verbatim
   {
     const { chatCall, requests } = fakeChat([() => response(assistant({ content: 'ok' }))])
-    await runAgent(agentDef(), 'be brief', 'third', {
-      chatCall,
+    await run(chatCall, {
+      input: 'third',
       history: [
         { role: 'system', content: 'be brief' },
         { role: 'user', content: 'first' },
@@ -262,14 +264,8 @@ async function main() {
     const spentThenFailed = (): Array<(req: ChatCallRequest) => ChatCallResponse> => [
       () => ({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } }),
     ]
-    const withTools = await runAgent(
-      agentDef(), 'be brief', 'go',
-      { boundTools: [bound(() => 'r')], chatCall: fakeChat(spentThenFailed()).chatCall },
-    )
-    const without = await runAgent(
-      agentDef(), 'be brief', 'go',
-      { chatCall: fakeChat(spentThenFailed()).chatCall },
-    )
+    const withTools = await run(fakeChat(spentThenFailed()).chatCall, { agent: agentDef({ tools: ['retrieve'] }), tools: tools(() => 'r') })
+    const without = await run(fakeChat(spentThenFailed()).chatCall)
     const accounting = (o: typeof withTools) =>
       ({ status: o.status, output: o.output, tokensIn: o.tokensIn, tokensOut: o.tokensOut, costUsd: o.costUsd })
 
@@ -282,4 +278,50 @@ async function main() {
   }
 }
 
-test('runner-tools', main)
+test('agent-turn', main)
+// ---- through the fake model adapter (#170) -----------------------------------
+
+const turn = (over: Partial<AgentTurn> = {}): AgentTurn => ({ agent: agentDef(), systemPrompt: 'be brief', input: 'go', ...over })
+
+test('the turn prices what the model spent, and warns on a model with no price', async () => {
+  const fake = fakeModel(() => answer('done', [1000, 500]))
+  const priced = await runAgentTurn(fake.model, turn({ agent: agentDef({ model: 'openai/gpt-4o-mini' }) }))
+  assert.strictEqual(priced.costUsd, calcCost('openai/gpt-4o-mini', 1000, 500))
+  assert.strictEqual(priced.costWarning, undefined)
+
+  const unpriced = await runAgentTurn(fake.model, turn())
+  assert.strictEqual(unpriced.costUsd, undefined)
+  assert.match(unpriced.costWarning ?? '', /test\/model/)
+})
+
+test('images a tool saved are attached to the output; a tool the agent does not declare is never offered', async () => {
+  const saved: string[] = []
+  const context: ToolContext = { workspacePath: '/ws', images: { save: name => { saved.push(name); return `/api/runs/r1/images/${name}` } } }
+  draw.mockImplementation((_p, _c, ctx: ToolContext): ToolOutcome => ({ result: 'drew one', images: [ctx.images!.save('img-a.webp', new Uint8Array([1]))] }))
+  const fake = fakeModel(({ hooks }) => {
+    hooks?.onToolCallStart?.()
+    return { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'd1', function: { name: 'novelai', arguments: '{}' } }] } }] }
+  })
+
+  const out = await runAgentTurn(fake.model, turn({ agent: agentDef({ tools: ['novelai', 'nonexistent'] }), tools: { defs: [toolDef, drawDef], context } }))
+
+  assert.deepStrictEqual(fake.seen[0].tools, ['novelai'])
+  assert.deepStrictEqual(saved, ['img-a.webp'])
+  assert.strictEqual(out.output, 'grounded: drew one\n\n## Images\n\n![](/api/runs/r1/images/img-a.webp)')
+})
+
+test('a run override picks the model the turn reaches and is recorded as its source', async () => {
+  const fake = fakeModel(() => answer('ok'))
+  const out = await runAgentTurn(fake.model, turn({ modelOverride: 'openai/gpt-4o' }))
+  assert.deepStrictEqual(fake.seen.map(t => t.model), ['openai/gpt-4o'])
+  assert.deepStrictEqual([out.model, out.modelSource], ['openai/gpt-4o', 'run override'])
+})
+
+test('fixed parts are bound into the call and recorded on the output (#149)', async () => {
+  const fixedParts = { novelai: { character: 'silver hair' } }
+  const fake = fakeModel(() => answer('ok'))
+  const out = await runAgentTurn(fake.model, turn({ tools: { defs: [], context: { workspacePath: '/ws', fixedParts } } }))
+  assert.deepStrictEqual(out.fixedParts, fixedParts)
+  const bare = await runAgentTurn(fake.model, turn({ tools: { defs: [], context: { workspacePath: '/ws', fixedParts: {} } } }))
+  assert.strictEqual('fixedParts' in bare, false)
+})

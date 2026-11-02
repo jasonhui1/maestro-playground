@@ -22,6 +22,10 @@ One kind's entry in the registry.
 
 A **socket** is a wiring endpoint on a node: output sockets (`output`, `summary`, any markdown header slice) and input sockets. A **slot** is a `{token}` in an agent's prompt; an agent node's input sockets are exactly its prompt's slots. "Socket" is the graph-side word, "slot" the prompt-side word for the same input on agent nodes.
 
+## Socket read
+
+What an edge from an output socket delivers, decided by its kind's `read` fact (#166): `seed`, `context` or `param` read the run's value; `pass-through` (gate, branch) the whole output whatever the socket; `keyed` (subchain ports, zone states) one record per socket; `sectioned` (agents and the rest) the whole output on `output`, the roll on `dice` when the node rolls, a `##` section otherwise. One reader, `readSocket`, serves edges, condition refs and **panels**; the canvas labels only a `section` socket as `## name`, and a fork edits only `whole` or `section` text, refusing keyed and roll sockets. _Avoid_: extract (only one of the reads extracts).
+
 ## Literal input
 
 A typed constant value explicitly saved under `node.inputs[slot]` in the chain definition. Dual-mode with wires (ComfyUI pattern): when disconnected, the saved literal supplies the slot value; when connected, the incoming wire takes strict precedence and the literal is ignored. Connecting and disconnecting preserves the saved text. An explicitly saved empty string `""` is a valid literal (checked via `Object.hasOwn(node.inputs, slot)`).
@@ -46,9 +50,21 @@ An input socket that does not block execution when left unwired. Per-input fact 
 
 The `{ chain, agents, chains }` bundle of already-loaded workspace files passed to registry socket functions, so e.g. an agent node can find its agent file's `{slots}`. A plain parameter (filesystem-first: nothing cached across requests). _Avoid_: context (collides with the `context` node kind).
 
+## Address
+
+What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). The slug is sanitised first, so a `.md`-suffixed request answers to the same name the listing gives (#159). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. Create does not: it places a new file by slug and folder and never consults one, so a new agent can never land in a declaring file. _Avoid_: locate (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
+
 ## Run folders
 
-The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions() }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
+The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions(), versions }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). `versions` is the same kind of seam over `.versions/` snapshots and pinned reads; `runFiles` is the one call for what a run reads — live or pinned definitions, its pins, and the entry file's version number (#169). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).
+
+## Agent turn
+
+One call of an agent on the model, through `runAgentTurn` in `lib/agentTurn.ts` (#170): it applies the run's model override, binds the tools the agent's file declares, splits thought from output, attaches saved images and prices the tokens, returning one `AgentOutput`. A graph node, a reroll, a chat and a node chat all run through it; the executor takes it as its `run`. The model is a **model factory** (`ModelFactory`, one chat call per agent) carried on the request's `Workspace` as `model`: `requestWorkspace()` wires the provider adapter, and a workspace built without one refuses every turn, so a test swaps the model where it swaps the workspace. _Avoid_: runner, runAgent (the old names).
+
+## Run index
+
+The one reader of what runs ran, over **run folders** (`lib/runIndex.ts`, #168). A run's **subject** is what it ran: a chain, agent, tool, chat or inline chain, by the slug its `entrypoint` records and the pins a rename repoints. The index lists a subject's runs, the runs an agent took part in, and a run's previous run of the same subject; runs from before slugs are matched by the title they started under. _Avoid_: entry point (the meta field, not the concept), run target.
 
 ## Variance group and spread
 
@@ -90,7 +106,7 @@ A run is **waiting** when the wavefront reached a `hold`: the hold's wave-mates 
 
 **Fork** revisits a run's history without rewriting it: a new run of the same recorded graph whose `branchedFromRunId` names the source and `branchedFromNode` the anchor, the promoted node or the answered hold. It replays every output but the anchor and its descendants (a node's repeated records collapse to the latest), then the anchor's new output; holds below the anchor are asked again. Promote forks on a finished run or past an answered hold; resume forks when the hold is already answered or when `fork: true` is requested for a waiting hold; a reroll forks under the same rule, or when it asks for more `like` a candidate (#147). The source run keeps its history (#99, #76). A **branch** is the older form, anchored by `branchedFromStep` and replayed from a client-supplied list. _Avoid_: rewind, parent run.
 
-A **continuation** is one of resume, promote or fork handed to `continueRun` as a plan — `answer`, `promote` or `fork` — which decides in place or fork and streams the stretch. In place, the earlier records replay as the very objects on disk, so they are never logged again (#107).
+A **continuation** is one of resume, promote, fork or reroll handed to `continueRun` as a plan — `answer`, `promote`, `fork` or `reroll` — which decides in place or fork once, builds the replay set, and writes and streams the **stretch** — what one request runs, written to the run's own folder or a new one (#162). A reroll's stretch reruns one producer, then stops. In place, the earlier records replay as the very objects on disk, so they are never logged again (#107).
 
 ## Static vs dynamic width
 
@@ -99,6 +115,8 @@ A **continuation** is one of resume, promote or fork handed to `continueRun` as 
 ## Zone
 
 A loop-start/loop-end pair and the body nodes between them; iterates until the `until` condition or `maxIterations`. A `loop-start.state` entry is either a bare name with replace semantics or `{ name, accumulate: true, separator? }`. An accumulating state takes every live value entering the matching `loop-end` socket in edge order each round and appends it to the carried value; skipped producers contribute nothing, and `separator` defaults to a blank line. The canvas draws the zone as a `zoneFrame` bounding box — which is a visual, not a node kind.
+
+`lib/zones.ts` (#167) is the one place that knows zone semantics: membership and pairing, body order, state entries, validation issues and rename. The executor, validator, run-subgraph helpers and editor ask it rather than grouping nodes by `zone` themselves. A blank zone id is no zone. `lib/zoneLayout.ts` is the client-side canvas side: node size, frame boxes, and which zone a dropped node joins (a boundary never adopts one).
 
 ## Call site
 

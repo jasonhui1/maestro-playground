@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { AgentOutput, RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -11,15 +12,10 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 // The model is the only stand-in: the executor, route and log read-back are real. Echoing
 // the resolved system prompt back as output lets a test read off which values landed where.
 const ran: string[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
-    ran.push(agent.slug)
-    return {
-      agentName: agent.name, systemPrompt, input: '', output: systemPrompt,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug, system }) => {
+  ran.push(agentSlug!)
+  return answer(system)
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -120,7 +116,8 @@ test('empty text is a value; null leaves the input to seedPrompt', async () => {
   assert.strictEqual(writerDone(events).output, 'Story:  / Audience: FALLBACK')
 })
 
-test('the values are pinned with the run: a fork replays the same inputs', async () => {
+// A continuation replaying them is tested in continue-run.test.ts.
+test('the values are pinned with the run', async () => {
   newWorkspace()
   const runId = (await sse(await run({ chainName: 'writer-chain', seedPrompt: 'SEED', inputs: { story: 'a knight', audience: 'kids' } }))).at(-1)!.runId as string
 
@@ -128,14 +125,7 @@ test('the values are pinned with the run: a fork replays the same inputs', async
   const meta = await (await GET({} as import('next/server').NextRequest, { params: Promise.resolve({ runId }) })).json() as RunMeta
   assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'story-seed')?.output, 'a knight')
   assert.strictEqual(meta.agentOutputs.find(o => o.nodeId === 'audience-seed')?.output, 'kids')
-
-  const { POST: fork } = await import('../app/api/runs/[runId]/fork/route')
-  const forked = await sse(await fork({ json: async () => ({ from: 'writer' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
-  assert.strictEqual(writerDone(forked).output, 'Story: a knight / Audience: kids')
   assert.deepStrictEqual(meta.inputs, { story: 'a knight', audience: 'kids' })
-
-  const reseeded = await sse(await fork({ json: async () => ({ from: 'story-seed' }) } as import('next/server').NextRequest, { params: Promise.resolve({ runId }) }))
-  assert.strictEqual(writerDone(reseeded).output, 'Story: a knight / Audience: kids', 'a rerun seed reads its pinned input, not seedPrompt')
 })
 
 test('the workspace chain list carries each chain\'s inputs in file order', async () => {

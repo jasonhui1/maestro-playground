@@ -1,6 +1,6 @@
 // The in-node tool loop — vision.md's "second heart". Pure: driven by an injected
 // `chatCall` (the one seam), so termination, caps, error-as-result, and wire-truth
-// are all testable with a scripted fake. runAgent wires the real client in.
+// are all testable with a scripted fake. runAgentTurn wires in the request's model.
 //
 // Wire-truth invariant: the message list is append-only, chronological, verbatim.
 // Assistant messages are appended as the exact objects the chatCall returned, so

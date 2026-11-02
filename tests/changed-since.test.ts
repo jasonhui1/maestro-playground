@@ -1,4 +1,5 @@
 import { test, describe, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -6,12 +7,11 @@ import os from 'os'
 import type { NextRequest } from 'next/server'
 import {
   changedSince,
-  findPreviousRun,
   countLineDiff,
   detectFieldChanges,
   formatChangeSummary,
-  isInlineRun,
 } from '../lib/changedSince'
+import { previousRun, runSubject } from '../lib/runIndex'
 import { snapshotVersion } from '../lib/fs/versions'
 import { diskWorkspace } from '../lib/runFolders'
 import type { RunMeta } from '../lib/types'
@@ -325,7 +325,7 @@ describe('changedSince pure function (#131)', () => {
   })
 })
 
-describe('findPreviousRun predecessor selection (#131)', () => {
+describe('previousRun predecessor selection (#131)', () => {
   test('selects most recent earlier run of same chain by startedAt', () => {
     const runs: RunMeta[] = [
       { runId: 'run-1', chainName: 'Story', seedPrompt: 'p', startedAt: '2026-09-21T09:00:00Z', status: 'complete', agentOutputs: [] },
@@ -334,7 +334,7 @@ describe('findPreviousRun predecessor selection (#131)', () => {
       { runId: 'run-4', chainName: 'Story', seedPrompt: 'p', startedAt: '2026-09-21T11:00:00Z', status: 'complete', agentOutputs: [] },
     ]
 
-    const pred = findPreviousRun(runs, runs[3])
+    const pred = previousRun(runs, runs[3])
     assert.strictEqual(pred?.runId, 'run-2')
   })
 
@@ -347,7 +347,7 @@ describe('findPreviousRun predecessor selection (#131)', () => {
       runId: 'run-3', chainName: 'New Brand Title', chainSlug: 'story-slug', seedPrompt: 'p', startedAt: '2026-09-21T11:00:00Z', status: 'complete', agentOutputs: []
     }
 
-    const pred = findPreviousRun(runs, current)
+    const pred = previousRun(runs, current)
     assert.strictEqual(pred?.runId, 'run-1')
   })
 
@@ -360,7 +360,7 @@ describe('findPreviousRun predecessor selection (#131)', () => {
       runId: 'run-3', chainName: 'Common Name', chainSlug: 'slug-a', seedPrompt: 'p', startedAt: '2026-09-21T11:00:00Z', status: 'complete', agentOutputs: []
     }
 
-    const pred = findPreviousRun(runs, current)
+    const pred = previousRun(runs, current)
     assert.strictEqual(pred?.runId, 'run-1')
   })
 
@@ -370,7 +370,7 @@ describe('findPreviousRun predecessor selection (#131)', () => {
       { runId: 'run-2', chainName: 'Inline chain', chainSlug: 'inline', entrypoint: { kind: 'inline' }, seedPrompt: 'p', startedAt: '2026-09-21T10:00:00Z', status: 'complete', agentOutputs: [] },
     ]
 
-    const pred = findPreviousRun(runs, runs[1])
+    const pred = previousRun(runs, runs[1])
     assert.strictEqual(pred, undefined)
   })
 
@@ -383,7 +383,7 @@ describe('findPreviousRun predecessor selection (#131)', () => {
       runId: 'run-c', chainName: 'Story', seedPrompt: 'p', startedAt: '2026-09-21T10:00:00Z', status: 'complete', agentOutputs: []
     }
 
-    const pred = findPreviousRun(runs, current)
+    const pred = previousRun(runs, current)
     assert.strictEqual(pred?.runId, 'run-b')
   })
 })
@@ -407,7 +407,7 @@ describe('GET /api/runs/[runId]/changed-since route (#131)', () => {
   test('200 with changed-since projection and diff content', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-changed-since-'))
     requestEntry.root = wp
-    const ws = diskWorkspace(wp)
+    const ws = diskWorkspace(wp, noModel)
 
     // Create version snapshots
     const v1 = snapshotVersion(wp, 'agent', 'writer', '---\nname: Writer\nmodel: gpt-4\n---\nPrompt v1\n')
@@ -513,7 +513,8 @@ describe('diff and change summary formatting helpers (#131)', () => {
     )
   })
 
-  test('isInlineRun detects inline configurations across fields', () => {
+  test('inline runs are detected across fields', () => {
+    const isInlineRun = (meta: RunMeta) => runSubject(meta).kind === 'inline'
     assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Inline chain', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
     assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Inline test', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)
     assert.strictEqual(isInlineRun({ runId: '1', chainName: 'Chain', chainSlug: 'inline', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [] }), true)

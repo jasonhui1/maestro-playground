@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -20,7 +21,7 @@ const agents = [
 // Stub runner: patch outputs "draft-<n>" where n = count of APPROVE markers seen in feedback+1;
 // review outputs APPROVED once the draft is "draft-3", else REVISE.
 let patchCalls = 0
-const stub = (async (a: AgentDef, sp: string) => {
+const stub = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => {
   let output = ''
   if (a.slug === 'patch') { patchCalls++; output = `draft-${patchCalls}` }
   else if (a.slug === 'review') { output = sp.includes('draft-3') ? 'APPROVED' : 'REVISE' }
@@ -63,7 +64,7 @@ async function main() {
   // --- Test Case 2: Resume/Branch from fully completed loop ---
   const originalPatchCalls = patchCalls
   patchCalls = 0
-  const stubNoCalls = (async (a: AgentDef, sp: string) => {
+  const stubNoCalls = (async ({ agent: a }: AgentTurn) => {
     throw new Error(`Should not be called! Node: ${a.slug}`)
   }) as never
 
@@ -77,7 +78,7 @@ async function main() {
 
   // --- Test Case 3: Resume/Branch from round 1 (partial completion) ---
   patchCalls = 2 // Since round 0 and 1 are already completed
-  const stubFromRound2 = (async (a: AgentDef, sp: string) => {
+  const stubFromRound2 = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => {
     let output = ''
     if (a.slug === 'patch') {
       patchCalls++
@@ -112,7 +113,7 @@ test('plain loop state keeps replacement semantics and replay behavior', main)
 test('accumulating state appends two speakers in edge order and keeps every sidebar round', async () => {
   const speakers = [agent('a', 'TRANSCRIPT={transcript}'), agent('b', 'TRANSCRIPT={transcript}')]
   const calls = new Map<string, number>()
-  const speak = (async (a: AgentDef, sp: string) => {
+  const speak = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => {
     const round = (calls.get(a.slug) ?? 0) + 1
     calls.set(a.slug, round)
     return {
@@ -153,7 +154,7 @@ test('accumulating state appends two speakers in edge order and keeps every side
 test('an accumulating state omits a speaker whose required input is not live', async () => {
   const speakers = [agent('a', '{transcript}'), agent('silent', '{transcript} {cue}')]
   let round = 0
-  const speak = (async (a: AgentDef, sp: string) => ({
+  const speak = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => ({
     agentName: a.name, systemPrompt: sp, input: '', output: a.slug === 'a' ? `A${++round}` : 'SHOULD NOT RUN',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
   } as AgentOutput)) as never
