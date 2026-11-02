@@ -1,12 +1,9 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
 
-export type QuickAddItem =
-  | { type: 'agent'; slug: string }
-  | { type: 'source-seed' }
-  | { type: 'source-context'; file?: string }
-  | { type: 'control-loop' }
-  | { type: 'control-gate' }
+import type { QuickAddItem } from '@/lib/editorOps'
+
+export type { QuickAddItem }
 
 export interface QuickAddMenuProps {
   pos: { clientX: number; clientY: number }

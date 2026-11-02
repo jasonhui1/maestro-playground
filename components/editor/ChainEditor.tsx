@@ -5,11 +5,11 @@ import { useEditedFile } from '@/hooks/useEditedFile'
 import { serializeChain } from '@/lib/serializeChain'
 import { validateChain, issuesByNode } from '@/lib/chainGraph'
 import { socketHandles } from '@/lib/nodeSockets'
-import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph } from '@/lib/editorOps'
+import { applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph, type QuickAddItem } from '@/lib/editorOps'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
 import { zoneNames } from '@/lib/zones'
-import { NODE_W, NODE_H, adoptOnDrop } from '@/lib/zoneLayout'
+import { NODE_W, NODE_H } from '@/lib/zoneLayout'
 import type { ChainDef, ChainNode, ChainEdge, ChainNodeKind, ChainPort, ValidationIssue } from '@/lib/types'
 import type { RunDefinitions } from '@/lib/runDefinitions'
 import type { RunStateMap } from '@/lib/runState'
@@ -175,18 +175,12 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
   }, [triggerRun, fileKey, slug, chain, iface])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch(editorOps.updateNode(id, patch)), [])
-  const moveNode = useCallback((id: string, pos: [number, number]) => dispatch(editorOps.updateNode(id, adoptOnDrop(nodes, id, pos))), [nodes])
+  const moveNode = useCallback((id: string, pos: [number, number]) => dispatch(editorOps.moveNode(id, pos)), [])
   const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch(editorOps.moveMany(updates)), [])
-  const addNodeOfKind = useCallback((kind: ChainNodeKind, pos: [number, number] = [80, 80], extra?: Partial<ChainNode>) => {
-    dispatch(editorOps.addNode({
-      id: uniqueNodeId(kind, nodes.map(n => n.id)),
-      kind,
-      pos,
-      ...extra,
-    }))
-  }, [nodes])
+  const addNodeOfKind = useCallback((kind: ChainNodeKind, pos: [number, number] = [80, 80]) => dispatch(editorOps.addNode(kind, pos)), [])
+  const quickAdd = useCallback((item: QuickAddItem, pos: [number, number]) => dispatch(editorOps.quickAdd(item, pos)), [])
   const addLoopZone = useCallback((pos: [number, number] = [120, 120]) => dispatch(editorOps.addLoopZone(pos)), [])
-  const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge)), [])
+  const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge, { chain, agents, chains, tools })), [chain, agents, chains, tools])
   const deleteNode = useCallback((id: string) => dispatch(editorOps.deleteNode(id)), [])
   const deleteEdge = useCallback((edge: ChainEdge) => dispatch(editorOps.deleteEdge(edge)), [])
 
@@ -242,6 +236,28 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
     availableZones,
   }), [chain, agents, tools, contextFiles, runState, nodeIssues, updateNode, runUpTo, chains, setSelectedIds, edges, availableZones])
 
+  const canvas = (
+    <ChainCanvas
+      nodes={nodes}
+      edges={edges}
+      buildData={buildData}
+      selectedIds={selectedIds}
+      onSelectionChange={setSelectedIds}
+      onMove={moveNode}
+      onMoveMany={moveMany}
+      onConnect={connect}
+      onDeleteNode={deleteNode}
+      onDeleteEdge={deleteEdge}
+      instanceCount={instanceCount}
+      currentInstance={currentInstance}
+      onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
+      onQuickAdd={quickAdd}
+      agents={agents}
+      contextFiles={contextFiles}
+      onRun={run}
+    />
+  )
+
   return (
     <div className="h-full flex flex-col">
       <ExternalChangeBanner conflict={conflict} resolve={resolve} />
@@ -256,26 +272,7 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
           {drawerSlug ? (
             <Group orientation="horizontal" className="absolute inset-0">
               <Panel minSize="30%">
-                <ChainCanvas
-                  nodes={nodes}
-                  edges={edges}
-                  buildData={buildData}
-                  selectedIds={selectedIds}
-                  onSelectionChange={setSelectedIds}
-                  onMove={moveNode}
-                  onMoveMany={moveMany}
-                  onConnect={connect}
-                  onDeleteNode={deleteNode}
-                  onDeleteEdge={deleteEdge}
-                  instanceCount={instanceCount}
-                  currentInstance={currentInstance}
-                  onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
-                  onAddNode={addNodeOfKind}
-                  onAddLoopZone={addLoopZone}
-                  agents={agents}
-                  contextFiles={contextFiles}
-                  onRun={run}
-                />
+                {canvas}
               </Panel>
               <Separator className="w-1 border-x border-zinc-200 bg-zinc-100 hover:bg-zinc-200 transition-colors" />
               <Panel defaultSize="45%" minSize="20%" maxSize="80%">
@@ -288,28 +285,7 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
                 />
               </Panel>
             </Group>
-          ) : (
-            <ChainCanvas
-              nodes={nodes}
-              edges={edges}
-              buildData={buildData}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              onMove={moveNode}
-              onMoveMany={moveMany}
-              onConnect={connect}
-              onDeleteNode={deleteNode}
-              onDeleteEdge={deleteEdge}
-              instanceCount={instanceCount}
-              currentInstance={currentInstance}
-              onInstance={(i) => useRunStore.getState().setCurrentInstance(fileKey, i)}
-              onAddNode={addNodeOfKind}
-              onAddLoopZone={addLoopZone}
-              agents={agents}
-              contextFiles={contextFiles}
-              onRun={run}
-            />
-          )}
+          ) : canvas}
         </div>
       </div>
     </div>
