@@ -2,21 +2,19 @@
 import React, { useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import type { ChainNodeKind } from '@/lib/types'
-import { allKinds, kindOf, paletteGroups } from '@/lib/nodeKinds'
+import { allKinds, kindOf, paletteGroups, LOOP_ZONE_PALETTE } from '@/lib/nodeKinds'
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 interface PaletteItem { kind: ChainNodeKind | 'loop-zone'; label: string; category: string; order: number }
 
-// loop-zone is a compound palette entry (drops a paired loop-start + loop-end zone), not a node kind —
-// the registry can't represent it, so it's appended by hand.
-const ITEMS: PaletteItem[] = [
+const ITEMS = ([
   ...allKinds
     .map(kindOf)
     .filter(d => d.palette)
     .map(d => ({ kind: d.kind, ...d.palette! })),
-  { kind: 'loop-zone', label: 'Loop zone', category: 'Loop', order: 40 },
-]
+  { kind: 'loop-zone', ...LOOP_ZONE_PALETTE },
+] as PaletteItem[]).sort((a, b) => a.order - b.order)
 
 export default function NodePalette({ onAdd, onAddLoopZone }: {
   onAdd: (kind: ChainNodeKind) => void

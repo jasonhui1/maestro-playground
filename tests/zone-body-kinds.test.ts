@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import { parseChainContent } from '../lib/parseChain'
 import { validateChain } from '../lib/chainGraph'
+import { runChainGraph } from '../lib/executor'
 import { allKinds, kindOf, paletteGroups } from '../lib/nodeKinds'
 import type { AgentDef, ChainDef, ChainNode } from '../lib/types'
 
@@ -40,15 +41,6 @@ test.each(bodies)('a $kind inside a zone fails validation, naming the node and t
   assert.ok(hit.message.includes('"n"') && hit.message.includes('"z"') && hit.message.includes(body.kind), hit.message)
 })
 
-test('agent and decider are the only zone body kinds', () => {
-  assert.deepStrictEqual(allKinds.filter(k => kindOf(k).zoneRole === 'body'), ['agent', 'decider'])
-  assert.deepStrictEqual(allKinds.filter(k => kindOf(k).zoneRole === 'boundary'), ['loop-start', 'loop-end'])
-})
-
-test('agent and decider are the only literal-capable kinds', () => {
-  assert.deepStrictEqual(allKinds.filter(k => kindOf(k).acceptsLiterals), ['agent', 'decider'])
-})
-
 test('an agent body in a zone still validates', () => {
   const res = validateChain(zoned({ id: 'n', kind: 'decider', agent: 'w', zone: 'z', inputs: { x: 'v' } }), { agents: [agent] })
   assert.ok(!res.errors.some(e => /zone/i.test(e)), res.errors.join(' | '))
@@ -64,6 +56,12 @@ test('the palette groups by category in descriptor order, and shows a category n
   assert.deepStrictEqual(
     paletteGroups(items).map(g => [g.category, g.items.map(i => i.label)]),
     [['B', ['c']], ['A', ['b', 'd']], ['Late', ['z']]],
+    'categories sort by order',
+  )
+  assert.deepStrictEqual(
+    paletteGroups([items[3], items[1]]).map(g => g.items.map(i => i.label)),
+    [['d', 'b']],
+    'items keep the order given, so a search ranking survives',
   )
   assert.deepStrictEqual(
     paletteGroups(allKinds.map(k => kindOf(k).palette).filter(p => p !== undefined)).map(g => g.category),
@@ -77,5 +75,16 @@ test('no chain on disk places a non-body kind in a zone', () => {
     const chain = parseChainContent(fs.readFileSync(path.join(dir, file), 'utf8'), file.replace(/\.md$/, ''))
     const stray = chain.nodes.filter(n => n.zone && kindOf(n.kind).zoneRole === 'none').map(n => n.id)
     assert.deepStrictEqual(stray, [], `${file}: ${stray.join(', ')}`)
+  }
+})
+
+test('every zone body kind actually runs inside a zone', async () => {
+  const run = (async (a: AgentDef, sp: string) => ({ agentName: a.name, systemPrompt: sp, input: '', output: 'ran',
+    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' })) as never
+  for (const kind of allKinds.filter(k => kindOf(k).zoneRole === 'body')) {
+    const chain = zoned({ id: 'n', kind, agent: 'w', zone: 'z', inputs: { x: 'v' } } as ChainNode)
+    const res = await runChainGraph(chain, { agents: [agent], root: '/ws' },
+      { onStart() {}, onToken() {}, onDone() {} }, { seedPrompt: 's', run })
+    assert.strictEqual(res.find(o => o.nodeId === 'n')?.status, 'success', `${kind} did not run in a zone`)
   }
 })

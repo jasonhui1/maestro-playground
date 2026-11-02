@@ -198,7 +198,7 @@ export async function runChainGraph(
       if (!start || !end) continue
       zonesByStart.set(start.id, {
         id: zid, startId: start.id, endId: end.id,
-        bodyIds: members.filter(n => n.kind !== 'loop-start' && n.kind !== 'loop-end').map(n => n.id),
+        bodyIds: members.filter(n => kindOf(n.kind).zoneRole !== 'boundary').map(n => n.id),
         states: (start.state || []).map(state => ({
           name: zoneStateName(state),
           accumulate: typeof state !== 'string' && state.accumulate === true,
@@ -245,21 +245,22 @@ export async function runChainGraph(
       markOut(zone.startId, () => true)
       for (const id of order) {
         const bn = nodeById.get(id)!
-        if (bn.kind === 'agent' || bn.kind === 'decider') {
-          if (!inputsAvailable(bn)) {
-            recordSkipped(bn, zone.startId, round)
-            continue
-          }
-          const a = bn.agent ? agentBySlug.get(bn.agent) : undefined
-          if (a) {
-            const replayed = startOutputs.find(o => o.nodeId === bn.id && o.round === round)
-            if (replayed) {
-              nodeOutputs.set(bn.id, replayed)
-              if (replayed.status !== 'skipped') markOut(bn.id, () => true)
-            } else {
-              await runAgentNode(bn, a, round, zone.startId)
-              markOut(bn.id, () => true)
-            }
+        if (kindOf(bn.kind).zoneRole !== 'body') continue
+        // A kind marked `body` needs an arm here; failing beats a node that silently never runs (#163).
+        if (bn.kind !== 'agent' && bn.kind !== 'decider') throw new Error(`Zone body kind "${bn.kind}" has no runZone arm`)
+        if (!inputsAvailable(bn)) {
+          recordSkipped(bn, zone.startId, round)
+          continue
+        }
+        const a = bn.agent ? agentBySlug.get(bn.agent) : undefined
+        if (a) {
+          const replayed = startOutputs.find(o => o.nodeId === bn.id && o.round === round)
+          if (replayed) {
+            nodeOutputs.set(bn.id, replayed)
+            if (replayed.status !== 'skipped') markOut(bn.id, () => true)
+          } else {
+            await runAgentNode(bn, a, round, zone.startId)
+            markOut(bn.id, () => true)
           }
         }
       }

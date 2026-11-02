@@ -267,6 +267,11 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
   },
 }
 
+/** One persisted field's value off a node; the descriptor's `fields` list is what makes the key valid. */
+export function fieldValue(node: ChainNode, field: FieldDescriptor): unknown {
+  return (node as unknown as Record<string, unknown>)[field.key]
+}
+
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
 }
@@ -281,17 +286,24 @@ export function inputAcceptsMany(node: ChainNode, socket: string, workspace: Wor
   return descriptor.multiInput === true || (input !== undefined && inputIsMulti(input, descriptor))
 }
 
+/** A compound palette entry (drops a paired loop-start + loop-end), not a node kind, so no descriptor holds it. */
+export const LOOP_ZONE_PALETTE: PaletteEntry = { label: 'Loop zone', category: 'Loop', order: 40 }
+
 export interface PaletteGroup<T> { category: string; items: T[] }
 
-/** Groups palette entries by category, ordered by `order`; a category nobody listed still appears. */
+/**
+ * Groups entries by category, categories ordered by their lowest `order` (a category nobody listed
+ * still appears). Items keep the order given, so a search's relevance ranking survives.
+ */
 export function paletteGroups<T extends { category: string; order: number }>(items: T[]): PaletteGroup<T>[] {
-  const groups = new Map<string, PaletteGroup<T>>()
-  for (const item of [...items].sort((a, b) => a.order - b.order)) {
-    const group = groups.get(item.category) ?? { category: item.category, items: [] }
+  const groups = new Map<string, PaletteGroup<T> & { order: number }>()
+  for (const item of items) {
+    const group = groups.get(item.category) ?? { category: item.category, items: [], order: item.order }
     group.items.push(item)
+    group.order = Math.min(group.order, item.order)
     groups.set(item.category, group)
   }
-  return Array.from(groups.values())
+  return Array.from(groups.values()).sort((a, b) => a.order - b.order).map(({ category, items }) => ({ category, items }))
 }
 
 export const allKinds: ChainNodeKind[] = Object.keys(registry) as ChainNodeKind[]

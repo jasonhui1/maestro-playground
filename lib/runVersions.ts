@@ -1,5 +1,5 @@
 import { AgentDef, ChainDef, ChainNode, SkillDef, ToolDef } from './types'
-import { kindOf, resolveNodeSkills } from './nodeKinds'
+import { kindOf, fieldValue, resolveNodeSkills } from './nodeKinds'
 import { snapshotVersion } from './fs/versions'
 import matter from 'gray-matter'
 import { versionKey } from './runVersionModel'
@@ -70,7 +70,7 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
   // fields are not walked on their own: they override or extend the agent's list.
   const walkNode = (node: ChainNode) => {
     for (const field of kindOf(node.kind).fields) {
-      const slug = (node as unknown as Record<string, unknown>)[field.key]
+      const slug = fieldValue(node, field)
       if (!field.ref || typeof slug !== 'string') continue
       if (field.ref === 'context') {
         const file = ws.context.find(f => f.slug === slug)
