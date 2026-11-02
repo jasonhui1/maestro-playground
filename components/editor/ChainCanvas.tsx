@@ -166,14 +166,14 @@ interface ChainCanvasProps {
   currentInstance: number
   onInstance: (i: number) => void
   readOnly?: boolean
-  onAddNode?: (kind: ChainNodeKind, pos: [number, number], extra?: Partial<ChainNode>) => void
-  onAddLoopZone?: (pos: [number, number]) => void
+  onQuickAdd?: (item: QuickAddItem, pos: [number, number]) => void
   agents?: { slug: string; name: string }[]
   contextFiles?: { slug: string; name: string }[]
   onRun?: () => void
 }
 
-import QuickAddMenu, { type QuickAddItem } from './QuickAddMenu'
+import QuickAddMenu from './QuickAddMenu'
+import type { QuickAddItem } from '@/lib/editorOps'
 
 function edgeId(e: ChainEdge): string {
   return `${e.fromNode}.${e.fromSocket}->${e.toNode}.${e.toSocket}`
@@ -223,19 +223,9 @@ function CanvasContent(props: ChainCanvasProps) {
     if (!menuPos) return
     const flowPos = screenToFlowPosition({ x: menuPos.clientX, y: menuPos.clientY })
     const pos: [number, number] = [Math.round(flowPos.x), Math.round(flowPos.y)]
-    if (item.type === 'agent') {
-      props.onAddNode?.('agent', pos, { agent: item.slug })
-    } else if (item.type === 'source-seed') {
-      props.onAddNode?.('seed', pos)
-    } else if (item.type === 'source-context') {
-      props.onAddNode?.('context', pos, item.file ? { file: item.file } : undefined)
-    } else if (item.type === 'control-loop') {
-      props.onAddLoopZone?.(pos)
-    } else if (item.type === 'control-gate') {
-      props.onAddNode?.('gate', pos)
-    }
+    props.onQuickAdd?.(item, pos)
     setMenuPos(null)
-  }, [menuPos, screenToFlowPosition, props.onAddNode, props.onAddLoopZone])
+  }, [menuPos, screenToFlowPosition, props.onQuickAdd])
 
   // The nodes are projected from the chain on every render rather than mirrored into
   // state, so a caller handing us a fresh `selectedIds` array costs one recompute

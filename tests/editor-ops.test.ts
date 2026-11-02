@@ -16,11 +16,13 @@ import {
   NON_HISTORIC,
   type EditorGraph,
   type EditorOp,
-  type EditorOpType,
   type Subgraph,
 } from '../lib/editorOps'
 import { withHistory } from '../lib/history'
-import { ChainEdge, ChainNode } from '../lib/types'
+import { ChainDef, ChainEdge, ChainNode } from '../lib/types'
+
+const emptyChain: ChainDef = { slug: 'c', name: 'c', description: '', filePath: '', nodes: [], edges: [] }
+const workspace = { chain: emptyChain, agents: [], chains: [] }
 
 test('uniqueNodeId increments until free', () => {
   assert.strictEqual(uniqueNodeId('agent', []), 'agent-1')
@@ -138,18 +140,18 @@ test('join/multi-input rule asserted against real nodes', () => {
   })
 
   // Normal node (agent): 2nd edge replaces 1st into same socket; different socket kept
-  const normalEdges = connectEdge(nodes, [e('a', 'c', 'input')], e('b', 'c', 'input'))
+  const normalEdges = connectEdge(nodes, [e('a', 'c', 'input')], e('b', 'c', 'input'), workspace)
   assert.strictEqual(normalEdges.length, 1)
   assert.strictEqual(normalEdges[0].fromNode, 'b')
-  const diffSocketEdges = connectEdge(nodes, normalEdges, e('a', 'c', 'other'))
+  const diffSocketEdges = connectEdge(nodes, normalEdges, e('a', 'c', 'other'), workspace)
   assert.strictEqual(diffSocketEdges.length, 2)
 
   // Join node (multiInput): keeps multiple edges to same socket, but dedups exact duplicate
-  const joinEdges = connectEdge(nodes, [e('a', 'j', 'input')], e('b', 'j', 'input'))
+  const joinEdges = connectEdge(nodes, [e('a', 'j', 'input')], e('b', 'j', 'input'), workspace)
   assert.strictEqual(joinEdges.length, 2)
   assert.deepStrictEqual(joinEdges.map(x => x.fromNode), ['a', 'b'])
 
-  const dedupedJoinEdges = connectEdge(nodes, joinEdges, e('a', 'j', 'input'))
+  const dedupedJoinEdges = connectEdge(nodes, joinEdges, e('a', 'j', 'input'), workspace)
   assert.strictEqual(dedupedJoinEdges.length, 2)
 
   const accumulatingZone: ChainNode[] = [
@@ -159,16 +161,16 @@ test('join/multi-input rule asserted against real nodes', () => {
   ]
   const firstLine = e('a', 'le', 'transcript')
   const secondLine = e('b', 'le', 'transcript')
-  assert.strictEqual(connectEdge(accumulatingZone, [firstLine], secondLine).length, 2)
+  assert.strictEqual(connectEdge(accumulatingZone, [firstLine], secondLine, workspace).length, 2)
 
   const plainZone = accumulatingZone.map(node => node.id === 'ls'
     ? { ...node, state: ['transcript'] } as ChainNode
     : node)
-  assert.deepStrictEqual(connectEdge(plainZone, [firstLine], secondLine), [secondLine])
+  assert.deepStrictEqual(connectEdge(plainZone, [firstLine], secondLine, workspace), [secondLine])
 
   // Via editorOps.connect
   const g: EditorGraph = { nodes, edges: [e('a', 'j', 'input')], selectedIds: [], clipboard: null }
-  const afterConnect = applyOp(g, editorOps.connect(e('b', 'j', 'input')))
+  const afterConnect = applyOp(g, editorOps.connect(e('b', 'j', 'input'), workspace))
   assert.strictEqual(afterConnect.edges.length, 2)
 })
 
@@ -188,7 +190,7 @@ test('editorOps graph operations', () => {
   assert.strictEqual(setG.edges, freshEdges)
 
   // addNode appends, pure
-  const added = applyOp(base, editorOps.addNode({ id: 'c', kind: 'gate' }))
+  const added = applyOp(base, editorOps.addNode('gate', [0, 0]))
   assert.strictEqual(added.nodes.length, 3)
   assert.strictEqual(base.nodes.length, 2)
 
@@ -260,36 +262,36 @@ test('undo/redo withHistory respects NON_HISTORIC and restores graph state', () 
   let h = { past: [] as EditorGraph[], present: initial, future: [] as EditorGraph[] }
 
   // Historic op: addNode
-  h = historied(h, editorOps.addNode({ id: 'b', kind: 'agent', agent: 'x' }))
+  h = historied(h, editorOps.addNode('agent', [0, 0], { agent: 'x' }))
   assert.strictEqual(h.past.length, 1)
   assert.strictEqual(h.present.nodes.length, 2)
   assert.strictEqual(h.future.length, 0)
 
   // Non-historic op: setSelection
-  h = historied(h, editorOps.setSelection(['b']))
+  h = historied(h, editorOps.setSelection(['agent-1']))
   assert.strictEqual(h.past.length, 1, 'setSelection must not push history')
-  assert.deepStrictEqual(h.present.selectedIds, ['b'])
+  assert.deepStrictEqual(h.present.selectedIds, ['agent-1'])
 
   // Selection identity bail-out: same ids do not change history state
   const prevH = h
-  h = historied(h, editorOps.setSelection(['b']))
+  h = historied(h, editorOps.setSelection(['agent-1']))
   assert.strictEqual(h, prevH)
 
   // Non-historic op: copy
-  h = historied(h, editorOps.copy(['b']))
+  h = historied(h, editorOps.copy(['agent-1']))
   assert.strictEqual(h.past.length, 1, 'copy must not push history')
   assert.ok(h.present.clipboard)
 
   // Historic op: updateNode
-  h = historied(h, editorOps.updateNode('b', { pos: [20, 30] }))
+  h = historied(h, editorOps.updateNode('agent-1', { pos: [20, 30] }))
   assert.strictEqual(h.past.length, 2)
-  assert.deepStrictEqual(h.present.nodes.find(n => n.id === 'b')!.pos, [20, 30])
+  assert.deepStrictEqual(h.present.nodes.find(n => n.id === 'agent-1')!.pos, [20, 30])
 
   // Undo 1: undoes updateNode
   h = historied(h, editorOps.undo())
   assert.strictEqual(h.past.length, 1)
   assert.strictEqual(h.future.length, 1)
-  assert.strictEqual(h.present.nodes.find(n => n.id === 'b')!.pos, undefined)
+  assert.deepStrictEqual(h.present.nodes.find(n => n.id === 'agent-1')!.pos, [0, 0])
 
   // Undo 2: undoes addNode
   h = historied(h, editorOps.undo())
@@ -312,7 +314,7 @@ test('undo/redo withHistory respects NON_HISTORIC and restores graph state', () 
   h = historied(h, editorOps.redo())
   assert.strictEqual(h.past.length, 2)
   assert.strictEqual(h.future.length, 0)
-  assert.deepStrictEqual(h.present.nodes.find(n => n.id === 'b')!.pos, [20, 30])
+  assert.deepStrictEqual(h.present.nodes.find(n => n.id === 'agent-1')!.pos, [20, 30])
 
   // Redo at end: no-op
   const atEnd = h
@@ -376,3 +378,87 @@ test('editorOps.renameZone operates cleanly with history undo/redo', () => {
   assert.strictEqual(h.present.nodes.find(n => n.id === 'le-1')?.zone, 'zone-renamed')
 })
 
+
+const zoned = (): EditorGraph => ({
+  nodes: [
+    { id: 'ls', kind: 'loop-start', zone: 'zone-1', state: [], pos: [0, 0] },
+    { id: 'le', kind: 'loop-end', zone: 'zone-1', until: 'x', maxIterations: 2, pos: [400, 0] },
+    { id: 'out', kind: 'agent', agent: 'x', pos: [2000, 2000] },
+  ],
+  edges: [],
+  selectedIds: [],
+  clipboard: null,
+})
+
+test('addNode mints a fresh id and sets kind, position and extras', () => {
+  const g = applyOp(zoned(), editorOps.addNode('agent', [5, 6], { agent: 'writer' }))
+  const added = g.nodes[g.nodes.length - 1]
+  assert.deepStrictEqual(added, { id: 'agent-1', kind: 'agent', pos: [5, 6], agent: 'writer' })
+})
+
+test('addNode never takes a zone id', () => {
+  const g: EditorGraph = {
+    ...zoned(),
+    nodes: zoned().nodes.map(n => (n.zone ? { ...n, zone: 'agent-1' } : n)),
+  }
+  const after = applyOp(g, editorOps.addNode('agent', [0, 0]))
+  const added = after.nodes[after.nodes.length - 1]
+  assert.strictEqual(added.id, 'agent-2')
+})
+
+test('moveNode: a body node dropped inside a zone frame joins it, outside leaves it', () => {
+  const g = zoned()
+  const inside = applyOp(g, editorOps.moveNode('out', [100, 0]))
+  const joined = inside.nodes.find(n => n.id === 'out')!
+  assert.strictEqual(joined.zone, 'zone-1')
+  assert.deepStrictEqual(joined.pos, [100, 0])
+  const outside = applyOp(inside, editorOps.moveNode('out', [3000, 3000]))
+  assert.strictEqual(outside.nodes.find(n => n.id === 'out')!.zone, undefined)
+})
+
+test('moveNode: a boundary only moves, keeping its zone', () => {
+  const after = applyOp(zoned(), editorOps.moveNode('le', [3000, 3000]))
+  const le = after.nodes.find(n => n.id === 'le')!
+  assert.strictEqual(le.zone, 'zone-1')
+  assert.deepStrictEqual(le.pos, [3000, 3000])
+})
+
+test('quickAdd turns each menu item into the matching node', () => {
+  const at: [number, number] = [7, 8]
+  const last = (g: EditorGraph) => g.nodes[g.nodes.length - 1]
+  const empty: EditorGraph = { nodes: [], edges: [], selectedIds: [], clipboard: null }
+
+  const agent = last(applyOp(empty, editorOps.quickAdd({ type: 'agent', slug: 'writer' }, at)))
+  assert.deepStrictEqual(agent, { id: 'agent-1', kind: 'agent', pos: at, agent: 'writer' })
+
+  assert.strictEqual(last(applyOp(empty, editorOps.quickAdd({ type: 'source-seed' }, at))).kind, 'seed')
+  assert.strictEqual(last(applyOp(empty, editorOps.quickAdd({ type: 'control-gate' }, at))).kind, 'gate')
+
+  const ctx = last(applyOp(empty, editorOps.quickAdd({ type: 'source-context', file: 'notes' }, at)))
+  assert.deepStrictEqual(ctx, { id: 'context-1', kind: 'context', pos: at, file: 'notes' })
+  const bareCtx = last(applyOp(empty, editorOps.quickAdd({ type: 'source-context' }, at)))
+  assert.deepStrictEqual(bareCtx, { id: 'context-1', kind: 'context', pos: at })
+
+  const loop = applyOp(empty, editorOps.quickAdd({ type: 'control-loop' }, at))
+  assert.deepStrictEqual(loop.nodes.map(n => n.kind), ['loop-start', 'loop-end'])
+  assert.deepStrictEqual(loop.nodes[0].pos, at)
+})
+
+test('moveMany re-adopts each dropped body node, and a whole zone dragged together stays intact', () => {
+  const g = zoned()
+  g.nodes.push({ id: 'in', kind: 'agent', agent: 'x', zone: 'zone-1', pos: [100, 0] })
+
+  const swapped = applyOp(g, editorOps.moveMany([
+    { id: 'in', pos: [3000, 3000] },
+    { id: 'out', pos: [100, 0] },
+  ]))
+  assert.strictEqual(swapped.nodes.find(n => n.id === 'in')!.zone, undefined)
+  assert.strictEqual(swapped.nodes.find(n => n.id === 'out')!.zone, 'zone-1')
+
+  const shifted = applyOp(g, editorOps.moveMany([
+    { id: 'ls', pos: [5000, 0] },
+    { id: 'le', pos: [5400, 0] },
+    { id: 'in', pos: [5100, 0] },
+  ]))
+  assert.strictEqual(shifted.nodes.find(n => n.id === 'in')!.zone, 'zone-1')
+})
