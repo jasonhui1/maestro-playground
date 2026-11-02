@@ -204,10 +204,6 @@ test('editorOps graph operations', () => {
   const delE = applyOp(base, editorOps.deleteEdge(edgeToRemove))
   assert.strictEqual(delE.edges.length, 0)
 
-  // moveNode
-  const movedOne = applyOp(base, editorOps.moveNode('a', [10, 15]))
-  assert.deepStrictEqual(movedOne.nodes.find(n => n.id === 'a')!.pos, [10, 15])
-
   // moveMany
   const movedMany = applyOp(base, editorOps.moveMany([{ id: 'a', pos: [5, 5] }, { id: 'b', pos: [9, 9] }]))
   assert.deepStrictEqual(movedMany.nodes.find(n => n.id === 'a')!.pos, [5, 5])

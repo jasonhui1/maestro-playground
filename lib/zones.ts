@@ -1,10 +1,6 @@
-import type { ChainDef, ChainNode, ChainNodeBase, ValidationIssue } from './types'
+import type { ChainDef, ChainNode, ValidationIssue } from './types'
 import { allKinds, kindOf, zoneStateName } from './nodeKinds'
 import { topoSort } from './topoSort'
-
-export const NODE_W = 240
-export const NODE_H = 120
-export const PAD = 32
 
 type Graph = Pick<ChainDef, 'nodes' | 'edges'>
 
@@ -24,14 +20,13 @@ export interface Zone {
   maxIterations: number
 }
 
-export interface ZoneFrame { zone: string; x: number; y: number; width: number; height: number }
-
 // A blank zone id is no zone: validation rejects it on a boundary, so nothing reads it as one.
-function membersByZone(nodes: ChainNode[]): Map<string, ChainNode[]> {
+/** Nodes grouped by zone id, in node order. */
+export function zoneMembers(nodes: ChainNode[]): Map<string, ChainNode[]> {
   const byZone = new Map<string, ChainNode[]>()
   for (const n of nodes) {
-    if (!n.zone?.trim()) continue
-    byZone.set(n.zone, [...(byZone.get(n.zone) ?? []), n])
+    const zone = zoneIdOf(n)
+    if (zone) byZone.set(zone, [...(byZone.get(zone) ?? []), n])
   }
   return byZone
 }
@@ -39,15 +34,18 @@ function membersByZone(nodes: ChainNode[]): Map<string, ChainNode[]> {
 // `?.`: the validator reaches here with kinds the registry does not know.
 export const isBoundary = (node: ChainNode): boolean => kindOf(node.kind)?.zoneRole === 'boundary'
 
+/** The zone a node sits in, if any. */
+export const zoneIdOf = (node: ChainNode): string | undefined => (node.zone?.trim() ? node.zone : undefined)
+
 /** Distinct zone ids in node order. */
 export function zoneNames(nodes: ChainNode[]): string[] {
-  return [...membersByZone(nodes).keys()]
+  return [...zoneMembers(nodes).keys()]
 }
 
 /** Zones that have both a `loop-start` and a `loop-end`; an unpaired one is left to `zoneIssues`. */
 export function pairedZones(chain: Graph): Zone[] {
   const zones: Zone[] = []
-  for (const [id, members] of membersByZone(chain.nodes)) {
+  for (const [id, members] of zoneMembers(chain.nodes)) {
     const start = members.find(n => n.kind === 'loop-start')
     const end = members.find(n => n.kind === 'loop-end')
     if (!start || !end) continue
@@ -76,14 +74,14 @@ export function zoneIssues(chain: Graph): Omit<ValidationIssue, 'severity'>[] {
   const add = (message: string, ref: Omit<ValidationIssue, 'message' | 'severity'> = {}) => issues.push({ message, ...ref })
 
   for (const n of chain.nodes) {
-    if (isBoundary(n) && !n.zone?.trim()) add(`Node "${n.id}": ${n.kind} has no zone`, { nodeId: n.id })
+    if (isBoundary(n) && !zoneIdOf(n)) add(`Node "${n.id}": ${n.kind} has no zone`, { nodeId: n.id })
     // A zone body runs only `body` kinds; any other would silently never run (#163).
-    if (n.zone?.trim() && kindOf(n.kind)?.zoneRole === 'none') {
+    if (zoneIdOf(n) && kindOf(n.kind)?.zoneRole === 'none') {
       add(`Node "${n.id}": a ${n.kind} cannot sit inside loop zone "${n.zone}" (a zone body runs only ${zoneBodyKinds.join(' and ')} nodes)`, { nodeId: n.id, zone: n.zone })
     }
   }
 
-  for (const [zid, members] of membersByZone(chain.nodes)) {
+  for (const [zid, members] of zoneMembers(chain.nodes)) {
     const starts = members.filter(n => n.kind === 'loop-start')
     const ends = members.filter(n => n.kind === 'loop-end')
 
@@ -123,35 +121,6 @@ export function zoneIssues(chain: Graph): Omit<ValidationIssue, 'severity'>[] {
     }
   }
   return issues
-}
-
-/** One padded box per zone around its positioned members. */
-export function zoneFrames(nodes: ChainNode[]): ZoneFrame[] {
-  const frames: ZoneFrame[] = []
-  for (const [zone, members] of membersByZone(nodes)) {
-    const placed = members.filter(m => m.pos)
-    if (placed.length === 0) continue
-    const xs = placed.map(m => m.pos![0])
-    const ys = placed.map(m => m.pos![1])
-    const minX = Math.min(...xs), minY = Math.min(...ys)
-    const maxX = Math.max(...xs) + NODE_W, maxY = Math.max(...ys) + NODE_H
-    frames.push({ zone, x: minX - PAD, y: minY - PAD, width: maxX - minX + 2 * PAD, height: maxY - minY + 2 * PAD })
-  }
-  return frames
-}
-
-/**
- * The patch for dropping node `id` at `pos`: a body node joins the zone whose frame holds its
- * centre, or leaves its zone (`zone: undefined`) when none does. A boundary only moves — it
- * defines its zone, it cannot join another.
- */
-export function adoptOnDrop(nodes: ChainNode[], id: string, pos: [number, number]): Pick<ChainNodeBase, 'pos' | 'zone'> {
-  const node = nodes.find(n => n.id === id)
-  if (!node || isBoundary(node)) return { pos }
-  const [cx, cy] = [pos[0] + NODE_W / 2, pos[1] + NODE_H / 2]
-  const frame = zoneFrames(nodes.filter(n => n.id !== id))
-    .find(f => cx >= f.x && cx <= f.x + f.width && cy >= f.y && cy <= f.y + f.height)
-  return { pos, zone: frame?.zone }
 }
 
 export function renameZone(nodes: ChainNode[], oldZone: string, newZone: string): ChainNode[] {

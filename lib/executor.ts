@@ -214,7 +214,9 @@ export async function runChainGraph(
   }
 
   // --- zones ---
-  const zonesByStart = new Map(pairedZones(chain).map(zone => [zone.startId, zone]))
+  const zones = pairedZones(chain)
+  const zonesByStart = new Map(zones.map(zone => [zone.startId, zone]))
+  const startOfZone = new Map(zones.map(zone => [zone.id, zone.startId]))
 
   const setStateSockets = (nodeId: string, state: Map<string, string>, anchorId: string = nodeId) => {
     for (const [name, val] of state) {
@@ -439,9 +441,7 @@ export async function runChainGraph(
   // A zone with no registered start/end pair stays a set of plain nodes.
   const unitOf = (nodeId: string): string => {
     const n = nodeById.get(nodeId)
-    if (!n?.zone) return nodeId
-    for (const [startId, z] of zonesByStart) if (z.id === n.zone) return startId
-    return nodeId
+    return (n?.zone && startOfZone.get(n.zone)) || nodeId
   }
   const allUnits = new Set(chain.nodes.map(n => unitOf(n.id)))
   const unitDeps = new Map<string, Set<string>>([...allUnits].map(u => [u, new Set<string>()]))

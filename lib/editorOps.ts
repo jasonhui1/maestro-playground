@@ -1,7 +1,7 @@
 import { ChainNode, ChainEdge, ChainDef } from './types'
 import { inputAcceptsMany } from './nodeKinds'
 import { edgeShapeError } from './chainGraph'
-import { isBoundary, renameZone } from './zones'
+import { isBoundary, renameZone, zoneNames } from './zones'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
   const set = new Set(existing)
@@ -15,9 +15,7 @@ export function uniqueNodeId(kind: string, existing: string[]): string {
 // never in the node-id list, so checking node ids alone hands back an already-used zone
 // id — two loops collapsing into one zone. Callers that add/paste zones must pass this.
 export function reservedIds(nodes: ChainNode[]): string[] {
-  const zones = new Set<string>()
-  for (const n of nodes) if (n.zone) zones.add(n.zone)
-  return [...nodes.map(n => n.id), ...zones]
+  return [...nodes.map(n => n.id), ...zoneNames(nodes)]
 }
 
 export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
@@ -155,7 +153,6 @@ export type EditorOpType =
   | 'connect'
   | 'deleteNode'
   | 'deleteEdge'
-  | 'moveNode'
   | 'moveMany'
   | 'updateNode'
   | 'renameZone'
@@ -201,13 +198,6 @@ export const editorOps = {
   deleteEdge: (edge: ChainEdge): EditorOp => ({
     type: 'deleteEdge',
     apply: g => ({ ...g, edges: deleteEdge(g.edges, edge) }),
-  }),
-  moveNode: (id: string, pos: [number, number]): EditorOp => ({
-    type: 'moveNode',
-    apply: g => ({
-      ...g,
-      nodes: updateNode(g.nodes, id, { pos }),
-    }),
   }),
   moveMany: (updates: { id: string; pos: [number, number] }[]): EditorOp => ({
     type: 'moveMany',
