@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import path from 'path'
-import { isValidEntityType, ENTITY_TYPES, EntityType } from '@/lib/fs/workspace'
-import { walkDirectories } from '@/lib/fs/discover'
-import { renameWorkspaceFolder, deleteWorkspaceFolder } from '@/lib/fs/save'
+import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
+import { listFolders, renameFolder, deleteFolder } from '@/lib/fs/workspaceFiles'
 import { workspaceErrorResponse } from '../errors'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 
@@ -16,10 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
   }
 
-  const typeDir = path.join(requestWorkspace().root, ENTITY_TYPES[type])
-  const folders = walkDirectories(typeDir).map(abs => path.relative(typeDir, abs).replace(/\\/g, '/'))
-
-  return NextResponse.json({ folders })
+  return NextResponse.json({ folders: listFolders(requestWorkspace().root, type) })
 }
 
 // A folder path carries '/', so it rides the request body rather than a URL segment (#55).
@@ -33,7 +28,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Missing folder or name' }, { status: 400 })
     }
 
-    const result = renameWorkspaceFolder(requestWorkspace().root, type as EntityType, folder, name)
+    const result = renameFolder(requestWorkspace().root, type as EntityType, folder, name)
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
@@ -53,7 +48,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing folder' }, { status: 400 })
     }
 
-    const result = deleteWorkspaceFolder(requestWorkspace().root, type as EntityType, folder)
+    const result = deleteFolder(requestWorkspace().root, type as EntityType, folder)
     return NextResponse.json(result)
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

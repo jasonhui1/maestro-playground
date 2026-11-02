@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { planRename, renameWorkspaceEntity, RenamePlan } from '@/lib/fs/rename'
+import { planRename, renameEntity, type RenamePlan } from '@/lib/fs/workspaceFiles'
 import { workspaceErrorResponse } from '../../../errors'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       return NextResponse.json({ error: 'Missing to' }, { status: 400 })
     }
 
-    const result = renameWorkspaceEntity(requestWorkspace().root, type as EntityType, slug, to)
+    const result = renameEntity(requestWorkspace().root, type as EntityType, slug, to)
     return NextResponse.json({ success: true, ...result, plan: forDisplay(result.plan) })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

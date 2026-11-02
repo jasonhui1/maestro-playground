@@ -42,6 +42,10 @@ An input socket that does not block execution when left unwired. Per-input fact 
 
 The `{ chain, agents, chains }` bundle of already-loaded workspace files passed to registry socket functions, so e.g. an agent node can find its agent file's `{slots}`. A plain parameter (filesystem-first: nothing cached across requests). _Avoid_: context (collides with the `context` node kind).
 
+## Address
+
+What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete all act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. _Avoid_: resolve (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
+
 ## Run folders
 
 The store over `logs/<runId>/` — meta.json plus one log per step — reached only through `RunFolders` (read, update, claim, writeStep), with a disk adapter in production and an in-memory one in tests (#108). The on-disk shape is the contract; the seam only decides who calls `fs`. Travels with the workspace root in one `Workspace { root, runs, definitions() }` value, built once per request by `requestWorkspace()` — the only reader of `WORKSPACE_PATH`; every fs function below takes the root (#116). _Avoid_: run store (the client's `useRunStore` is a different thing); workspace for the loaded definitions (that is `LiveWorkspace`).

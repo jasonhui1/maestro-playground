@@ -2,6 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { EntityType, ENTITY_TYPES, sanitizeSlug } from './workspace'
+import { address } from './address'
 import { WorkspaceError } from './errors'
 import { walkMarkdown, findBySlug } from './discover'
 import { getVersionsDir } from './versions'
@@ -81,20 +82,6 @@ function collectRuns(root: string, type: EntityType, from: string): string[] {
   })
 }
 
-/** The file a rename acts on: the named file, or the file declaring the named variant. Throws for neither. */
-function resolveRenameTarget(
-  root: string,
-  type: EntityType,
-  from: string,
-  variants: Map<string, VariantSource>,
-): { filePath: string; variantOf?: string } {
-  const own = findBySlug(typeDir(root, type), from)
-  if (own) return { filePath: own }
-  const variant = variants.get(from)
-  if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
-  throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${from}`)
-}
-
 /**
  * Refuses a name already claimed under the type — a duplicate leaf name is a hard load
  * failure (ADR-0012), and under `agents/` a file name and a variant name share the one
@@ -123,7 +110,8 @@ export function planRename(root: string, type: EntityType, from: string, to: str
   }
 
   const variants = variantIndex(root, type)
-  const { filePath, variantOf } = resolveRenameTarget(root, type, from, variants)
+  const { kind, filePath, variantOf } = address(root, type, from, { variants })
+  if (kind === 'new') throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${from}`)
 
   if (cleanTo === from) {
     return { type, from, to: cleanTo, filePath, variantOf, rewrites: [], runs: [], manual: [] }
