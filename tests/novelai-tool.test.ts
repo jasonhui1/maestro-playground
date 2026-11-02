@@ -125,7 +125,7 @@ test('executor: unzips the PNG, saves WebP in the run, returns its URL', async (
   assert.match(outcome.images![0], /^\/api\/runs\/r1\/images\/img-[\w-]+\.webp$/)
   const saved = runs.readImage('r1', name)!
   assert.strictEqual((await sharp(saved).metadata()).format, 'webp')
-  assert.match(outcome.result, /attached to your output/)
+  assert.ok(outcome.result.includes(`![](${outcome.images![0]})`), 'result hands the model its link')
 })
 
 test('executor: failures are thrown as messages the loop hands the model', async () => {
@@ -200,7 +200,9 @@ test('end to end: a run saves the image, attaches it to the output, serves it, a
   assert.strictEqual(meta.status, 'complete', text)
   assert.deepStrictEqual(meta.imageOverride, { size: 'small' })
   const out = meta.agentOutputs.find(o => o.nodeId === 'painter')!
-  assert.match(out.output, /## Images\n\n!\[\]\(\/api\/runs\/[^/]+\/images\/img-[\w-]+\.webp\)$/)
+  // the fake model echoes the tool result, which hands it the link, so no `## Images` is needed
+  assert.match(out.output, /!\[\]\(\/api\/runs\/[^/]+\/images\/img-[\w-]+\.webp\)/)
+  assert.ok(!out.output.includes('## Images'))
   assert.deepStrictEqual(out.toolCalls![0].images, [out.output.match(/\((\/api[^)]+)\)/)![1]])
   // wired character, literal clothes, agent-written scene, in declared order; then quality tags (#149)
   assert.strictEqual(bodies[0].input, '1girl, silver hair, red cloak, on a cliff, masterpiece')

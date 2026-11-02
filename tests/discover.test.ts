@@ -22,34 +22,37 @@ test('discover: recurses to any depth and keeps the slug bare', () => {
   write(dir, 'panel/optimist.md', 'optimist body')
   write(dir, 'panel/deep/nested/skeptic.md', 'skeptic body')
 
-  const found = discoverFiles(dir)
-  const slugs = found.map(f => f.slug).sort()
+  const { files, clashes } = discoverFiles(dir)
+  const slugs = files.map(f => f.slug).sort()
   assert.deepStrictEqual(slugs, ['flat', 'optimist', 'skeptic'])
+  assert.deepStrictEqual(clashes, [])
 
   // the folder never appears in the slug, and raw content comes back with it
-  const optimist = found.find(f => f.slug === 'optimist')!
+  const optimist = files.find(f => f.slug === 'optimist')!
   assert.strictEqual(optimist.raw, 'optimist body')
   assert.strictEqual(optimist.filePath, path.join(dir, 'panel', 'optimist.md'))
 })
 
-test('discover: a duplicate slug throws and the error names both paths', () => {
+test('discover: a duplicate slug is left out of files and reported as a clash naming both paths (#151)', () => {
   const dir = tmpDir('discover-dup-')
   const a = write(dir, 'optimist.md', 'a')
   const b = write(dir, 'panel/optimist.md', 'b')
+  write(dir, 'skeptic.md', 'c')
 
-  assert.throws(
-    () => discoverFiles(dir),
-    (err: Error) => err.message.includes(a) && err.message.includes(b) && err.message.includes('optimist')
-  )
+  const { files, clashes } = discoverFiles(dir)
+  assert.deepStrictEqual(files.map(f => f.slug), ['skeptic'])
+  assert.strictEqual(clashes.length, 1)
+  assert.strictEqual(clashes[0].name, 'optimist')
+  assert.deepStrictEqual(clashes[0].paths.sort(), [a, b].sort())
 })
 
 test('discover: a flat directory and a missing directory both still work', () => {
   const dir = tmpDir('discover-flat-')
   write(dir, 'one.md', 'one')
   write(dir, 'two.md', 'two')
-  assert.deepStrictEqual(discoverFiles(dir).map(f => f.slug).sort(), ['one', 'two'])
+  assert.deepStrictEqual(discoverFiles(dir).files.map(f => f.slug).sort(), ['one', 'two'])
 
-  assert.deepStrictEqual(discoverFiles(path.join(dir, 'nope')), [])
+  assert.deepStrictEqual(discoverFiles(path.join(dir, 'nope')), { files: [], clashes: [] })
 })
 
 test('discover: non-markdown files and dot-prefixed entries are skipped', () => {
@@ -59,7 +62,7 @@ test('discover: non-markdown files and dot-prefixed entries are skipped', () => 
   write(dir, '.hidden.md', 'ignored')
   write(dir, '.versions/real.md', 'ignored')
 
-  assert.deepStrictEqual(discoverFiles(dir).map(f => f.slug), ['real'])
+  assert.deepStrictEqual(discoverFiles(dir).files.map(f => f.slug), ['real'])
 })
 
 test('walkDirectories: reports every sub-directory, even ones with no markdown in them', () => {

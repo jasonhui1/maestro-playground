@@ -75,7 +75,7 @@ export function deleteWorkspaceEntity(root: string, type: EntityType, slug: stri
   }
 
   // Promotion mints the file's own name into the flat namespace it was never in, so it
-  // must be free — a duplicate is a hard load failure (ADR-0012, ADR-0014).
+  // must be free — a duplicate would leave both out of the load (ADR-0014, #151).
   if (plan.promotes) {
     const clash = variantIndex(root, type).get(plan.promotes)
     if (clash && clash.filePath !== plan.filePath) {

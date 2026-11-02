@@ -4,7 +4,11 @@ Terms as used in this codebase. Skills and issues should use these exactly; avoi
 
 ## Node kind
 
-One of the thirteen node types a chain may contain: `seed`, `context`, `param`, `agent`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`, `hold`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
+One of the fourteen node types a chain may contain: `seed`, `context`, `param`, `agent`, `tool`, `decider`, `gate`, `branch`, `loop-start`, `loop-end`, `subchain`, `report`, `join`, `hold`. A kind is a set of **facts** (fields, sockets, palette entry) plus **behaviour** (what the executor does with it). Facts live in the node-kind registry; behaviour lives in the executor. _Avoid_: node type (collides with React Flow's `type` prop).
+
+## Tool node
+
+A node with `kind: tool` and `tool: <name>` that calls one tool's executor directly, without a model (#157). Its optional input sockets are the tool's prompt **parts** in declared order, followed by its **params** (executor settings). Unfilled parts use tool-file defaults or are omitted; unfilled params use executor defaults. An image-saving executor also accepts `count` (1–8), drawing sequentially with distinct seeds. Its output is `## Images` linking the saved pictures, or the executor's text. It is not a proposer and has no conversation or promote. A direct run uses `toolName` and named `inputs`, and continuations replay completed outputs without executing the tool again.
 
 ## Node-kind registry
 
@@ -32,11 +36,11 @@ Whether a node can be scheduled and executed. For a required input slot: if conn
 
 ## Token
 
-A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt, node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.
+A `{…}` in a prompt, condition or edge endpoint, read only by `lib/tokens.ts` (#110). `{name}` is a **slot**; `{node.socket}` is a **ref**. The first dot splits, so `{a.b.c}` is node `a`, socket `b.c` (headings may contain dots). What a slot means depends on where it sits: an input socket in an agent prompt (bar `{dice}` on an agent that declares `dice:`, see **Dice**), node `name`'s whole output in a condition, and in the chat route the user's message for `{input}` or else a context file. Node ids and slot names match exactly; output sockets match slugified, so `summary` and `## Summary` are one socket. _Avoid_: placeholder, variable.
 
 ## Optional input
 
-An input socket that does not block execution when left unwired. Per-input fact (`{ name, optional? }` from the registry's `inputs()`), not a per-kind flag. In v1 only subchain inputs are optional: a subchain with `topic` wired and `tone` unwired still runs (the inner seed falls back to the seed prompt). What an unwired optional slot resolves to on *other* kinds is deliberately undecided.
+An input socket that does not block execution when left unwired. Per-input fact (`{ name, optional? }` from the registry's `inputs()`), not a per-kind flag. A subchain's unwired input falls back to its seed prompt. A tool node's unwired part uses its tool-file default or is omitted, and an unwired param uses the executor's default. An agent's unwired tool-part socket leaves the part to its literal, the tool default, or the model. An optional socket that is wired still requires its upstream value to be live.
 
 ## Workspace lookup
 
@@ -44,7 +48,7 @@ The `{ chain, agents, chains }` bundle of already-loaded workspace files passed 
 
 ## Address
 
-What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. Create does not: it places a new file by slug and folder and never consults one, so a new agent can never land in a declaring file. _Avoid_: locate (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
+What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). The slug is sanitised first, so a `.md`-suffixed request answers to the same name the listing gives (#159). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. Create does not: it places a new file by slug and folder and never consults one, so a new agent can never land in a declaring file. _Avoid_: locate (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
 
 ## Run folders
 
@@ -107,6 +111,14 @@ The place that names an agent and supplies its per-instance values: an `agent` n
 ## Variant
 
 A named agent declared inside another agent's file, sharing that file's prompt body and changing its skill list or filling one of its slots ([ADR-0013](docs/adr/0013-an-agent-file-may-declare-named-variants.md)). A variant **is** an agent: its `id` is a slug, addressed from a chain exactly like a file name, and it shares the one flat namespace per type that ADR-0012 gives. It may also state `name:`, an optional display label distinct from `id` — never used for addressing, and falling back to `id` when unstated, the same split an agent file draws between its filename and its frontmatter `name:` (#61). A file that declares variants is not addressable by its own name — it yields its variants and nothing else, so its own frontmatter `name:` is inert; a reader wanting a variant's display name states `name:` on that variant instead. `variantOf` on the resolved agent names the declaring file, which is what a run pins and what the editor opens. Deleting a variant removes its entry from the declaring file; deleting the last one drops the `variants:` block, so the file becomes addressable by its own name again ([ADR-0014](docs/adr/0014-deleting-the-last-variant-promotes-its-file.md)). _Avoid_: parameterized agent, agent instance, subtype.
+
+## Dice
+
+Named lists an agent file declares under `dice:`, each an **axis** rolled in code into the reserved `{dice}` token as `- axis: value` lines (#153). Every node rolls its own, once per run — loop rounds share it — and the run pins the **roll** in `meta.json`'s `dice` by node id, so a fork, resume or promote reuses it; only a new run rolls again. A request **pin** fixes an axis to a value or narrows it to a list. Its values may be a map giving each a **rarity** (common, uncommon, rare: four, two and one shares) and, on an axis with `by: role`, the **fits** that may roll it: a value rolls only when `role` drew one of its fits, and an axis-level `fits` covers every value stating none of its own; an axis none fit draws nothing, so the prompt never mentions it; a pin still applies. An axis a `by` names may have a `by` of its own, each rolling after the one it names; only a loop of them is an error. A dice node's **dice socket** carries its roll, as those same lines, into another node's slot; a `by` naming an axis its own block lacks rolls against the one node wired in that way that rolls it, so `by: unreal` on a profile reads its designer's `unreal`, and the chain is invalid unless exactly one wired-in node rolls it (#161). The engine rolls rather than asking the model to pick, because a model shown the list picks the same items every copy. _Avoid_: random slot, seed (collides with the `seed` node kind).
+
+## Name clash
+
+Two or more files, or a file and a variant, claiming one name under a type. Discovery leaves every claimant out and the load carries a **workspace warning** naming each path (`Two agents are named "fixer": creative/fixer.md, scratch/fixer.md`); the rest of the workspace loads. A chain addressing the name is refused with that message instead of "not found", and a save, rename or delete that would create a clash is refused (#151). _Avoid_: duplicate slug error (the load no longer fails).
 
 ## Defaults file
 

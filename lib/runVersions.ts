@@ -80,6 +80,10 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
         if (ref) walk(ref)
       } else if (field.ref === 'agent') {
         walkAgent(node, slug)
+      } else if (field.ref === 'tool') {
+        // A tool node names its tool by name, like an agent's tool list.
+        const tool = ws.tools.find(t => t.name === slug)
+        if (tool) add('tool', tool.slug, tool.rawContent)
       }
     }
   }

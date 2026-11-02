@@ -1,4 +1,5 @@
 {
+  "conditionalWorkspaceSaves": true,
   "runLayoutFrames": true,
   "runStartEvent": true,
   "runFailureFrame": true,
@@ -8,5 +9,13 @@
   "holdFeedback": true,
   "holdReroll": true,
   "holdRerollFork": true,
-  "runImages": true
+  "runImages": true,
+  "holdCandidateImages": true,
+  "runInputs": true,
+  "agentRunInputs": true,
+  "slotlessAgentRuns": true,
+  "toolNodes": true,
+  "dice": true,
+  "runStartDice": true,
+  "addressedRevisions": true
 }

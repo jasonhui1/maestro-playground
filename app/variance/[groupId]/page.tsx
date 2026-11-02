@@ -19,6 +19,7 @@ function panel(name: string, node: VarianceNode, runId: string): LayoutPanel | n
   return {
     name,
     node: node.nodeId,
+    socket: 'output',
     text: sample.output,
     lines: sample.output.trim() ? sample.output.trim().split('\n').length : 0,
     state: sample.status === 'success' ? (sample.output.trim() ? 'filled' : 'empty') : sample.status === 'error' ? 'errored' : 'skipped',

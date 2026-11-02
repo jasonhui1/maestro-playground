@@ -27,12 +27,12 @@ test('resolve-run-chain', () => {
   const missing = resolveRunChain({ chainName: 'nope' }, { agents, chains })
   assert.ok('error' in missing && missing.status === 404)
 
-  // agentName synthesizes a seed -> agent chain
+  // A slotless agent runs alone (#156).
   const ag = resolveRunChain({ agentName: 'writer' }, { agents, chains })
   assert.ok('chain' in ag && ag.kind === 'agent')
   if ('chain' in ag) {
-    assert.strictEqual(ag.chain.nodes.length, 2)
-    assert.strictEqual(ag.chain.edges[0].toNode, 'writer')
+    assert.deepStrictEqual(ag.chain.nodes, [{ id: 'writer', kind: 'agent', agent: 'writer' }])
+    assert.deepStrictEqual(ag.chain.edges, [])
   }
 
   // nothing -> error 400

@@ -36,7 +36,8 @@ So a file moves between folders and no chain changes.
 
 **A duplicate slug is a load-time error.** Two files named `optimist.md` in two
 folders under `agents/` fail the workspace load and name both paths. The
-workspace does not start with an ambiguous name.
+workspace does not start with an ambiguous name. *(Narrowed by #151: the clash
+fails only its own name — see Later decisions.)*
 
 ## Rationale
 
@@ -77,6 +78,13 @@ workspace does not start with an ambiguous name.
   re-introduces a path into the reference, and a move would then break a
   chain — the opposite of this ADR's point. The cost is accepted: one flat
   namespace per type, so two files under `agents/` may not share a leaf name.
+- **A duplicate fails only its own name, not the whole load (#151).** Every
+  file or variant claiming a clashing name is left out, and the load carries a
+  **name clash** warning naming each path; everything else loads. A chain that
+  addresses the name is refused with that warning's message. The name stays
+  unambiguous — nothing answers to it until one file is renamed — but a copied
+  note in an Obsidian vault no longer empties the whole workspace. Saves, renames
+  and deletes still refuse to create a clash.
 - **The palette shows the folder tree, not a flat list.** Filesystem-first
   (vision.md) means the workspace is edited directly on disk, so the UI must
   render whatever nesting it finds, to arbitrary depth.

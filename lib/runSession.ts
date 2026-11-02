@@ -11,9 +11,11 @@ import { runToolContext } from './tools/context'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
+import type { RunEvent } from './runStream'
 import { keepConversations } from './nodeChat'
 import type { AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta } from './types'
 import type { RunDefinitions } from './runDefinitions'
+import { diceField, rollRunDice, type DicePins, type RunDice } from './dice'
 
 /** A request's `context` override map, or none when it is not an object. */
 export function contextOverrides(value: unknown): Record<string, string> {
@@ -66,6 +68,8 @@ export interface RunSession {
   chain: ChainDef
   workspace: RunDefinitions
   seedPrompt: string
+  inputs?: Record<string, string>
+  dice?: RunDice
   paramValue: string
   context: Record<string, string>
   /** Outputs handed to the graph as done: `logged` are already on disk here, never logged again (ADR-0011); `fresh` are logged first. */
@@ -92,12 +96,12 @@ export function streamChainRun(s: RunSession): Response {
   const onDisk = new Set(s.replay.logged)
 
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
+    send(runStartEvent(runId, s.dice))
 
     // Every hop re-sends the panels, so a view drawing mid-run reads the finished
     // run's projection rather than porting the rule (#76).
     const soFar: AgentOutput[] = [...replay]
-    const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar) })
+    const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar, s.dice) })
     sendLayout()
 
     let step = s.firstStep
@@ -147,7 +151,7 @@ export function streamChainRun(s: RunSession): Response {
           onHold: hold => { reached.push(hold) },
         },
         {
-          seedPrompt: s.seedPrompt, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
+          seedPrompt: s.seedPrompt, inputs: s.inputs, dice: s.dice, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
           toolContext: runToolContext(s.ws, runId),
         },
       )
@@ -169,11 +173,15 @@ export function streamChainRun(s: RunSession): Response {
       const errorMessage = error instanceof Error ? error.message : String(error)
       // The panels first, then the run-level event: a client draws the frame it is
       // sent rather than copying this message onto panels itself (#77).
-      send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar), errorMessage) })
+      send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar, s.dice), errorMessage) })
       send({ type: 'error', error: errorMessage })
       runs.update(runId, { status: 'error' })
     }
   })
+}
+
+export function runStartEvent(runId: string, dice: RunDice | undefined): Extract<RunEvent, { type: 'run_start' }> {
+  return { type: 'run_start', runId, ...diceField(dice) }
 }
 
 /** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
@@ -182,6 +190,10 @@ export interface StartRunInput {
   workspace: RunSession['workspace']
   title: string
   seedPrompt: string
+  inputs?: RunMeta['inputs']
+  /** Rolls a fork keeps; `startRun` rolls every other dice node. */
+  dice?: RunDice
+  dicePins?: DicePins
   parameter?: RunMeta['parameter']
   /** A request's context overrides, laid over a fork's pinned context files. */
   context?: unknown
@@ -199,16 +211,19 @@ export interface StartRunInput {
   modelOverride?: string
   imageOverride?: RunMeta['imageOverride']
   chainSlug?: string
-  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
+  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
   variance?: RunMeta['variance']
 }
 
 export function startRun(ws: Workspace, run: StartRunInput): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
   const runId = newRunId()
-  ws.runs.create(newRunMeta(runId, run))
+  const dice = rollRunDice(chain, workspace, run.dice, run.dicePins)
+  ws.runs.create(newRunMeta(runId, { ...run, dice }))
   return streamChainRun({
     ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
+    inputs: run.inputs,
+    dice,
     context: { ...run.pinnedContext, ...contextOverrides(run.context) },
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },
@@ -225,11 +240,13 @@ export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
     chainName: run.title,
     seedPrompt,
     parameter,
+    ...(run.inputs ? { inputs: run.inputs } : {}),
+    ...diceField(run.dice),
     startedAt: new Date().toISOString(),
     status: 'running',
     agentOutputs: [],
     ...(holds ? { holds } : {}),
-    graph: { nodes: chain.nodes, edges: chain.edges },
+    graph: { nodes: chain.nodes, edges: chain.edges, ...(chain.inputs ? { inputs: chain.inputs } : {}) },
     ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
     ...(run.forkAnchors ? { forkAnchors: run.forkAnchors } : {}),
     ...(run.replayedNodeIds ? { replayedNodeIds: run.replayedNodeIds } : {}),

@@ -58,11 +58,5 @@ edges:
     to: le.feedback
   - from: le.draft
     to: report-1.in
-inputs:
-  - name: ''
-    node: seed
-outputs:
-  - name: ''
-    node: ''
 ---
 

@@ -1,4 +1,4 @@
-import type { AgentOutput, ChainDef, RunMeta } from './types'
+import type { AgentOutput, ChainDef, RunDice, RunMeta } from './types'
 import { endedRunId, RunEvent } from './runStream'
 import { applyRunEvent, RunStateMap } from './runState'
 import { applyOrder } from './runModel'
@@ -26,6 +26,8 @@ export interface ResultRun {
   status?: import('./runFrame').RunStatus
   /** The source run this fork diverged from (#130). */
   forkSourceRunId?: string
+  /** A reopened run's pinned rolls; a live run's arrive on the streamed frames (#153). */
+  dice?: RunDice
 }
 
 export interface ResultViewState {
@@ -119,6 +121,7 @@ export function resultViewFromMeta(meta: RunMeta, chain: ChainDef | undefined): 
           ...(meta.modelOverride ? { modelOverride: meta.modelOverride } : {}),
           status: meta.status === 'waiting' ? 'waiting' : undefined,
           forkSourceRunId: meta.branchedFromRunId,
+          ...(meta.dice ? { dice: meta.dice } : {}),
         }
       : null,
     states: buildRunStateMap(meta.agentOutputs),
@@ -147,7 +150,7 @@ export function projectResultView(state: ResultViewState, now: number): ResultVi
   const { run } = state
   if (!run) return { model: null, frame: null, renderable: false }
 
-  const model = state.streamedModel ?? buildLayoutModel(run.chain, state.outputs)
+  const model = state.streamedModel ?? buildLayoutModel(run.chain, state.outputs, run.dice)
   const frame = buildRunFrame({
     chain: run.chain,
     seed: run.seed,

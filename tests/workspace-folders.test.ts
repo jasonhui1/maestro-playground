@@ -76,16 +76,18 @@ test('a file moved between folders resolves unchanged', async () => {
   assert.strictEqual(moved.chains[0].nodes[0].kind === 'agent' && moved.chains[0].nodes[0].agent, 'optimist')
 })
 
-test('two files sharing a slug fail the load, naming both paths', async () => {
+// #151: a shared slug no longer fails the whole load — both files are left out and warned about.
+test('two files sharing a slug are left out of the load and warned about, naming both paths', async () => {
   const wp = newWorkspace()
   const a = write(wp, 'agents/optimist.md', agent('One'))
   const b = write(wp, 'agents/panel/optimist.md', agent('Two'))
 
   const { loadWorkspace } = await load()
-  assert.throws(
-    () => loadWorkspace(wp),
-    (err: Error) => err.message.includes(a) && err.message.includes(b)
-  )
+  const ws = loadWorkspace(wp)
+  assert.deepStrictEqual(ws.agents.map(x => x.slug), [])
+  const warning = ws.warnings.find(w => w.entityType === 'agent' && w.name === 'optimist')
+  assert.ok(warning)
+  assert.deepStrictEqual(warning!.paths.sort(), [a, b].sort())
 })
 
 test('a flat workspace with no sub-folders still loads', async () => {
@@ -131,7 +133,7 @@ test('resolveEntityPath still resolves to the existing file when a folder is als
 
   const { resolveEntityPath } = await load()
   // the slug already exists elsewhere — the existing file wins over the requested folder,
-  // preserving "duplicate leaf name anywhere under the type" as a hard load failure (ADR-0012)
+  // so a save never mints a second file under one name (ADR-0012, #151)
   assert.strictEqual(resolveEntityPath(wp, 'agent', 'optimist', 'other'), nested)
 })
 

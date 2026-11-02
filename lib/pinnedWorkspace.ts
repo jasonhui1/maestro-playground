@@ -16,14 +16,16 @@ export interface PinnedWorkspace extends RunDefinitions {
 }
 
 type Defs = RunDefinitions
+// The lists pinning ever replaces — `warnings` is derived, not pinnable (#151).
+type PinnableList = 'agents' | 'skills' | 'chains' | 'tools'
 
 /** Per pinnable type: where its files live, which list it fills, and how a pinned file replaces its live entries. */
 const PINNABLE: Record<string, {
   dir: string
-  list: keyof Defs
+  list: PinnableList
   /** Whether a live entry came from this file; a variant comes from its declaring file (ADR-0013). */
   ofFile: (def: { slug: string; variantOf?: string }, slug: string) => boolean
-  parse: (filePath: string, raw: string, defaults: Record<string, unknown>) => Defs[keyof Defs]
+  parse: (filePath: string, raw: string, defaults: Record<string, unknown>) => Defs[PinnableList]
 }> = {
   agent: { dir: 'agents', list: 'agents', ofFile: (d, slug) => (d.variantOf ?? d.slug) === slug, parse: parseAgentFile },
   skill: { dir: 'skills', list: 'skills', ofFile: (d, slug) => d.slug === slug, parse: (p, raw) => [parseSkill(p, raw)] },
@@ -50,7 +52,7 @@ export function pinnedWorkspace(
 
   const defaultsRaw = pins.find(p => p.type === 'defaults')?.raw
   const defaults = defaultsRaw === undefined ? live.defaults : matter(defaultsRaw).data as Record<string, unknown>
-  const ws: PinnedWorkspace = { agents: live.agents, skills: live.skills, chains: live.chains, tools: live.tools, context: {} }
+  const ws: PinnedWorkspace = { agents: live.agents, skills: live.skills, chains: live.chains, tools: live.tools, warnings: live.warnings, context: {} }
 
   for (const { type, slug, raw } of pins) {
     if (type === 'context') ws.context[slug] = matter(raw).content

@@ -2,11 +2,12 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { AgentDef, AgentResolution, AGENT_FIELDS, OutputSocketDef, InputSocketDef, VariantDecl } from '../types'
-import { discoverFiles, assertUniqueSlug } from './discover'
+import { discoverFiles, groupByName, type Loaded } from './discover'
 import { loadAgentDefaults } from './defaults'
 import { forbiddenAgentFields } from './validate'
 import { resolveProvider } from '../provider'
-import { fillSlot } from '../tokens'
+import { DICE_SOCKET, fillSlot, socketKey } from '../tokens'
+import { normalizeDice } from '../dice'
 
 // Normalizes the hybrid `outputs:` frontmatter (array of strings and/or
 // { name, type?, description? } objects) into OutputSocketDef[]
@@ -117,6 +118,12 @@ export function parseAgent(
     resolution.sources.model = 'built-in'
   }
 
+  const outputs = normalizeOutputs(merged.outputs)
+  const dice = normalizeDice(data.dice, filePath)
+  if (dice && outputs.some(o => socketKey(o.name) === DICE_SOCKET)) {
+    throw new Error(`${filePath}: output "${DICE_SOCKET}" is the socket that carries this agent's dice roll; rename the output.`)
+  }
+
   return {
     slug,
     name: merged.name,
@@ -127,7 +134,7 @@ export function parseAgent(
     tools: merged.tools ?? [],
     input_from: merged.input_from ?? 'user',
     output_format: merged.output_format ?? 'markdown',
-    outputs: normalizeOutputs(merged.outputs),
+    outputs,
     inputs: normalizeInputs(merged.inputs),
     max_tokens: merged.max_tokens,
     max_tool_turns: typeof merged.max_tool_turns === 'number' ? merged.max_tool_turns : undefined,
@@ -136,6 +143,7 @@ export function parseAgent(
     // Read off the same frontmatter as every other field, so a variant block is
     // subject to the same rules rather than a second, laxer parse (ADR-0013).
     variants: normalizeVariants(data.variants, filePath),
+    dice,
     filePath,
     rawContent: raw,
     isFavorite: false,
@@ -212,17 +220,15 @@ export function parseAgentFile(
   })
 }
 
-export function loadAllAgents(workspacePath: string): AgentDef[] {
+export function loadAllAgents(workspacePath: string): Loaded<AgentDef> {
   const defaults = loadAgentDefaults(workspacePath)
-  const out: AgentDef[] = []
-  const bySlug = new Map<string, string>()
-  for (const f of discoverFiles(path.join(workspacePath, 'agents'))) {
-    for (const a of parseAgentFile(f.filePath, f.raw, defaults)) {
-      // A variant name and a file name are addressed alike, so they share the one
-      // flat namespace per type (ADR-0012).
-      assertUniqueSlug(bySlug, a.slug, a.filePath, 'agent name')
-      out.push(a)
-    }
-  }
-  return out
+  const { files, clashes: fileClashes } = discoverFiles(path.join(workspacePath, 'agents'))
+
+  const all: AgentDef[] = []
+  for (const f of files) all.push(...parseAgentFile(f.filePath, f.raw, defaults))
+
+  // A variant name and a file name share one flat namespace (ADR-0012, #151).
+  const { items, clashes: nameClashes } = groupByName(all, a => a.slug, a => a.filePath)
+
+  return { items, clashes: [...fileClashes, ...nameClashes] }
 }

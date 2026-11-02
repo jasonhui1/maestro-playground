@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { isWorkspaceError, WorkspaceErrorKind } from '@/lib/fs/errors'
+import { isWorkspaceError, WorkspaceErrorKind, WorkspaceSaveConflict } from '@/lib/fs/errors'
 
 // Maps workspace fs failure classes to HTTP statuses (#117).
 export function workspaceErrorStatus(kind: WorkspaceErrorKind): number {
@@ -8,6 +8,7 @@ export function workspaceErrorStatus(kind: WorkspaceErrorKind): number {
       return 404
     case 'ALREADY_EXISTS':
     case 'IN_USE':
+    case 'SAVE_CONFLICT':
       return 409
     case 'INVALID_NAME':
     case 'INVALID_CONTENT':
@@ -23,6 +24,9 @@ export function workspaceErrorStatus(kind: WorkspaceErrorKind): number {
 }
 
 export function workspaceErrorResponse(err: unknown) {
+  if (err instanceof WorkspaceSaveConflict) {
+    return NextResponse.json({ error: err.message, code: err.kind, slug: err.slug, currentRaw: err.currentRaw }, { status: 409 })
+  }
   if (isWorkspaceError(err)) {
     const error = err.kind === 'SECURITY_VIOLATION' ? 'Forbidden' : err.message
     return NextResponse.json({ error }, { status: workspaceErrorStatus(err.kind) })

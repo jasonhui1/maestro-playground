@@ -27,7 +27,8 @@ and nothing the user did not ask to delete.
 
 Promotion mints the file's own name into the flat namespace ADR-0012 gives the
 type, which it was never in. So it is refused when another file already declares
-a variant by that name, naming that file — a duplicate is a hard load failure.
+a variant by that name, naming that file — a duplicate would leave both out of
+the load (ADR-0012, as narrowed by #151).
 
 A separate decision in the same ticket: **a delete is refused while any typed
 field still names what is going**, for a file exactly as for a variant. An

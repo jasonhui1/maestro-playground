@@ -35,13 +35,13 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
-    const { data, content } = await request.json()
+    const { data, content, expectedRaw } = await request.json()
 
     if (!data || content === undefined) {
       return NextResponse.json({ error: 'Missing data or content' }, { status: 400 })
     }
 
-    const saved = saveEntity(requestWorkspace().root, { type: type as EntityType, slug, data, content })
+    const saved = saveEntity(requestWorkspace().root, { type: type as EntityType, slug, data, content, expectedRaw })
     return NextResponse.json({ success: true, ...saved })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)

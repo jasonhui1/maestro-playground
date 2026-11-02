@@ -2,14 +2,21 @@ import { listSections } from './graph'
 import { badRequest, conflict, isRefusal, notFound } from './refusal'
 import { parseModelOverride } from './modelOverride'
 import type { SectionWarning } from './sectionWarning'
+import { liftImages } from './tools/context'
 import type { AgentOutput, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
 const CANDIDATE_HEADING = /^candidate\s+\d+$/i
 
 // The decider writes one `## Candidate N` section per option (#93).
 export function sliceCandidates(input: string): HoldCandidate[] {
-  return listSections(input).filter(s => CANDIDATE_HEADING.test(s.heading.trim()))
+  return listSections(input).filter(s => CANDIDATE_HEADING.test(s.heading.trim())).map(s => {
+    const { text, images } = liftImages(s.body)
+    return images.length ? { heading: s.heading, body: text, images } : s
+  })
 }
+
+const pickText = (c: HoldCandidate) =>
+  [`PICK: ${c.heading}\n${c.body}`, ...(c.images ?? []).map(url => `![](${url})`)].join('\n\n')
 
 /**
  * The record for a hold the wavefront just reached. `fromNode` is the producer on its
@@ -176,7 +183,7 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
   const chosen = pick && 'candidate' in pick ? { chosen: pick.candidate.heading } : {}
   const recorded = pick && 'custom' in pick ? { custom: pick.custom } : chosen
   const lead = !pick ? undefined
-    : 'candidate' in pick ? `PICK: ${pick.candidate.heading}\n${pick.candidate.body}`
+    : 'candidate' in pick ? pickText(pick.candidate)
     : `PICK: custom\n${pick.custom}`
   const text = lead ? (direction && direction.trim() ? `${lead}\n\n${direction}` : lead) : direction
   const record: HoldRecord = { ...open, ...recorded, direction, resolvedAt: at }

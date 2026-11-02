@@ -20,6 +20,15 @@ export function imageUrl(runId: string, name: string): string {
   return `/api/runs/${encodeURIComponent(runId)}/images/${name}`
 }
 
+const IMAGE_LINK = /!\[[^\]]*\]\((\/api\/runs\/[^/\s)]+\/images\/[^\s)]+)\)/g
+
+/** The engine images `markdown` links, in order, and `markdown` without those links. */
+export function liftImages(markdown: string): { text: string; images: string[] } {
+  const images = [...markdown.matchAll(IMAGE_LINK)].map(m => m[1])
+  const text = markdown.replace(IMAGE_LINK, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+  return { text, images }
+}
+
 /** Tools running on behalf of `runId`: images land in its folder, under its override (#148). */
 export function runToolContext(ws: { root: string; runs: RunFolders }, runId: string): ToolContext {
   return {

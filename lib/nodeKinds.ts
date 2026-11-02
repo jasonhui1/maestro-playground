@@ -1,7 +1,11 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
-import { promptSlots, socketKey } from './tokens'
+import { agentSlots, DICE_SOCKET, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
+import { toolNodeInputs } from './tools/spec'
+
+/** How deep subchains may nest before a run refuses to go further. */
+export const MAX_SUBCHAIN_DEPTH = 10
 
 export interface WorkspaceLookup {
   chain: ChainDef
@@ -96,7 +100,7 @@ function agentInputs(node: ChainNode, { agents, tools = [] }: WorkspaceLookup): 
   const a = slug ? agents.find(x => x.slug === slug) : undefined
   if (!a) return []
   return [
-    ...promptSlots(a.systemPrompt).map(name => ({ name })),
+    ...agentSlots(a).map(name => ({ name })),
     ...agentPartSockets(a, tools).map(({ socket }) => ({ name: socket, optional: true })),
   ]
 }
@@ -104,7 +108,7 @@ function agentInputs(node: ChainNode, { agents, tools = [] }: WorkspaceLookup): 
 function agentOutputs(node: ChainNode, { agents }: WorkspaceLookup): string[] {
   const slug = agentSlugOf(node)
   const a = slug ? agents.find(x => x.slug === slug) : undefined
-  const sockets = ['output', ...(a?.outputs ?? []).map(s => socketKey(s.name))]
+  const sockets = ['output', ...(a?.outputs ?? []).map(s => socketKey(s.name)), ...(a?.dice ? [DICE_SOCKET] : [])]
   return Array.from(new Set(sockets))
 }
 
@@ -167,6 +171,20 @@ const registry: Record<ChainNodeKind, NodeKindDescriptor> = {
       { key: 'skills+', codec: 'stringList', ref: 'skill' },
     ],
     palette: { label: 'Decider', category: 'Agents', order: 21 },
+  },
+  tool: {
+    kind: 'tool',
+    acceptsInputs: true,
+    // Its sockets read only wired values (#157).
+    acceptsLiterals: false,
+    zoneRole: 'body',
+    inputs: (node, { tools = [] }) => {
+      const tool = tools.find(t => node.kind === 'tool' && t.name === node.tool)
+      return tool ? toolNodeInputs(tool).map(name => ({ name, optional: true })) : []
+    },
+    outputs: () => ['output'],
+    fields: [{ key: 'tool', codec: 'string', ref: 'tool' }],
+    palette: { label: 'Tool', category: 'Tools', order: 25 },
   },
   gate: {
     kind: 'gate',

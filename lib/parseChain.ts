@@ -69,6 +69,8 @@ export function parseChainContent(raw: string, slug: string): ChainDef {
           name: String(p.name), node: String(p.node),
           ...(p.socket !== undefined ? { socket: String(p.socket) } : {}),
           ...(p.role === 'join' ? { role: 'join' as const } : {}),
+          ...(p.description !== undefined ? { description: String(p.description) } : {}),
+          ...(typeof p.required === 'boolean' ? { required: p.required } : {}),
         }))
       : undefined
 

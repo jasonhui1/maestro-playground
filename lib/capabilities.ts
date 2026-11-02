@@ -6,6 +6,8 @@
  * A flag is added when the behaviour ships and never removed while any client reads it.
  */
 export const CAPABILITIES = {
+  /** Entity PUT accepts `expectedRaw` and returns the exact serialized `raw`; stale saves are 409 (#158). */
+  conditionalWorkspaceSaves: true,
   /** `/api/run` streams `{ type: 'layout', model }` frames, and every panel carries `node`. */
   runLayoutFrames: true,
   /** `/api/run` emits `{ type: 'run_start', runId }` as the first event of the stream. */
@@ -31,6 +33,27 @@ export const CAPABILITIES = {
   /** A tool's saved image is linked in node output as `/api/runs/:id/images/:name` and served there; `/api/run`
    *  takes `imageOverride: { size?, quality?, negative? }`, which the run's continuations carry on (#148). */
   runImages: true,
+  /** A hold candidate carries `images`: the engine image URLs its decider linked inside it, lifted out of its
+   *  `body`; an image linked in no candidate stays in the hold input's `## Images`. */
+  holdCandidateImages: true,
+  /** `/api/run` takes `inputs: { [name]: text | null }`, each filling the seed its chain's `inputs:` port binds to;
+   *  one left out or `null` reads `seedPrompt`, an undeclared name is a 400. meta.json pins them, so forks keep them (#150). */
+  runInputs: true,
+  /** An `agentName` run takes `inputs` too: one per `{slot}` in the agent's prompt, listed as `slots` on each
+   *  `GET /api/workspace` agent so a client need not parse the prompt (#152). */
+  agentRunInputs: true,
+  /** An `agentName` run with no prompt slots needs no seed; a supplied `seedPrompt` is ignored (#156). */
+  slotlessAgentRuns: true,
+  /** `kind: tool` and `/api/run`'s `toolName` call one executor without a model; workspace tools
+   *  expose ordered parts, params and `savesImages` for image-only `count` (#157). */
+  toolNodes: true,
+  /** `dice:` on an agent rolls once per node per run, pinned in meta.json and on each layout panel; `GET /api/workspace`
+   *  lists each agent's axes, and `/api/run` and `/api/variance` take `dice: { [axis]: value | values }` pins (#153). */
+  dice: true,
+  /** `run_start` carries the run's rolls as `dice`, keyed like meta.json's, on any run that rolled (#155). */
+  runStartDice: true,
+  /** Fork revisions accept edits keyed by socket; layout panels carry socket (#160). */
+  addressedRevisions: true,
 } as const
 
 export type Capabilities = typeof CAPABILITIES

@@ -3,12 +3,15 @@ import fs from 'fs'
 import yaml from 'js-yaml'
 import path from 'path'
 import { resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, ENTITY_TYPES, EntityType } from './workspace'
-import { WorkspaceError } from './errors'
+import { WorkspaceError, WorkspaceSaveConflict } from './errors'
 import { addressExisting, type Address } from './address'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
-import { walkMarkdown } from './discover'
+import { walkMarkdown, relativePosix } from './discover'
+import { normalizeVariants } from './parseAgent'
+import { declaredVariants } from './variantIndex'
+import { ENTITY_DIRS } from '../entityDirs'
 
 export interface SaveEntityRequest {
   type: EntityType
@@ -16,6 +19,8 @@ export interface SaveEntityRequest {
   data: Record<string, unknown>
   content: string
   folder?: string
+  /** Omitted: legacy unconditional save. Null: create only. String: exact approved file text. */
+  expectedRaw?: string | null
 }
 
 /** The file text for a save. The one place frontmatter is validated (#164). */
@@ -27,28 +32,92 @@ function fileText(data: Record<string, unknown>, content: string) {
   return matter.stringify(content, data)
 }
 
-// A save may be the first write into a type, so it makes the type directory itself.
-function writeFile(root: string, type: EntityType, filePath: string, text: string) {
-  fs.mkdirSync(path.join(root, ENTITY_TYPES[type]), { recursive: true })
-  fs.writeFileSync(filePath, text, 'utf-8')
+/** The names an agent file answers to: its variants, or its own slug when it has none (ADR-0013). */
+function agentNamesOf(filePath: string): string[] {
+  const variants = declaredVariants(filePath)
+  return variants.length ? variants : [path.basename(filePath, '.md')]
 }
 
-/** Writes where a slug already points — a variant saves into its declaring file (ADR-0013). */
-export function saveAddressed(root: string, type: EntityType, target: Address, data: Record<string, unknown>, content: string) {
-  writeFile(root, type, target.filePath, fileText(data, content))
-  return { filePath: target.filePath, slug: sanitizeSlug(target.storageSlug) }
+// File names and variant ids share one namespace (ADR-0012), so a save may not newly
+// claim a name another agent file already claims — clashing or not (#151).
+function assertAgentNamesFree(root: string, filePath: string, slug: string, rawVariants: unknown) {
+  let variants
+  try {
+    variants = normalizeVariants(rawVariants, filePath)
+  } catch {
+    return // malformed variants claim no name; the parser reports them on load
+  }
+  const held = fs.existsSync(filePath) ? agentNamesOf(filePath) : []
+  const claims = (variants.length ? variants.map(v => v.id) : [slug]).filter(name => !held.includes(name))
+  if (!claims.length) return
+
+  const agentsDir = path.join(root, ENTITY_DIRS.agent)
+  for (const other of walkMarkdown(agentsDir)) {
+    if (other === filePath) continue
+    const names = agentNamesOf(other)
+    const taken = claims.find(name => names.includes(name))
+    if (taken) {
+      throw new WorkspaceError('ALREADY_EXISTS', `an agent named \`${taken}\` already exists: ${relativePosix(agentsDir, other)}`)
+    }
+  }
+}
+
+function readCurrentRaw(filePath: string): string | null {
+  try {
+    return fs.readFileSync(filePath, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+}
+
+/**
+ * Writes where a slug already points — a variant into its declaring file (ADR-0013). The one
+ * write path: `expectedRaw` conditions it as `SaveEntityRequest` says; `raw` is the receipt (#158).
+ */
+export function saveAddressed(
+  root: string,
+  type: EntityType,
+  target: Pick<Address, 'filePath' | 'storageSlug'>,
+  data: Record<string, unknown>,
+  content: string,
+  expectedRaw?: string | null,
+) {
+  const { filePath, storageSlug } = target
+  if (expectedRaw !== undefined && expectedRaw !== null && typeof expectedRaw !== 'string') {
+    throw new WorkspaceError('INVALID_CONTENT', 'expectedRaw must be a string or null')
+  }
+  const text = fileText(data, content)
+  if (type === 'agent') assertAgentNamesFree(root, filePath, storageSlug, data.variants)
+
+  // No awaits between resolution, comparison and write: cooperating requests in one engine
+  // process cannot interleave. Direct disk writers do not share that guarantee (#158).
+  if (expectedRaw !== undefined) {
+    const currentRaw = readCurrentRaw(filePath)
+    if (currentRaw !== expectedRaw) throw new WorkspaceSaveConflict(storageSlug, currentRaw)
+  }
+  // A save may be the first write into a type, so it makes the type directory itself.
+  fs.mkdirSync(path.join(root, ENTITY_TYPES[type]), { recursive: true })
+  try {
+    fs.writeFileSync(filePath, text, { encoding: 'utf-8', flag: expectedRaw === null ? 'wx' : 'w' })
+  } catch (err) {
+    if (expectedRaw === null && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new WorkspaceSaveConflict(storageSlug, readCurrentRaw(filePath))
+    }
+    throw err
+  }
+  return { filePath, slug: storageSlug, raw: text }
 }
 
 /** Places a file by slug and folder without consulting variants, so a create can never land in a declaring file. */
-export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder }: SaveEntityRequest) {
+export function saveWorkspaceEntity(root: string, { type, slug, data, content, folder, expectedRaw }: SaveEntityRequest) {
   const cleanSlug = sanitizeSlug(slug)
-  const fileContent = fileText(data, content)
-
+  if (!cleanSlug) {
+    throw new WorkspaceError('INVALID_NAME', `Invalid name: \`${slug}\``)
+  }
   // resolveEntityPath handles sanitization and security checks
   const filePath = resolveEntityPath(root, type, cleanSlug, folder)
-
-  writeFile(root, type, filePath, fileContent)
-  return { filePath, slug: cleanSlug }
+  return saveAddressed(root, type, { filePath, storageSlug: cleanSlug }, data, content, expectedRaw)
 }
 
 export function createWorkspaceEntity(root: string, { type, name, slug, folder }: CreationParams) {

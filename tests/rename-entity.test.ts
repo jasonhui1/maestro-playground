@@ -300,7 +300,7 @@ test('a name already taken anywhere under the type is rejected', async () => {
   write(wp, 'agents/deep/optimist.md', '---\nname: Other\n---\nbody\n')
 
   const { planRename } = await rename()
-  // a duplicate leaf name anywhere under the type is a hard load failure (ADR-0012),
+  // a duplicate leaf name anywhere under the type leaves both out of the load (#151),
   // so the rename is refused before it can create one
   assert.throws(() => planRename(wp, 'agent', 'panel-optimist', 'optimist'), /already/i)
 })

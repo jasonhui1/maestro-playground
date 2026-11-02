@@ -62,6 +62,15 @@ test('address: a file of that name, a variant, or a place for a new file, touchi
   expect(fs.existsSync(path.join(wp, 'skills'))).toBe(false)
 })
 
+test('address answers a .md-suffixed slug as the name the listing gives, and refuses an empty one (#159)', () => {
+  const wp = newWorkspace()
+  const plain = write(wp, 'agents/panel/plain.md', PLAIN)
+
+  expect(address(wp, 'agent', 'plain.md')).toMatchObject({ kind: 'file', filePath: plain, storageSlug: 'plain' })
+  expect(readEntity(wp, 'agent', 'plain.md')).toMatchObject({ slug: 'plain' })
+  expect(refusal(() => address(wp, 'agent', '.md'))).toEqual({ kind: 'INVALID_NAME', message: 'Invalid name: `.md`' })
+})
+
 test('readEntity reads a variant as its declaring file and refuses a missing slug', () => {
   const wp = newWorkspace()
   write(wp, 'agents/premortem.md', PREMORTEM)
@@ -81,7 +90,7 @@ test('saveEntity writes a variant into its declaring file and never a twin', () 
     type: 'agent', slug: 'rot', data: { name: 'Premortem', model: 'test/model', variants: [{ id: 'rot' }] }, content: 'Edited.',
   })
 
-  expect(saved).toEqual({ filePath: premortem, slug: 'premortem' })
+  expect(saved).toEqual({ filePath: premortem, slug: 'premortem', raw: fs.readFileSync(premortem, 'utf-8') })
   expect(fs.readFileSync(premortem, 'utf-8')).toContain('Edited.')
   expect(fs.existsSync(path.join(wp, 'agents', 'rot.md'))).toBe(false)
 })
@@ -139,13 +148,15 @@ test('createEntity refuses a taken name, names a default slug, and honours a fol
   expect(made.filePath).toBe(path.join(wp, 'skills', 'craft', 'deep-dive.md'))
 })
 
-test('createEntity never writes into the file that declares a same-named variant (ADR-0013)', () => {
+test('createEntity refuses a name a variant claims, and never writes into its declaring file (ADR-0013, #151)', () => {
   const wp = newWorkspace()
   const premortem = write(wp, 'agents/premortem.md', PREMORTEM)
 
-  createEntity(wp, { type: 'agent', name: 'Rot' })
-
+  expect(refusal(() => createEntity(wp, { type: 'agent', name: 'Rot' }))).toEqual({
+    kind: 'ALREADY_EXISTS', message: 'an agent named `rot` already exists: premortem.md',
+  })
   expect(fs.readFileSync(premortem, 'utf-8')).toBe(PREMORTEM)
+  expect(fs.existsSync(path.join(wp, 'agents', 'rot.md'))).toBe(false)
 })
 
 test('createEntity forks a chain from a template and refuses a missing one', () => {

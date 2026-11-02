@@ -20,6 +20,7 @@ edges:
     id: 'wb',
     kind: 'agent',
     agent: 'world-builder',
+    tool: undefined,
     file: undefined,
     pos: [250, 0],
     condition: undefined,

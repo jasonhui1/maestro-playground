@@ -14,7 +14,7 @@ import { withModelOverride } from './modelOverride'
 import { bindAgentTools } from './tools/registry'
 import { runToolContext } from './tools/context'
 import { sseResponse, type SseSend } from './sse'
-import { loadContinuation, newRunMeta, type LiveWorkspace } from './runSession'
+import { loadContinuation, newRunMeta, runStartEvent, type LiveWorkspace } from './runSession'
 import type { Workspace } from './runFolders'
 import type { AgentDef, AgentOutput, ChainEdge, ChainNode, HoldCandidate, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -170,8 +170,8 @@ function rerollInPlace(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, r
   const { runs } = ws
   const { runId } = meta
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
-    send({ type: 'layout', model: buildLayoutModel(chain, meta.agentOutputs) })
+    send(runStartEvent(runId, meta.dice))
+    send({ type: 'layout', model: buildLayoutModel(chain, meta.agentOutputs, meta.dice) })
     let next = hold
     try {
       const step = runs.nextStep(runId)
@@ -182,7 +182,7 @@ function rerollInPlace(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, r
       const agentOutputs = rerolled ? [...runs.read(runId).agentOutputs, attempt] : beforeLatest(runs.read(runId).agentOutputs, plan.producer.id, attempt)
       if (rerolled) next = rerolled.record
       runs.update(runId, { status: 'waiting', agentOutputs, holds: rerolled?.holds ?? holds })
-      send({ type: 'layout', model: buildLayoutModel(chain, agentOutputs) })
+      send({ type: 'layout', model: buildLayoutModel(chain, agentOutputs, meta.dice) })
       if (!rerolled) send({ type: 'reroll_failed', runId, nodeId: hold.nodeId, error: attempt.error ?? NO_CANDIDATES })
     } catch (error) {
       runs.update(runId, { status: 'waiting' })
@@ -210,8 +210,8 @@ function rerollFork(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, sour
 
   const runId = newRunId()
   return sseResponse(async send => {
-    send({ type: 'run_start', runId })
-    send({ type: 'layout', model: buildLayoutModel(start.chain, replay) })
+    send(runStartEvent(runId, start.dice))
+    send({ type: 'layout', model: buildLayoutModel(start.chain, replay, start.dice) })
     let created = false
     try {
       const { attempt, input } = await attemptReroll(send, ws, workspace, meta.seedPrompt, meta.runId, plan, hold, replay.length, start.versionNumber)
@@ -225,7 +225,7 @@ function rerollFork(ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, sour
       created = true
       agentOutputs.forEach((output, step) => ws.runs.writeStep(runId, step, output))
       ws.runs.update(runId, { status: 'waiting' })
-      send({ type: 'layout', model: buildLayoutModel(start.chain, agentOutputs) })
+      send({ type: 'layout', model: buildLayoutModel(start.chain, agentOutputs, start.dice) })
       send({ type: 'run_waiting', runId, nodeId: hold.nodeId, hold: rerolled.record })
     } catch (error) {
       // A run already on disk is marked failed rather than left looking unfinished.

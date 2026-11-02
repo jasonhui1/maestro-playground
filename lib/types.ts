@@ -2,13 +2,17 @@ import type { SectionWarning } from './sectionWarning'
 import type { ENTITY_DIRS } from './entityDirs'
 import type { MarkdownSection } from './graph'
 
-export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
+export type ChainNodeKind = 'seed' | 'context' | 'param' | 'agent' | 'tool' | 'gate' | 'branch' | 'decider' | 'loop-start' | 'loop-end' | 'subchain' | 'report' | 'join' | 'hold'
 
 export interface ChainPort {
   name: string      // public socket name shown on subchain nodes
   node: string      // inner node this port binds to (seed for inputs; any node for outputs)
   socket?: string   // inner output socket (outputs only); defaults to 'output'
   role?: 'join'     // marks the panel as a layout's converging panel (ADR-0016)
+  // Inputs only, display-only: a direct run (POST /api/run) shows these; a subchain's
+  // wired port ignores them and stays optional either way (#150).
+  description?: string
+  required?: boolean
 }
 
 export interface BranchCase {
@@ -42,6 +46,7 @@ export type ChainNode =
   | (ChainNodeBase & { kind: 'context'; file?: string })
   | (ChainNodeBase & { kind: 'param' })
   | (ChainNodeBase & { kind: 'agent'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
+  | (ChainNodeBase & { kind: 'tool'; tool?: string })
   | (ChainNodeBase & { kind: 'decider'; agent?: string; 'skills!'?: string[]; 'skills+'?: string[] })
   | (ChainNodeBase & { kind: 'gate'; condition?: string })
   | (ChainNodeBase & { kind: 'branch'; cases?: BranchCase[]; default?: string })
@@ -119,7 +124,28 @@ export interface AgentDef {
   resolution?: AgentResolution // set by the loaders; absent on a def built in memory
   variants?: VariantDecl[]  // declared by the file; empty on a variant itself (ADR-0013)
   variantOf?: string    // slug of the file declaring this variant (ADR-0013)
+  dice?: AgentDice      // rolled once per node per run into `{dice}` (#153)
 }
+
+/** One die: `draws` distinct values, or a count rolled from `[min, max]` (#153). */
+export interface DiceAxis {
+  values: string[]
+  draws: number | [number, number]
+  /** Each value rolled less often than common, by value. */
+  rarity?: Record<string, Rarity>
+  /** Values that roll only when axis `by` drew one of theirs; a value not listed fits anything. */
+  fits?: { by: string; values: Record<string, string[]> }
+}
+
+export type Rarity = 'common' | 'uncommon' | 'rare'
+
+export type AgentDice = Record<string, DiceAxis>
+
+/** What one node rolled, by axis. */
+export type DiceRoll = Record<string, string[]>
+
+/** A run's rolls, by node id; a subchain's inner node is `subchainId/innerId`. */
+export type RunDice = Record<string, DiceRoll>
 
 export interface ToolParamDef {
   type: 'string' | 'number' | 'boolean'
@@ -243,7 +269,8 @@ export interface AgentOutput {
   reroll?: { holdId: string; feedback?: string }  // a fresh candidate set asked for at a hold, and the feedback it ran with (#134)
 }
 
-export type HoldCandidate = MarkdownSection
+/** `images` are lifted out of `body`. */
+export type HoldCandidate = MarkdownSection & { images?: string[] }
 
 /** Why a request is refused, and the HTTP status it answers with. */
 export interface Refusal { error: string; status: number; errors?: unknown[] }
@@ -278,13 +305,18 @@ export interface RunMeta {
   /** The chain's declared dropdown and what this run set it to — an input like the seed,
    *  so a reopened run can say which one it was (#65). Absent on runs recorded before. */
   parameter?: { name: string; value: string }
+  /** Values for the chain's `inputs:` ports, by name; a port left out reads `seedPrompt` (#150). */
+  inputs?: Record<string, string>
+  /** Each dice node's roll (#153). */
+  dice?: RunDice
   startedAt: string
   completedAt?: string
   status: 'running' | 'waiting' | 'complete' | 'error'
   agentOutputs: AgentOutput[]
   /** One entry per hold reached; the open one is the last without `resolvedAt` (#93). */
   holds?: HoldRecord[]
-  graph?: { nodes: ChainNode[]; edges: ChainEdge[] }
+  /** `inputs` pins the ports a run was started with; absent before #152, when the live chain's are read. */
+  graph?: Pick<ChainDef, 'nodes' | 'edges' | 'inputs'>
   branchedFromRunId?: string
   /** A branch's anchor by step, on runs from before branches became forks (#103). */
   branchedFromStep?: number
@@ -309,7 +341,7 @@ export interface RunMeta {
   /** The slug of the chain or agent entrypoint (#131). */
   chainSlug?: string
   /** The entrypoint identity (kind + slug) (#131). */
-  entrypoint?: { kind: 'chain' | 'agent' | 'inline'; slug?: string }
+  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
   /** One ordinary run's place in a repeated, same-input launch (#133). */
   variance?: { groupId: string; index: number; size: number }
 }
@@ -330,6 +362,17 @@ export interface CreationParams {
   name: string
   slug: string
   folder?: string
+}
+
+/** Two files (or a variant id and a file) claim one name; both are left out of the load (#151). */
+export interface NameClash {
+  name: string
+  paths: string[]
+}
+
+export interface WorkspaceWarning extends NameClash {
+  entityType: keyof typeof ENTITY_DIRS
+  message: string
 }
 
 export interface ValidationIssue {

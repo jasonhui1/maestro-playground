@@ -1,8 +1,9 @@
-import { ChainDef, ChainNode, AgentDef, AgentOutput } from './types'
+import { ChainDef, ChainNode, AgentDef, AgentOutput, RunDice } from './types'
 import { extractSectionPath } from './graph'
-import { promptSlots, fillSlot, outputKey, isWholeOutput } from './tokens'
+import { agentSlots, fillSlot, outputKey, isWholeOutput, socketKey, DICE_SOCKET } from './tokens'
 import { emitSectionWarnings, type SectionWarning } from './sectionWarning'
 import { hasLiteralInput } from './chainGraph'
+import { diceLines, fillDice } from './dice'
 
 // Pure — reporting the miss is the caller's job (#37).
 export interface SocketRead {
@@ -15,7 +16,7 @@ export interface SocketRead {
 // Resolves the value carried on a source node's socket.
 // seed -> seed prompt; context -> file; param -> the run's dropdown pick;
 // gate/branch -> their pass-through output (socket ignored); agent/decider ->
-// output (full) or a named section.
+// output (full), its roll on the dice socket (#161), or a named section.
 export function readSocket(
   src: ChainNode,
   socket: string,
@@ -23,6 +24,7 @@ export function readSocket(
   seedPrompt: string,
   readContext: (file: string) => string,
   paramValue: string = '',
+  dice: RunDice = {},
 ): SocketRead {
   if (src.kind === 'seed') {
     const o = nodeOutputs.get(src.id)
@@ -45,6 +47,7 @@ export function readSocket(
   const o = nodeOutputs.get(src.id)
   if (!o) return { value: '' }
   if (isWholeOutput(socket)) return { value: o.output }
+  if (socketKey(socket) === DICE_SOCKET && dice[src.id]) return { value: diceLines(dice[src.id]) }
   const res = extractSectionPath(o.output, socket)
   if (res.status === 'missing') {
     return {
@@ -79,10 +82,12 @@ export function resolveNodePrompt(
   seedPrompt: string,
   readContext: (file: string) => string,
   paramValue: string = '',
+  dice: RunDice = {},
 ): ResolvedPrompt {
-  let out = agent.systemPrompt
+  // Before the slots, so a `{dice}` in text arriving on an edge stays text.
+  let out = fillDice(agent.systemPrompt, agent.dice ? dice[node.id] : undefined)
   const warnings: SectionWarning[] = []
-  for (const slot of promptSlots(agent.systemPrompt)) {
+  for (const slot of agentSlots(agent)) {
     const edge = chain.edges.find(e => e.toNode === node.id && e.toSocket === slot)
     let value: string
     if (edge) {
@@ -90,7 +95,7 @@ export function resolveNodePrompt(
       if (!src) {
         value = `[${slot}: source "${edge.fromNode}" missing]`
       } else {
-        const read = readSocket(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue)
+        const read = readSocket(src, edge.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue, dice)
         value = read.value
         emitSectionWarnings(read, edge.fromNode, node.id, slot, w => warnings.push(w))
         if (read.emptySection) {

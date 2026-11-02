@@ -39,22 +39,23 @@ const PARSERS: Record<EntityType, (root: string, filePath: string, slug: string)
 
 /** One file, parsed, plus its raw text. A variant reads as its declaring file (#118, #123). */
 export function readEntity(root: string, type: EntityType, slug: string) {
-  const { filePath } = addressExisting(root, type, slug)
+  const { filePath, storageSlug } = addressExisting(root, type, slug)
 
-  const parsed = PARSERS[type](root, filePath, slug)
+  const parsed = PARSERS[type](root, filePath, storageSlug)
   return { ...parsed, raw: fs.readFileSync(filePath, 'utf-8') }
 }
 
 /**
  * Saves frontmatter and body. Refused for an agent stating a field it may not (ADR-0010).
  * Missing required fields do not refuse the save — they come back as `warnings` (#122).
- * A variant saves into its declaring file (#118, #123).
+ * A variant saves into its declaring file (#118, #123). `expectedRaw` conditions the
+ * write and `raw` is the text written (#158).
  */
 export function saveEntity(
   root: string,
-  req: { type: EntityType; slug: string; data: Record<string, unknown>; content: string },
-): { filePath: string; slug: string; warnings?: string[] } {
-  const { type, slug, data, content } = req
+  req: { type: EntityType; slug: string; data: Record<string, unknown>; content: string; expectedRaw?: string | null },
+): { filePath: string; slug: string; raw: string; warnings?: string[] } {
+  const { type, slug, data, content, expectedRaw } = req
   if (type === 'agent') {
     const forbidden = forbiddenAgentFields(data)
     if (forbidden.length > 0) throw new WorkspaceError('INVALID_CONTENT', forbiddenAgentFieldMessage(forbidden))
@@ -63,7 +64,7 @@ export function saveEntity(
   const defaults = type === 'agent' ? loadAgentDefaults(root) : undefined
   const warnings = validateEntityFrontmatter(type, data, defaults).errors
 
-  const saved = saveAddressed(root, type, address(root, type, slug), data, content)
+  const saved = saveAddressed(root, type, address(root, type, slug), data, content, expectedRaw)
   return warnings.length > 0 ? { ...saved, warnings } : saved
 }
 
@@ -75,8 +76,8 @@ function alreadyExistsMessage(type: EntityType, slug: string) {
 
 /**
  * Creates a file, from the type's template or, for a chain, from a template file. A new
- * file is placed by slug and folder alone: a name already taken by a file is refused, and
- * one taken by a variant stays a load-time error (ADR-0013).
+ * file is placed by slug and folder alone: a name already taken by a file or a variant
+ * is refused (ADR-0013, #151).
  */
 export function createEntity(
   root: string,

@@ -26,7 +26,7 @@ export type EditedFileEvent =
   | { type: 'load-error'; message: string }
   | { type: 'edit'; content: string }
   | { type: 'save-start' }
-  | { type: 'save-ok'; content: string }
+  | { type: 'save-ok'; content: string; submittedContent?: string }
   | { type: 'save-error'; message: string }
   /** The buffer's frontmatter does not parse, so nothing was written. */
   | { type: 'save-skipped' }
@@ -92,7 +92,14 @@ export function editedFileReducer(state: EditedFileState, event: EditedFileEvent
 
     // The baseline moves to what was written, not to `content`, which may have moved on.
     case 'save-ok':
-      return { ...state, onDisk: event.content, status: 'saved', error: null }
+      return {
+        ...state,
+        content: state.content === event.submittedContent ? event.content : state.content,
+        onDisk: event.content,
+        conflict: state.conflict === event.content ? null : state.conflict,
+        status: 'saved',
+        error: null,
+      }
 
     case 'save-error':
       return { ...state, status: 'error', error: event.message }
@@ -116,6 +123,6 @@ export function editedFileReducer(state: EditedFileState, event: EditedFileEvent
       if (state.conflict === null) return state
       return event.choice === 'theirs'
         ? take(state, state.conflict)
-        : { ...state, conflict: null }
+        : { ...state, onDisk: state.conflict, conflict: null }
   }
 }

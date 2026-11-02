@@ -24,7 +24,7 @@ export type PromptParts = { name: string; value: string }[]
 
 type ExecutorFn = (params: Record<string, unknown>, config: Record<string, unknown>, ctx: ToolContext, parts: PromptParts) => Promise<ToolReturn> | ToolReturn
 
-const EXECUTORS: Record<ExecutorId, ExecutorFn> = {
+export const EXECUTORS: Record<ExecutorId, ExecutorFn> = {
   retrieve: (params, config, ctx) => retrieveExecutor(params, config, ctx.workspacePath),
   novelai: novelaiExecutor,
 }

@@ -1,4 +1,5 @@
 import { parseSectionPath } from './graph'
+import type { AgentDef } from './types'
 
 // The `{token}` grammar — see "Token" in CONTEXT.md (#110).
 export type Token =
@@ -56,10 +57,22 @@ export function scanTokens(text: string): Token[] {
   return out
 }
 
-/** A prompt's slot names, deduped in first-seen order — an agent node's input sockets. */
+/** Where an agent's dice roll lands (#153). */
+export const DICE_TOKEN = 'dice'
+
+/** The output socket carrying a dice node's roll to another node (#161). */
+export const DICE_SOCKET = 'dice'
+
+/** A prompt's slot names, deduped in first-seen order. */
 export function promptSlots(template: string): string[] {
   const names = scanTokens(template).flatMap(t => t.kind === 'slot' ? [t.name] : [])
   return [...new Set(names)]
+}
+
+/** An agent node's input sockets: its prompt's slots, bar `{dice}` when the engine fills it (#153). */
+export function agentSlots(agent: Pick<AgentDef, 'systemPrompt' | 'dice'>): string[] {
+  const slots = promptSlots(agent.systemPrompt)
+  return agent.dice ? slots.filter(s => s !== DICE_TOKEN) : slots
 }
 
 /** Rewrites each token with `fn`'s result; `undefined` keeps the token verbatim. */

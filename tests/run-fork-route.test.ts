@@ -29,7 +29,9 @@ vi.mock('@/lib/runner', () => ({
     ran.push({ slug: agent.slug, systemPrompt })
     const output = agent.slug === 'decider'
       ? `## Candidate 1\none [${systemPrompt}]\n\n## Candidate 2\ntwo`
-      : `from ${agent.slug} <<${systemPrompt}>>`
+      : agent.slug === 'sections'
+        ? '## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.'
+        : `from ${agent.slug} <<${systemPrompt}>>`
     return { ...base, output, status: 'success' }
   },
 }))
@@ -82,6 +84,7 @@ function newWorkspace(chainText = chain): string {
   write('agents/prop.md', '---\nname: Prop\n---\npropose {input}\n')
   write('agents/decider.md', '---\nname: Decider\n---\ndecide {input}\n')
   write('agents/after.md', '---\nname: After\n---\nbuild on {direction}\n')
+  write('agents/sections.md', '---\nname: Sections\n---\nstructured {input}\n')
   return wp
 }
 
@@ -358,4 +361,121 @@ test('/api/run refuses the retired branch request rather than running from scrat
   const res = await POST({ json: async () => ({ chainName: 'held', seedPrompt: 'go', branchOutputs: [] }) } as Req)
   assert.strictEqual(res.status, 400)
   assert.deepStrictEqual(ran, [])
+})
+
+const structuredChain = `---
+name: held
+view: columns
+outputs:
+  - name: Pitch
+    node: prop
+    socket: pitch
+  - name: Notes
+    node: prop
+    socket: notes
+nodes:
+  - id: seed
+    kind: seed
+  - id: prop
+    kind: agent
+    agent: sections
+  - id: dec
+    kind: decider
+    agent: decider
+  - id: hold
+    kind: hold
+  - id: after
+    kind: agent
+    agent: after
+edges:
+  - from: seed
+    to: prop.input
+  - from: prop
+    to: dec.input
+  - from: dec
+    to: hold.in
+  - from: hold
+    to: after.direction
+---
+`
+
+test('fork with addressed revisions splices into the node output and preserves unedited sections (#160)', async () => {
+  newWorkspace(structuredChain)
+  const sourceId = await completeRun()
+
+  const { GET: getLayout } = await import('../app/api/runs/[runId]/layout/route')
+  const layout = await (await getLayout({} as Req, { params: Promise.resolve({ runId: sourceId }) })).json() as { panels: { name: string; node: string; socket: string; text: string }[] }
+  assert.deepStrictEqual(layout.panels.map(p => [p.name, p.node, p.socket, p.text]), [
+    ['Pitch', 'prop', 'pitch', 'Original pitch.'],
+    ['Notes', 'prop', 'notes', 'Original notes.'],
+  ])
+
+  ran.length = 0
+  const events = await sse(await fork(sourceId, { revisions: { prop: { notes: 'Edited notes.' } } }))
+  const forkId = events[0].runId as string
+  assert.notStrictEqual(forkId, sourceId)
+  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'], 'only prop descendants rerun')
+  assert.ok(ran[0].systemPrompt.includes('Edited notes.'))
+
+  const forked = await readMeta(forkId)
+  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
+  assert.strictEqual(prop.output, '## Pitch\nOriginal pitch.\n\n## Notes\nEdited notes.')
+
+  const eventsBoth = await sse(await fork(sourceId, {
+    revisions: {
+      prop: {
+        pitch: { text: 'Edited pitch.', was: 'Original pitch.' },
+        notes: { text: 'Edited notes.', was: 'Original notes.' },
+      },
+    },
+  }))
+  const forkedBoth = await readMeta(eventsBoth[0].runId as string)
+  assert.strictEqual(
+    forkedBoth.agentOutputs.find(o => o.nodeId === 'prop')!.output,
+    '## Pitch\nEdited pitch.\n\n## Notes\nEdited notes.'
+  )
+
+  const stale = await fork(sourceId, {
+    revisions: { prop: { notes: { text: 'Edited notes.', was: 'Something else' } } },
+  })
+  assert.strictEqual(stale.status, 409)
+
+  const missing = await fork(sourceId, {
+    revisions: { prop: { missing: 'Edited' } },
+  })
+  assert.strictEqual(missing.status, 422)
+
+  const injectedHeading = await fork(sourceId, {
+    revisions: { prop: { notes: 'Edited notes.\n\n## Smuggled\nAttack' } },
+  })
+  assert.strictEqual(injectedHeading.status, 422)
+
+  const overlap = await fork(sourceId, {
+    revisions: { prop: { output: 'All', notes: 'Part' } },
+  })
+  assert.strictEqual(overlap.status, 400)
+})
+
+test('fork with addressed revision on an undeclared chain replaces whole output via socket output (#160)', async () => {
+  newWorkspace()
+  const sourceId = await completeRun()
+  const { GET: getLayout } = await import('../app/api/runs/[runId]/layout/route')
+  const layout = await (await getLayout({} as Req, { params: Promise.resolve({ runId: sourceId }) })).json() as { kind: string; panels: unknown[] }
+  assert.strictEqual(layout.kind, 'undeclared')
+
+  ran.length = 0
+  const events = await sse(await fork(sourceId, {
+    revisions: { prop: { output: 'trace output replacement' } },
+  }))
+  assert.deepStrictEqual(ran.map(r => r.slug), ['decider'])
+  const forked = await readMeta(events[0].runId as string)
+  const prop = forked.agentOutputs.find(o => o.nodeId === 'prop')!
+  assert.strictEqual(prop.output, 'trace output replacement')
+})
+
+test('capabilities reports addressedRevisions: true (#160)', async () => {
+  newWorkspace()
+  const { GET } = await import('../app/api/workspace/route')
+  const body = await (await GET()).json() as { capabilities: Record<string, boolean> }
+  assert.strictEqual(body.capabilities.addressedRevisions, true)
 })

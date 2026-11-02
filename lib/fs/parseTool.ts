@@ -2,7 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { ToolDef, ToolParamDef, ToolPartDef } from '../types'
-import { discoverFiles } from './discover'
+import { loadDiscovered, type Loaded } from './discover'
 
 const VALID_PARAM_TYPES = new Set(['string', 'number', 'boolean'])
 
@@ -90,7 +90,6 @@ export function parseTool(filePath: string, rawContent?: string): ToolDef {
   }
 }
 
-export function loadAllTools(workspacePath: string): ToolDef[] {
-  return discoverFiles(path.join(workspacePath, 'tools'))
-    .map(f => parseTool(f.filePath, f.raw))
+export function loadAllTools(workspacePath: string): Loaded<ToolDef> {
+  return loadDiscovered(path.join(workspacePath, 'tools'), f => parseTool(f.filePath, f.raw))
 }

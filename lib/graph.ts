@@ -76,45 +76,56 @@ function descendantIndices(headings: ScannedHeading[], parentIndex: number): num
   return out
 }
 
+export interface SectionLocation {
+  /** The heading the path lands on — the first match at each segment; absent when missing. */
+  heading?: ScannedHeading
+  ambiguousSegment?: string
+  missingSegment?: string
+}
+
 // Scans headings along a slash path, resolving duplicates to the first match (#129).
-export function extractSectionPath(markdown: string, path: string): SectionPathResult {
+export function locateSectionPath(markdown: string, path: string): SectionLocation {
   const segments = parseSectionPath(path)
-  if (segments.length === 0) return { text: '', status: 'missing' }
+  if (segments.length === 0) return {}
 
   const headings = scanHeadings(markdown)
-  if (headings.length === 0) return { text: '', status: 'missing', missingSegment: segments[0] }
+  if (headings.length === 0) return { missingSegment: segments[0] }
 
   let candidates: number[] = headings.map((_, i) => i)
   let chosenIndex = -1
-  let ambiguous = false
   let ambiguousSegment: string | undefined
 
   for (let s = 0; s < segments.length; s++) {
     const seg = segments[s]
     const matches = candidates.filter(i => slugify(headings[i].heading) === seg)
     if (matches.length === 0) {
-      return {
-        text: '',
-        status: 'missing',
-        missingSegment: seg,
-        ...(ambiguousSegment ? { ambiguousSegment } : {}),
-      }
+      return { missingSegment: seg, ...(ambiguousSegment ? { ambiguousSegment } : {}) }
     }
-    if (matches.length > 1) {
-      ambiguous = true
-      if (!ambiguousSegment) ambiguousSegment = seg
-    }
+    if (matches.length > 1 && !ambiguousSegment) ambiguousSegment = seg
     chosenIndex = matches[0]
     if (s + 1 < segments.length) {
       candidates = descendantIndices(headings, chosenIndex)
     }
   }
 
-  const leaf = headings[chosenIndex]
-  const body = markdown.slice(leaf.bodyStart, leaf.bodyEnd).trim()
+  return { heading: headings[chosenIndex], ...(ambiguousSegment ? { ambiguousSegment } : {}) }
+}
+
+export function extractSectionPath(markdown: string, path: string): SectionPathResult {
+  const { heading, ambiguousSegment, missingSegment } = locateSectionPath(markdown, path)
+  if (!heading) {
+    return {
+      text: '',
+      status: 'missing',
+      ...(missingSegment ? { missingSegment } : {}),
+      ...(ambiguousSegment ? { ambiguousSegment } : {}),
+    }
+  }
+
+  const body = markdown.slice(heading.bodyStart, heading.bodyEnd).trim()
   const empty = body === ''
 
-  if (ambiguous) {
+  if (ambiguousSegment) {
     return { text: body, status: 'ambiguous', empty, ambiguousSegment }
   }
   if (empty) {

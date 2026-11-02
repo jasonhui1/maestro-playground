@@ -28,26 +28,32 @@ interface Session {
   source: EventSource | null
   /** One write at a time: two in flight can land out of order and move `onDisk` backwards. */
   writing: boolean
+  /** A last-view close during a write keeps the latest buffer for a conditional final flush. */
+  closingContent?: string
 }
 
 const sessions = new Map<string, Session>()
 
-type PutResult = { ok: true } | { ok: false; message: string } | { ok: false; unparseable: true }
+type PutResult = { ok: true; raw: string } | { ok: false; conflict: string | null } | { ok: false; message: string } | { ok: false; unparseable: true }
 
-async function putFile({ type, slug }: FileRef, raw: string): Promise<PutResult> {
+async function putFile({ type, slug }: FileRef, raw: string, expectedRaw: string): Promise<PutResult> {
   const split = splitFrontmatter(raw)
   if (!split) return { ok: false, unparseable: true }
   try {
     const res = await fetch(`/api/workspace/${type}/${slug}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: split.data, content: split.content }),
+      body: JSON.stringify({ data: split.data, content: split.content, expectedRaw }),
     })
+    const body = await res.json().catch(() => null)
+    if (res.status === 409 && body?.code === 'SAVE_CONFLICT' && (typeof body.currentRaw === 'string' || body.currentRaw === null)) {
+      return { ok: false, conflict: body.currentRaw }
+    }
     if (!res.ok) {
-      const body = await res.json().catch(() => null)
       throw new Error(body?.error || 'Failed to save')
     }
-    return { ok: true }
+    if (typeof body?.raw !== 'string') throw new Error('The file was saved, but the server returned no saved text. Reload before editing again.')
+    return { ok: true, raw: body.raw }
   } catch (err: unknown) {
     return { ok: false, message: err instanceof Error ? err.message : 'An unknown error occurred' }
   }
@@ -69,7 +75,7 @@ export const useEditedFileStore = create<EditedFileStore>((set, get) => {
 
   async function save(key: string) {
     const before = get().byFile[key]
-    if (!before || !isDirty(before)) return
+    if (!before || !before.loaded || before.conflict !== null || !isDirty(before)) return
     const session = sessions.get(key)
     if (!session || session.writing) return
 
@@ -82,15 +88,27 @@ export const useEditedFileStore = create<EditedFileStore>((set, get) => {
 
     dispatch(key, { type: 'save-start' })
     session.writing = true
-    const result = await putFile(session.ref, target)
+    const result = await putFile(session.ref, target, before.onDisk)
     session.writing = false
     // The file may have closed mid-write; its state is gone and nothing is listening.
-    if (!sessions.has(key)) return
-    if (result.ok) dispatch(key, { type: 'save-ok', content: target })
+    if (sessions.get(key) !== session) {
+      if (result.ok && session.closingContent !== undefined && session.closingContent !== target) {
+        await putFile(session.ref, session.closingContent, result.raw)
+      }
+      return
+    }
+    if (result.ok) dispatch(key, { type: 'save-ok', content: result.raw, submittedContent: target })
     else if ('unparseable' in result) dispatch(key, { type: 'save-skipped' })
+    else if ('conflict' in result) {
+      if (result.conflict === null) dispatch(key, { type: 'save-error', message: 'The file was deleted since it was inspected. Reload before saving again.' })
+      else {
+        dispatch(key, { type: 'external', raw: result.conflict })
+        dispatch(key, { type: 'save-skipped' })
+      }
+    }
     else dispatch(key, { type: 'save-error', message: result.message })
     // Anything typed while that write was in flight still needs writing.
-    schedule(key)
+    if (result.ok) schedule(key)
   }
 
   function watch(key: string, session: Session) {
@@ -126,7 +144,8 @@ export const useEditedFileStore = create<EditedFileStore>((set, get) => {
     if (!session) return
     if (session.timer) clearTimeout(session.timer)
     session.timer = null
-    if (!isDirty(get().byFile[key] ?? emptyEditedFile)) return
+    const state = get().byFile[key] ?? emptyEditedFile
+    if (!state.loaded || state.conflict !== null || !isDirty(state)) return
     session.timer = setTimeout(() => {
       session.timer = null
       void save(key)
@@ -160,6 +179,7 @@ export const useEditedFileStore = create<EditedFileStore>((set, get) => {
       if (session.timer) clearTimeout(session.timer)
       session.source?.close()
       const pending = get().byFile[key]
+      if (session.writing && pending?.loaded && pending.conflict === null) session.closingContent = pending.content
       sessions.delete(key)
       set(s => {
         const rest = { ...s.byFile }
@@ -168,7 +188,7 @@ export const useEditedFileStore = create<EditedFileStore>((set, get) => {
       })
       // Closing the last view must not drop a debounce that had not fired yet. There is no
       // longer a view to report a failure to, so this one write is fire-and-forget (#121).
-      if (pending && isDirty(pending)) void putFile(ref, pending.content)
+      if (pending?.loaded && pending.conflict === null && !session.writing && isDirty(pending)) void putFile(ref, pending.content, pending.onDisk)
     },
 
     setContent: (ref, content) => {

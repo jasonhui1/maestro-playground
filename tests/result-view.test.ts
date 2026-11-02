@@ -92,7 +92,7 @@ test('the streamed projection wins; the local build is the fallback (ADR-0017)',
   const start = launched(chain())
   const engine: LayoutModel = {
     kind: 'timeline',
-    panels: [{ name: 'draft', node: 'a', text: 'from the engine', lines: 1, state: 'filled' }],
+    panels: [{ name: 'draft', node: 'a', socket: 'output', text: 'from the engine', lines: 1, state: 'filled' }],
   }
 
   const local = fold(start, ran(output('a', 'built here'), 1))
@@ -204,4 +204,10 @@ test('the trace order and the node states come off the same fold', () => {
     resultViewFromMeta(metaFor([output('a', 'x'), output('b', 'y')]), c).order,
     ['a', 'b'],
   )
+})
+
+test('a reopened run draws each panel\'s pinned dice roll (#153)', () => {
+  const roll = { hair: ['bob'] }
+  const model = projectResultView(resultViewFromMeta(metaFor([output('a', 'x')], { dice: { a: roll } }), chain()), NOW).model
+  assert.deepStrictEqual(model?.panels.find(p => p.node === 'a')?.dice, roll)
 })

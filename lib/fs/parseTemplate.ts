@@ -2,7 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { TemplateDef } from '../types'
-import { discoverFiles } from './discover'
+import { loadDiscovered, type Loaded } from './discover'
 
 export function parseTemplate(filePath: string, rawContent?: string): TemplateDef {
   const raw = rawContent ?? fs.readFileSync(filePath, 'utf-8')
@@ -21,7 +21,6 @@ export function parseTemplate(filePath: string, rawContent?: string): TemplateDe
   }
 }
 
-export function loadAllTemplates(workspacePath: string): TemplateDef[] {
-  return discoverFiles(path.join(workspacePath, 'templates'))
-    .map(f => parseTemplate(f.filePath, f.raw))
+export function loadAllTemplates(workspacePath: string): Loaded<TemplateDef> {
+  return loadDiscovered(path.join(workspacePath, 'templates'), f => parseTemplate(f.filePath, f.raw))
 }

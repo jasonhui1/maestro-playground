@@ -2,7 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { SkillDef } from '../types'
-import { discoverFiles } from './discover'
+import { loadDiscovered, type Loaded } from './discover'
 
 export function parseSkill(filePath: string, rawContent?: string): SkillDef {
   const raw = rawContent ?? fs.readFileSync(filePath, 'utf-8')
@@ -22,7 +22,6 @@ export function parseSkill(filePath: string, rawContent?: string): SkillDef {
   }
 }
 
-export function loadAllSkills(workspacePath: string): SkillDef[] {
-  return discoverFiles(path.join(workspacePath, 'skills'))
-    .map(f => parseSkill(f.filePath, f.raw))
+export function loadAllSkills(workspacePath: string): Loaded<SkillDef> {
+  return loadDiscovered(path.join(workspacePath, 'skills'), f => parseSkill(f.filePath, f.raw))
 }

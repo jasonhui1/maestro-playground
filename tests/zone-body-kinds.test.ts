@@ -1,4 +1,4 @@
-import { test } from 'vitest'
+import { test, vi } from 'vitest'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -6,13 +6,16 @@ import { parseChainContent } from '../lib/parseChain'
 import { validateChain } from '../lib/chainGraph'
 import { runChainGraph } from '../lib/executor'
 import { allKinds, kindOf, paletteGroups } from '../lib/nodeKinds'
-import type { AgentDef, ChainDef, ChainNode } from '../lib/types'
+import type { AgentDef, ChainDef, ChainNode, ToolDef } from '../lib/types'
+
+vi.mock('../lib/tools/retrieveExecutor', () => ({ retrieveExecutor: () => 'ran' }))
 
 const agent: AgentDef = {
   slug: 'w', name: 'w', model: 'm', description: '', skills: [], context: [],
   input_from: 'user', output_format: 'markdown', outputs: [{ name: 'output' }], inputs: [],
   systemPrompt: 'Do {x}', filePath: '',
 }
+const tool: ToolDef = { slug: 't', name: 't', executor: 'retrieve', params: {}, config: {}, description: '', filePath: '' }
 
 function zoned(body: ChainNode): ChainDef {
   return {
@@ -65,7 +68,7 @@ test('the palette groups by category in descriptor order, and shows a category n
   )
   assert.deepStrictEqual(
     paletteGroups(allKinds.map(k => kindOf(k).palette).filter(p => p !== undefined)).map(g => g.category),
-    ['Sources', 'Agents', 'Control flow', 'Composite', 'Output'],
+    ['Sources', 'Agents', 'Tools', 'Control flow', 'Composite', 'Output'],
   )
 })
 
@@ -82,8 +85,9 @@ test('every zone body kind actually runs inside a zone', async () => {
   const run = (async (a: AgentDef, sp: string) => ({ agentName: a.name, systemPrompt: sp, input: '', output: 'ran',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' })) as never
   for (const kind of allKinds.filter(k => kindOf(k).zoneRole === 'body')) {
-    const chain = zoned({ id: 'n', kind, agent: 'w', zone: 'z', inputs: { x: 'v' } } as ChainNode)
-    const res = await runChainGraph(chain, { agents: [agent], root: '/ws' },
+    const body = kind === 'tool' ? { id: 'n', kind, tool: 't', zone: 'z' } : { id: 'n', kind, agent: 'w', zone: 'z', inputs: { x: 'v' } }
+    const chain = zoned(body as ChainNode)
+    const res = await runChainGraph(chain, { agents: [agent], tools: [tool], root: '/ws' },
       { onStart() {}, onToken() {}, onDone() {} }, { seedPrompt: 's', run })
     assert.strictEqual(res.find(o => o.nodeId === 'n')?.status, 'success', `${kind} did not run in a zone`)
   }
