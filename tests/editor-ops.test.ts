@@ -20,10 +20,9 @@ import {
 } from '../lib/editorOps'
 import { withHistory } from '../lib/history'
 import { ChainDef, ChainEdge, ChainNode } from '../lib/types'
-import type { WorkspaceLookup } from '../lib/nodeKinds'
 
 const emptyChain: ChainDef = { slug: 'c', name: 'c', description: '', filePath: '', nodes: [], edges: [] }
-const workspace: WorkspaceLookup = { chain: emptyChain, agents: [], chains: [] }
+const workspace = { chain: emptyChain, agents: [], chains: [] }
 
 test('uniqueNodeId increments until free', () => {
   assert.strictEqual(uniqueNodeId('agent', []), 'agent-1')
@@ -443,4 +442,23 @@ test('quickAdd turns each menu item into the matching node', () => {
   const loop = applyOp(empty, editorOps.quickAdd({ type: 'control-loop' }, at))
   assert.deepStrictEqual(loop.nodes.map(n => n.kind), ['loop-start', 'loop-end'])
   assert.deepStrictEqual(loop.nodes[0].pos, at)
+})
+
+test('moveMany re-adopts each dropped body node, and a whole zone dragged together stays intact', () => {
+  const g = zoned()
+  g.nodes.push({ id: 'in', kind: 'agent', agent: 'x', zone: 'zone-1', pos: [100, 0] })
+
+  const swapped = applyOp(g, editorOps.moveMany([
+    { id: 'in', pos: [3000, 3000] },
+    { id: 'out', pos: [100, 0] },
+  ]))
+  assert.strictEqual(swapped.nodes.find(n => n.id === 'in')!.zone, undefined)
+  assert.strictEqual(swapped.nodes.find(n => n.id === 'out')!.zone, 'zone-1')
+
+  const shifted = applyOp(g, editorOps.moveMany([
+    { id: 'ls', pos: [5000, 0] },
+    { id: 'le', pos: [5400, 0] },
+    { id: 'in', pos: [5100, 0] },
+  ]))
+  assert.strictEqual(shifted.nodes.find(n => n.id === 'in')!.zone, 'zone-1')
 })

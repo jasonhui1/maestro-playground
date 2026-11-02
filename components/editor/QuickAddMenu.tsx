@@ -3,8 +3,6 @@ import React, { useEffect, useRef, useState } from 'react'
 
 import type { QuickAddItem } from '@/lib/editorOps'
 
-export type { QuickAddItem }
-
 export interface QuickAddMenuProps {
   pos: { clientX: number; clientY: number }
   agents: { slug: string; name: string }[]

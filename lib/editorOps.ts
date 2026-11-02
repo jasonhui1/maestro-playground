@@ -1,4 +1,4 @@
-import { ChainNode, ChainEdge, ChainNodeKind } from './types'
+import { ChainNode, ChainEdge, ChainDef, ChainNodeKind } from './types'
 import { inputAcceptsMany, type WorkspaceLookup } from './nodeKinds'
 import { edgeShapeError } from './chainGraph'
 import { isBoundary, renameZone, zoneNames } from './zones'
@@ -19,7 +19,10 @@ export function reservedIds(nodes: ChainNode[]): string[] {
   return [...nodes.map(n => n.id), ...zoneNames(nodes)]
 }
 
-export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge, workspace: WorkspaceLookup): ChainEdge[] {
+// The chain's identity (slug, interface) without its graph; the graph is the live one passed alongside.
+export type ConnectWorkspace = Omit<WorkspaceLookup, 'chain'> & { chain: Omit<ChainDef, 'nodes' | 'edges'> }
+
+export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainEdge, workspace: ConnectWorkspace): ChainEdge[] {
   const dst = nodes.find(n => n.id === edge.toNode)
   const isMulti = dst ? inputAcceptsMany(dst, edge.toSocket, { ...workspace, chain: { ...workspace.chain, nodes, edges } }) : false
   if (isMulti) {
@@ -33,7 +36,7 @@ export function connectEdge(nodes: ChainNode[], edges: ChainEdge[], edge: ChainE
 }
 
 // A new node's id is minted against the full id space, so it can never take a zone's id.
-export function addNodeOfKind(
+function addNodeOfKind(
   nodes: ChainNode[],
   kind: ChainNodeKind,
   pos: [number, number],
@@ -79,12 +82,18 @@ export function updateNode(
   return nodes.map(n => (n.id === id ? { ...n, ...patch } : n))
 }
 
+// Every dropped body node re-adopts against the moved layout, so a group drag can't leave a stale zone.
 export function moveMany(
   nodes: ChainNode[],
   updates: { id: string; pos: [number, number] }[],
 ): ChainNode[] {
   const m = new Map(updates.map(u => [u.id, u.pos]))
-  return nodes.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n))
+  const moved = nodes.map(n => (m.has(n.id) ? { ...n, pos: m.get(n.id)! } : n))
+  return moved.map(n => {
+    if (!m.has(n.id) || isBoundary(n)) return n
+    const { zone } = adoptOnDrop(moved, n.id, m.get(n.id)!)
+    return zone === n.zone ? n : { ...n, zone }
+  })
 }
 
 export function makeLoopZone(existingIds: string[], pos: [number, number]): ChainNode[] {
@@ -177,7 +186,6 @@ export type EditorOpType =
   | 'setGraph'
   | 'addNode'
   | 'addLoopZone'
-  | 'quickAdd'
   | 'moveNode'
   | 'connect'
   | 'deleteNode'
@@ -209,15 +217,12 @@ export const editorOps = {
     type: 'addNode',
     apply: g => ({ ...g, nodes: addNodeOfKind(g.nodes, kind, pos, extra) }),
   }),
-  quickAdd: (item: QuickAddItem, pos: [number, number]): EditorOp => ({
-    type: 'quickAdd',
-    apply: g => applyOp(g, quickAddOp(item, pos)),
-  }),
+  quickAdd: quickAddOp,
   addLoopZone: (pos: [number, number]): EditorOp => ({
     type: 'addLoopZone',
     apply: g => ({ ...g, nodes: [...g.nodes, ...makeLoopZone(reservedIds(g.nodes), pos)] }),
   }),
-  connect: (edge: ChainEdge, workspace: WorkspaceLookup): EditorOp => ({
+  connect: (edge: ChainEdge, workspace: ConnectWorkspace): EditorOp => ({
     type: 'connect',
     apply: g => ({ ...g, edges: connectEdge(g.nodes, g.edges, edge, workspace) }),
   }),

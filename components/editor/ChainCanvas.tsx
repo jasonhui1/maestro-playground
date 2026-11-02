@@ -172,7 +172,8 @@ interface ChainCanvasProps {
   onRun?: () => void
 }
 
-import QuickAddMenu, { type QuickAddItem } from './QuickAddMenu'
+import QuickAddMenu from './QuickAddMenu'
+import type { QuickAddItem } from '@/lib/editorOps'
 
 function edgeId(e: ChainEdge): string {
   return `${e.fromNode}.${e.fromSocket}->${e.toNode}.${e.toSocket}`

@@ -180,7 +180,7 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
   const addNodeOfKind = useCallback((kind: ChainNodeKind, pos: [number, number] = [80, 80]) => dispatch(editorOps.addNode(kind, pos)), [])
   const quickAdd = useCallback((item: QuickAddItem, pos: [number, number]) => dispatch(editorOps.quickAdd(item, pos)), [])
   const addLoopZone = useCallback((pos: [number, number] = [120, 120]) => dispatch(editorOps.addLoopZone(pos)), [])
-  const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge, { chain, agents, chains, tools })), [chain, agents, chains, tools])
+  const connect = useCallback((edge: ChainEdge) => dispatch(editorOps.connect(edge, { chain: initialChain, agents, chains, tools })), [initialChain, agents, chains, tools])
   const deleteNode = useCallback((id: string) => dispatch(editorOps.deleteNode(id)), [])
   const deleteEdge = useCallback((edge: ChainEdge) => dispatch(editorOps.deleteEdge(edge)), [])
 
