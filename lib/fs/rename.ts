@@ -2,8 +2,9 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { EntityType, ENTITY_TYPES, sanitizeSlug } from './workspace'
+import { address, addressExisting } from './address'
 import { WorkspaceError } from './errors'
-import { walkMarkdown, findBySlug } from './discover'
+import { walkMarkdown } from './discover'
 import { getVersionsDir } from './versions'
 import {
   RefHit, refSitesFor, parseFile, typeDir, inboundRefs, rewriteRefs,
@@ -81,33 +82,20 @@ function collectRuns(root: string, type: EntityType, from: string): string[] {
   })
 }
 
-/** The file a rename acts on: the named file, or the file declaring the named variant. Throws for neither. */
-function resolveRenameTarget(
-  root: string,
-  type: EntityType,
-  from: string,
-  variants: Map<string, VariantSource>,
-): { filePath: string; variantOf?: string } {
-  const own = findBySlug(typeDir(root, type), from)
-  if (own) return { filePath: own }
-  const variant = variants.get(from)
-  if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
-  throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${from}`)
-}
-
 /**
  * Refuses a name already claimed under the type — a duplicate leaf name is a hard load
  * failure (ADR-0012), and under `agents/` a file name and a variant name share the one
  * namespace (ADR-0013). The message names the source so the user knows which to look at.
  */
 function assertNameFree(root: string, type: EntityType, to: string, variants: Map<string, VariantSource>) {
-  const file = findBySlug(typeDir(root, type), to)
-  if (file) throw new WorkspaceError('ALREADY_EXISTS', `a ${type} file named \`${to}\` already exists: ${path.basename(file)}`)
-  const variant = variants.get(to)
-  if (variant) {
+  const taken = address(root, type, to, { variants })
+  if (taken.kind === 'file') {
+    throw new WorkspaceError('ALREADY_EXISTS', `a ${type} file named \`${to}\` already exists: ${path.basename(taken.filePath)}`)
+  }
+  if (taken.kind === 'variant') {
     throw new WorkspaceError(
       'ALREADY_EXISTS',
-      `an agent variant named \`${to}\` already exists, declared by ${path.basename(variant.filePath)}`,
+      `an agent variant named \`${to}\` already exists, declared by ${path.basename(taken.filePath)}`,
     )
   }
 }
@@ -123,7 +111,9 @@ export function planRename(root: string, type: EntityType, from: string, to: str
   }
 
   const variants = variantIndex(root, type)
-  const { filePath, variantOf } = resolveRenameTarget(root, type, from, variants)
+  const found = addressExisting(root, type, from, { variants })
+  const { filePath } = found
+  const variantOf = found.kind === 'variant' ? found.variantOf : undefined
 
   if (cleanTo === from) {
     return { type, from, to: cleanTo, filePath, variantOf, rewrites: [], runs: [], manual: [] }

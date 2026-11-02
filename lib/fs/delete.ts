@@ -1,10 +1,10 @@
 import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
-import { EntityType, resolveEntityPath } from './workspace'
+import { EntityType } from './workspace'
+import { addressExisting } from './address'
 import { WorkspaceError } from './errors'
-import { findBySlug } from './discover'
-import { parseFile, typeDir, inboundRefs, variantIndex, declaredVariants, RefHit } from './entityRefs'
+import { parseFile, inboundRefs, variantIndex, declaredVariants, RefHit } from './entityRefs'
 
 export interface DeletePlan {
   type: EntityType
@@ -24,15 +24,6 @@ export interface DeletePlan {
   promotes?: string
 }
 
-/** The file a delete acts on: the named file, or the file declaring the named variant. */
-function resolveTarget(root: string, type: EntityType, slug: string, variants: Map<string, { filePath: string; fileSlug: string }>) {
-  const own = findBySlug(typeDir(root, type), slug)
-  if (own) return { filePath: own }
-  const variant = variants.get(slug)
-  if (variant) return { filePath: variant.filePath, variantOf: variant.fileSlug }
-  throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
-}
-
 /** ``` `rot` is named by decision (chain) ``` — enough for the user to open what is in the way. */
 function describe(blockers: (RefHit & { name: string })[]): string {
   const byName = new Map<string, string[]>()
@@ -48,8 +39,9 @@ function describe(blockers: (RefHit & { name: string })[]): string {
  * naming its variants — never its own slug.
  */
 export function planDelete(root: string, type: EntityType, slug: string): DeletePlan {
-  const variants = variantIndex(root, type)
-  const { filePath, variantOf } = resolveTarget(root, type, slug, variants)
+  const found = addressExisting(root, type, slug)
+  const { filePath } = found
+  const variantOf = found.kind === 'variant' ? found.variantOf : undefined
 
   const declared = variantOf ? [] : declaredVariants(filePath)
   const removed = variantOf || !declared.length ? [slug] : declared
@@ -68,12 +60,6 @@ export function planDelete(root: string, type: EntityType, slug: string): Delete
  * (ADR-0012), so the delete may not create one (#63).
  */
 export function deleteWorkspaceEntity(root: string, type: EntityType, slug: string) {
-  // resolveEntityPath is kept for the not-found path so a missing file of any type still
-  // reports the same message, whether or not the type directory exists.
-  if (type !== 'agent' && !fs.existsSync(resolveEntityPath(root, type, slug))) {
-    throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
-  }
-
   const plan = planDelete(root, type, slug)
 
   if (plan.blockers.length) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listVersions, getVersionContent } from '@/lib/fs/versions';
-import { isValidEntityType, resolveAddressedFile, EntityType } from '@/lib/fs/workspace';
+import { isValidEntityType, address, type EntityType } from '@/lib/fs/workspaceFiles';
 import { requestWorkspace } from '@/lib/requestWorkspace';
 
 export async function GET(
@@ -15,7 +15,7 @@ export async function GET(
 
   const { root } = requestWorkspace();
   // Variants share their declaring file's version snapshots (#123).
-  const { storageSlug } = resolveAddressedFile(root, type as EntityType, slug);
+  const { storageSlug } = address(root, type as EntityType, slug);
   const { searchParams } = new URL(req.url);
   const version = searchParams.get('version');
 

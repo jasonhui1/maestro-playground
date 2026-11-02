@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
-import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { planRename, renameWorkspaceEntity, RenamePlan } from '@/lib/fs/rename'
+import {
+  isValidEntityType, planRename, renameWorkspaceEntity, type EntityType, type RenamePlan,
+} from '@/lib/fs/workspaceFiles'
 import { workspaceErrorResponse } from '../../../errors'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 
