@@ -2,11 +2,11 @@
 import React, { useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import type { ChainNodeKind } from '@/lib/types'
-import { allKinds, kindOf } from '@/lib/nodeKinds'
+import { allKinds, kindOf, paletteGroups } from '@/lib/nodeKinds'
 import { useWorkspaceUiStore } from '@/hooks/store/useWorkspaceUiStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
-interface PaletteItem { kind: ChainNodeKind | 'loop-zone'; label: string; group: string }
+interface PaletteItem { kind: ChainNodeKind | 'loop-zone'; label: string; category: string; order: number }
 
 // loop-zone is a compound palette entry (drops a paired loop-start + loop-end zone), not a node kind —
 // the registry can't represent it, so it's appended by hand.
@@ -14,17 +14,16 @@ const ITEMS: PaletteItem[] = [
   ...allKinds
     .map(kindOf)
     .filter(d => d.palette)
-    .map(d => ({ kind: d.kind, label: d.palette!.label, group: d.palette!.category })),
-  { kind: 'loop-zone', label: 'Loop zone', group: 'Loop' },
+    .map(d => ({ kind: d.kind, ...d.palette! })),
+  { kind: 'loop-zone', label: 'Loop zone', category: 'Loop', order: 40 },
 ]
-const GROUPS = ['Sources', 'Agents', 'Control flow', 'Loop', 'Composite', 'Output']
 
 export default function NodePalette({ onAdd, onAddLoopZone }: {
   onAdd: (kind: ChainNodeKind) => void
   onAddLoopZone: () => void
 }) {
   const [query, setQuery] = useState('')
-  const fuse = useMemo(() => new Fuse(ITEMS, { keys: ['label', 'group'], threshold: 0.4 }), [])
+  const fuse = useMemo(() => new Fuse(ITEMS, { keys: ['label', 'category'], threshold: 0.4 }), [])
   const visible = query.trim() ? fuse.search(query).map(r => r.item) : ITEMS
 
   const click = (item: PaletteItem) => {
@@ -56,26 +55,22 @@ export default function NodePalette({ onAdd, onAddLoopZone }: {
         placeholder="Search nodes…"
         className="w-full text-xs border border-zinc-200 rounded-md px-2 py-1 mb-3"
       />
-      {GROUPS.map(group => {
-        const items = visible.filter(i => i.group === group)
-        if (items.length === 0) return null
-        return (
-          <div key={group} className="mb-3">
-            <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">{group}</div>
-            <div className="flex flex-col gap-1">
-              {items.map(item => (
-                <button
-                  key={item.kind}
-                  onClick={() => click(item)}
-                  className="text-left text-xs px-2 py-1 rounded-md border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+      {paletteGroups(visible).map(({ category, items }) => (
+        <div key={category} className="mb-3">
+          <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">{category}</div>
+          <div className="flex flex-col gap-1">
+            {items.map(item => (
+              <button
+                key={item.kind}
+                onClick={() => click(item)}
+                className="text-left text-xs px-2 py-1 rounded-md border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }

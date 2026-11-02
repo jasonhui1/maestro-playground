@@ -108,7 +108,7 @@ export async function runChainGraph(
   const inputsAvailable = (node: ChainNode): boolean => usedSlots(node).every(slot => {
     const connected = (incomingByNode.get(node.id) || []).some(index => chain.edges[index].toSocket === slot)
     if (connected) return liveEdgeForSlot(node.id, slot) !== undefined
-    return (node.kind === 'agent' || node.kind === 'decider') && hasLiteralInput(node, slot)
+    return kindOf(node.kind).acceptsLiterals && hasLiteralInput(node, slot)
   })
   const recordSkipped = (node: ChainNode, anchorId: string = node.id, round?: number): void => {
     const skipped = controlOutput(node.id, agentSlugOf(node) || node.kind, '', 'skipped')
