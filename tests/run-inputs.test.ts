@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { AgentOutput, RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -11,15 +12,10 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 // The model is the only stand-in: the executor, route and log read-back are real. Echoing
 // the resolved system prompt back as output lets a test read off which values landed where.
 const ran: string[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
-    ran.push(agent.slug)
-    return {
-      agentName: agent.name, systemPrompt, input: '', output: systemPrompt,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug, system }) => {
+  ran.push(agentSlug!)
+  return answer(system)
+}).model
 
 afterEach(() => {
   ran.length = 0

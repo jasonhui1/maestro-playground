@@ -4,8 +4,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { NextRequest } from 'next/server'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import type { RunMeta } from '../lib/types'
 import { streamRun } from '../lib/runStream'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -18,26 +19,12 @@ vi.mock('@/lib/logger', async importOriginal => {
   return { ...actual, newRunId: () => ids[nextId++] }
 })
 
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { name: string; model: string }, systemPrompt: string, input: string): Promise<AgentOutput> => {
-    const mutate = afterFirstInput
-    afterFirstInput = undefined
-    mutate?.()
-    return {
-      agentName: agent.name,
-      systemPrompt,
-      input,
-      output: `answer ${nextId}`,
-      tokensIn: 10,
-      tokensOut: 10,
-      costUsd: 0.01,
-      latencyMs: 10,
-      model: agent.model,
-      timestamp: '2026-09-22T10:00:00.000Z',
-      status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(() => {
+  const mutate = afterFirstInput
+  afterFirstInput = undefined
+  mutate?.()
+  return answer(`answer ${nextId}`, [10, 10])
+}).model
 
 function write(root: string, rel: string, body: string) {
   const target = path.join(root, rel)

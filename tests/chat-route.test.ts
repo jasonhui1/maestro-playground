@@ -1,4 +1,5 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -16,7 +17,7 @@ const model = fakeModel(({ last, tools, hooks }) => {
   hooks?.onToken?.('Mirna owns it.', 'output')
   return answer('<thought>weighing</thought>Mirna owns it.', [30, 7])
 })
-vi.mock('@/lib/chatCall', () => ({ createChatCall: model.createChatCall }))
+requestEntry.model = model.model
 
 const seen = model.seen
 const roles = (i: number) => seen[i].messages.map(m => m.role)
@@ -52,7 +53,7 @@ async function sse(res: Response): Promise<Event[]> {
 }
 
 const readMeta = async (runId: string): Promise<RunMeta> =>
-  (await import('../lib/runFolders')).diskWorkspace(requestEntry.root).runs.read(runId)
+  (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel).runs.read(runId)
 
 test('a chat turn streams tokens, splits the thought, and lands in the run', async () => {
   newWorkspace()
@@ -143,7 +144,7 @@ test('a turn on a run whose outputs outnumber its logs is logged after the last 
   const wp = newWorkspace()
   const first = await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'one' }] }))
   const runId = first[0].runId as string
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(wp)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(wp, noModel)
   const [only] = runs.read(runId).agentOutputs
   runs.update(runId, { agentOutputs: [only, only] })
 

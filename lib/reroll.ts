@@ -6,8 +6,7 @@ import { agentSlugOf } from './nodeKinds'
 import { buildLayoutModel } from './layoutModel'
 import { badRequest, isRefusal, toResponse, unprocessable } from './refusal'
 import { readSocket } from './resolveNode'
-import { runAgent } from './runner'
-import { bindAgentTools } from './tools/registry'
+import { runAgentTurn } from './agentTurn'
 import { runToolContext } from './tools/context'
 import { sseResponse, type SseSend } from './sse'
 import { runStartEvent, type LiveWorkspace } from './runSession'
@@ -118,6 +117,8 @@ export interface RerollStream {
   hold: HoldRecord
   holds: HoldRecord[]
   versionNumber: number
+  /** The run's model override (#128). */
+  modelOverride?: string
   /** A fork's new folder, opened only once a fresh set is in hand, with the records it starts with (#147). */
   fork?: { replay: AgentOutput[] }
 }
@@ -169,19 +170,19 @@ export function streamReroll(r: RerollStream): Response {
 
 /** One streamed attempt of the producer at `step`; a success with no candidates is marked failed (#134). */
 async function attemptReroll(
-  send: SseSend, { ws, workspace, source, ready, hold, versionNumber }: RerollStream, step: number,
+  send: SseSend, { ws, workspace, source, ready, hold, versionNumber, modelOverride }: RerollStream, step: number,
 ): Promise<{ attempt: AgentOutput; input: string }> {
   const { producer, edge, baseline, agent } = ready
   const { feedback } = hold
   send({ type: 'agent_start', agentName: agent.name, nodeId: producer.id, step, kind: producer.kind })
-  const attempt = await runAgent(agent, rerollPrompt(baseline.systemPrompt, feedback, hold.like?.candidate), baseline.input, {
-    onToken: (token, tokenType, turn) => send({ type: 'token', agentName: agent.name, nodeId: producer.id, token, tokenType, step, kind: producer.kind, turn }),
+  const attempt = await runAgentTurn(ws.model, {
+    agent, systemPrompt: rerollPrompt(baseline.systemPrompt, feedback, hold.like?.candidate), input: baseline.input, modelOverride,
     // A fork's folder is not written until its set is in hand, so images land in the source run.
-    boundTools: bindAgentTools(agent, workspace.tools, { ...runToolContext(ws, source.runId), fixedParts: baseline.fixedParts }),
+    tools: { defs: workspace.tools, context: { ...runToolContext(ws, source.runId), fixedParts: baseline.fixedParts } },
+    onToken: (token, tokenType, turn) => send({ type: 'token', agentName: agent.name, nodeId: producer.id, token, tokenType, step, kind: producer.kind, turn }),
     onToolEvent: event => send({ ...event, nodeId: producer.id, step, kind: producer.kind }),
   })
   attempt.nodeId = producer.id
-  if (baseline.fixedParts) attempt.fixedParts = baseline.fixedParts
   attempt.reroll = { holdId: hold.nodeId, ...(feedback ? { feedback } : {}) }
   if (versionNumber > 0) attempt.versionNumber = versionNumber
   const input = readSocket(producer, edge.fromSocket, { outputs: new Map([[producer.id, attempt]]), seedPrompt: source.seedPrompt }).value

@@ -4,7 +4,7 @@ import { readSocket, resolveNodePrompt } from '../lib/resolveNode'
 import { sectionWarningText } from '../lib/sectionWarning'
 import type { SectionWarning } from '../lib/sectionWarning'
 import { runChainGraph } from '../lib/executor'
-import { runAgent } from '../lib/runner'
+import type { RunAgentTurn } from '../lib/agentTurn'
 import { applyRunEvent, emptyNodeState } from '../lib/runState'
 import type { AgentDef, AgentOutput, ChainDef, ChainNode } from '../lib/types'
 
@@ -121,8 +121,8 @@ function agentsFor(): AgentDef[] {
   ]
 }
 
-function runFnOf(bodyByAgent: Record<string, string>): typeof runAgent {
-  return async (agent) => ({
+function runFnOf(bodyByAgent: Record<string, string>): RunAgentTurn {
+  return async ({ agent }) => ({
     agentName: agent.name, systemPrompt: '', input: '', output: bodyByAgent[agent.slug] ?? '',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: agent.model,
     timestamp: new Date().toISOString(), status: 'success',

@@ -1,25 +1,21 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import type { RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { slug: string; name: string }, systemPrompt: string, userMessage: string): Promise<AgentOutput> => {
-    ran.push({ slug: agent.slug, systemPrompt })
-    const output = agent.slug === 'decider' ? `## Candidate 1\none [${systemPrompt}]\n\n## Candidate 2\ntwo` : `from ${agent.slug} <<${systemPrompt}>>`
-    return {
-      agentName: agent.name, systemPrompt, input: userMessage, output,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug, system }) => {
+  ran.push({ slug: agentSlug!, systemPrompt: system })
+  return answer(agentSlug === 'decider' ? `## Candidate 1\none [${system}]\n\n## Candidate 2\ntwo` : `from ${agentSlug} <<${system}>>`)
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -92,7 +88,7 @@ async function resume(runId: string, body: object): Promise<Response> {
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   return runs.read(runId)
 }
 

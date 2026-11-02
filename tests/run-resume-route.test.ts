@@ -1,23 +1,19 @@
 import { test, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import type { RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, routes and logger are real.
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
-    return {
-      agentName: agent.name, systemPrompt, input: '', output: `## Candidate 1\nfrom ${agent.slug}\n\n## Candidate 2\nsecond from ${agent.slug}`,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug }) =>
+  answer(`## Candidate 1\nfrom ${agentSlug}\n\n## Candidate 2\nsecond from ${agentSlug}`)).model
 
 const oneHold = `---
 name: held
@@ -83,7 +79,7 @@ async function resume(runId: string, body: object): Promise<Response> {
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   return runs.read(runId)
 }
 

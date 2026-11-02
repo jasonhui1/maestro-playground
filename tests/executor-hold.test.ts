@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph, RunCallbacks } from '../lib/executor'
-import type { runAgent } from '../lib/runner'
+import type { AgentTurn, RunAgentTurn } from '../lib/agentTurn'
 import { ChainDef, AgentDef, AgentOutput, HoldRecord } from '../lib/types'
 
 function agent(slug: string, prompt: string): AgentDef {
@@ -55,7 +55,7 @@ test('wavefront stop: a hold records nothing, its descendants are never recorded
     onHold: hold => holds.push(hold),
   }
   // 's' outlasts the hold, so its record proves the pause waits for the wave to settle.
-  const stub: typeof runAgent = async (a, sp) => {
+  const stub: RunAgentTurn = async ({ agent: a, systemPrompt: sp }) => {
     if (a.slug === 's') await new Promise(resolve => setTimeout(resolve, 20))
     return agentOutput(a, sp, a.slug === 'dec' ? decision : undefined)
   }
@@ -92,7 +92,7 @@ test('a hold with a dead input is skipped, not held', async () => {
   }
   let held = false
   const results = await runChainGraph(chain, { root: '/ws' }, { ...noop, onHold: () => { held = true } },
-    { seedPrompt: 'SEED' })
+    { seedPrompt: 'SEED', run: async () => assert.fail('no agent runs') })
   assert.strictEqual(held, false)
   assert.strictEqual(results.find(r => r.nodeId === 'h')?.status, 'skipped')
 })
@@ -132,7 +132,7 @@ test('resume as replay: a hold already answered does not pause; only post-hold u
   ]
 
   const order: string[] = []
-  const stub: typeof runAgent = async (a, sp) => { order.push(a.slug); return agentOutput(a, sp) }
+  const stub: RunAgentTurn = async ({ agent: a, systemPrompt: sp }) => { order.push(a.slug); return agentOutput(a, sp) }
   let held = false
 
   const results = await runChainGraph(
@@ -167,7 +167,7 @@ test('a hold offered no candidates warns against the node that fed it (#96)', as
     const warnings: unknown[] = []
     const results = await runChainGraph(chain, { agents, root: '/ws' },
       { ...noop, onHold() {}, onWarning: w => warnings.push(w) },
-      { seedPrompt: 'go', run: (async (a: AgentDef, sp: string) => agentOutput(a, sp, output)) as typeof runAgent })
+      { seedPrompt: 'go', run: (async ({ agent: a, systemPrompt: sp }: AgentTurn) => agentOutput(a, sp, output)) as RunAgentTurn })
     return { warnings, dec: results.find(r => r.nodeId === 'dec')! }
   }
 

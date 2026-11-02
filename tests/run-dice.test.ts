@@ -6,6 +6,7 @@ import os from 'os'
 import type { NextRequest } from 'next/server'
 import type { AgentOutput, RunMeta } from '../lib/types'
 import type { LayoutModel } from '../lib/layoutModel'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 import { splitFrontmatter } from '../lib/editedFile'
 import { saveWorkspaceEntity } from '../lib/fs/save'
@@ -14,12 +15,7 @@ import { parseAgent } from '../lib/fs/parseAgent'
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // Echoing the resolved system prompt back as output lets a test read off what was rolled.
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { name: string }, systemPrompt: string): Promise<AgentOutput> => ({
-    agentName: agent.name, systemPrompt, input: '', output: systemPrompt,
-    tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-  }),
-}))
+requestEntry.model = fakeModel(({ system }) => answer(system)).model
 
 const CULTURES = ['Edo Japan', 'Tang China', 'Joseon Korea', 'Mughal India', 'Ottoman Anatolia', 'Song China', 'Heian Japan', 'Khmer Angkor']
 const HAIR = ['short bob', 'twin tails', 'wild curls', 'braided crown', 'undercut', 'hime cut', 'long ponytail', 'buzz cut']

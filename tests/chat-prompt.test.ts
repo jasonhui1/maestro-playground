@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { buildSystemPrompt } from '../lib/runner'
+import { buildSystemPrompt } from '../lib/prompt'
 import { AgentDef } from '../lib/types'
 
 function agent(systemPrompt: string): AgentDef {

@@ -3,6 +3,7 @@ import type { LiveWorkspace, Workspace } from './runFolders'
 import { stretchLog, type NewRun, type RunEdit, type StretchLog } from './stretchLog'
 import { runChainGraph } from './executor'
 import { runToolContext } from './tools/context'
+import { runAgentTurn } from './agentTurn'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
 import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
@@ -104,6 +105,7 @@ export function streamChainRun(s: RunSession): Response {
         {
           seedPrompt: s.seedPrompt, inputs: s.inputs, dice: s.dice, paramValue: s.paramValue, context: s.context, replay, modelOverride: s.modelOverride,
           toolContext: runToolContext(s.ws, runId),
+          run: turn => runAgentTurn(s.ws.model, turn),
         },
       )
 

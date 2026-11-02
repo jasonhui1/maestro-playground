@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
-import { runAgent } from '../lib/runner'
+import type { RunAgentTurn } from '../lib/agentTurn'
 import { sameSectionWarning, sectionWarningText } from '../lib/sectionWarning'
 import type { SectionWarning } from '../lib/sectionWarning'
 import type { AgentDef, AgentOutput, ChainDef } from '../lib/types'
@@ -11,7 +11,7 @@ const agent = (slug: string, systemPrompt: string): AgentDef => ({
   input_from: 'user', output_format: 'markdown', outputs: [{ name: 'output' }], inputs: [], systemPrompt, filePath: '',
 })
 
-const runFnOf = (bodyByAgent: Record<string, string>): typeof runAgent => async (a): Promise<AgentOutput> => ({
+const runFnOf = (bodyByAgent: Record<string, string>): RunAgentTurn => async ({ agent: a }): Promise<AgentOutput> => ({
   agentName: a.name, systemPrompt: '', input: '', output: bodyByAgent[a.slug] ?? '',
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: a.model,
   timestamp: new Date().toISOString(), status: 'success',

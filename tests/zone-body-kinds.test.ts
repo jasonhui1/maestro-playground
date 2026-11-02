@@ -1,4 +1,5 @@
 import { test, vi } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -82,7 +83,7 @@ test('no chain on disk places a non-body kind in a zone', () => {
 })
 
 test('every zone body kind actually runs inside a zone', async () => {
-  const run = (async (a: AgentDef, sp: string) => ({ agentName: a.name, systemPrompt: sp, input: '', output: 'ran',
+  const run = (async ({ agent: a, systemPrompt: sp }: AgentTurn) => ({ agentName: a.name, systemPrompt: sp, input: '', output: 'ran',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' })) as never
   for (const kind of allKinds.filter(k => kindOf(k).zoneRole === 'body')) {
     const body = kind === 'tool' ? { id: 'n', kind, tool: 't', zone: 'z' } : { id: 'n', kind, agent: 'w', zone: 'z', inputs: { x: 'v' } }

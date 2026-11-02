@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -57,7 +58,7 @@ const agents = [agent('panel-member', ['core-protocol'])]
 const skills = [skill('core-protocol', 'CORE PROTOCOL TEXT'), skill('red-teaming', 'RED TEAMING TEXT')]
 
 const seenPrompts: Record<string, string> = {}
-const stub = (async (a: AgentDef, systemPrompt: string) => {
+const stub = (async ({ agent: a, systemPrompt: systemPrompt }: AgentTurn) => {
   seenPrompts[a.slug + ':' + systemPrompt.length] = systemPrompt
   return { agentName: a.name, systemPrompt, input: '', output: '',
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput

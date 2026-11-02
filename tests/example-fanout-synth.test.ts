@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { validateChain } from '../lib/chainGraph'
@@ -38,7 +39,7 @@ const chain: ChainDef = {
   ],
 }
 const noop = { onStart() {}, onToken() {}, onDone() {} }
-const slow = (async (a: AgentDef, sys: string) => {
+const slow = (async ({ agent: a, systemPrompt: sys }: AgentTurn) => {
   await new Promise(r => setTimeout(r, 50))
   return { agentName: a.name, systemPrompt: sys, input: '', output: `[${a.name} on: ${sys.split('\n').pop()}]`,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success' } as AgentOutput

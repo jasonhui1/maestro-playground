@@ -4,6 +4,7 @@ import { stepLabel, stepLog } from './logger'
 import { loadWorkspace } from './fs/workspace'
 import type { AgentOutput, RunMeta } from './types'
 import { diskVersionStore, memoryVersionStore, type VersionStore } from './versionStore'
+import type { ModelFactory } from './model'
 
 /** The runs under `logs/`: each a folder of meta.json plus one log per step (#108). */
 export interface RunFolders {
@@ -42,14 +43,16 @@ export interface Workspace {
   definitions(): LiveWorkspace
   /** Snapshots and pinned reads of the workspace's files (#169). */
   versions: VersionStore
+  /** The only way a request reaches a model (#170). */
+  model: ModelFactory
 }
 
-export function diskWorkspace(root: string): Workspace {
-  return { root, runs: diskRunFolders(root), definitions: () => loadWorkspace(root), versions: diskVersionStore(root) }
+export function diskWorkspace(root: string, model: ModelFactory): Workspace {
+  return { root, runs: diskRunFolders(root), definitions: () => loadWorkspace(root), versions: diskVersionStore(root), model }
 }
 
-export function memoryWorkspace(definitions: LiveWorkspace, root = ''): Workspace & { runs: MemoryRunFolders } {
-  return { root, runs: memoryRunFolders(), definitions: () => definitions, versions: memoryVersionStore() }
+export function memoryWorkspace(definitions: LiveWorkspace, model: ModelFactory, root = ''): Workspace & { runs: MemoryRunFolders } {
+  return { root, runs: memoryRunFolders(), definitions: () => definitions, versions: memoryVersionStore(), model }
 }
 
 /** What an adapter supplies; the rest of a run's folder is built on it once, so the adapters cannot drift. */

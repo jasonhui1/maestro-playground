@@ -5,13 +5,13 @@ import path from 'node:path'
 import os from 'node:os'
 import matter from 'gray-matter'
 import { parseAgent } from '../lib/fs/parseAgent'
-import { runAgent } from '../lib/runner'
+import { runAgentTurn } from '../lib/agentTurn'
+import { noModel } from '../lib/model'
 import { stepLog } from '../lib/logger'
 import { buildRunFrame } from '../lib/runFrame'
 import { emptyNodeState, RunStateMap } from '../lib/runState'
-import type { AgentDef, AgentOutput, ChainDef, ToolDef } from '../lib/types'
-import type { BoundTool } from '../lib/tools/registry'
-import type { ChatCall, ChatCallResponse } from '../lib/tools/loop'
+import type { AgentOutput, ChainDef } from '../lib/types'
+import { answer } from './helpers/fakeModel'
 
 const ORIGINAL_ENV = {
   AI_PROVIDER: process.env.AI_PROVIDER,
@@ -142,7 +142,7 @@ test('AI_MODEL_OVERRIDE=true: env model overrides file model with source "env ov
   }
 })
 
-test('runAgent produces AgentOutput with model and modelSource matching the resolved agent (#127)', async () => {
+test('an agent turn produces AgentOutput with model and modelSource matching the resolved agent (#127)', async () => {
   const tmp = createTempDir('agent-runner-test-')
   try {
     // 1. Success execution via test seam
@@ -153,24 +153,9 @@ test('runAgent produces AgentOutput with model and modelSource matching the reso
     assert.strictEqual(parsed.model, 'file/writer-model')
     assert.strictEqual(parsed.resolution?.sources.model, 'file')
 
-    const dummyToolDef: ToolDef = {
-      slug: 'retrieve', name: 'retrieve', executor: 'retrieve',
-      params: {}, config: {}, description: '', filePath: '',
-    }
-    const dummyBoundTool: BoundTool = {
-      def: dummyToolDef,
-      jsonSchema: { type: 'object', properties: {}, required: [] },
-      execute: async () => 'result',
-    }
-    const mockChatCall: ChatCall = async () => ({
-      choices: [{ message: { role: 'assistant', content: 'generated text' } }],
-      usage: { prompt_tokens: 15, completion_tokens: 25 },
-    } as ChatCallResponse)
+    const model = () => async () => answer('generated text', [15, 25])
 
-    const output = await runAgent(parsed, 'sys prompt', 'user prompt', {
-      boundTools: [dummyBoundTool],
-      chatCall: mockChatCall,
-    })
+    const output = await runAgentTurn(model, { agent: parsed, systemPrompt: 'sys prompt', input: 'user prompt' })
 
     assert.strictEqual(output.status, 'success')
     assert.strictEqual(output.model, 'file/writer-model')
@@ -186,17 +171,14 @@ test('runAgent produces AgentOutput with model and modelSource matching the reso
     assert.strictEqual(overriddenAgent.model, 'google/override-model')
     assert.strictEqual(overriddenAgent.resolution?.sources.model, 'env override')
 
-    const overriddenOutput = await runAgent(overriddenAgent, 'sys prompt', 'user prompt', {
-      boundTools: [dummyBoundTool],
-      chatCall: mockChatCall,
-    })
+    const overriddenOutput = await runAgentTurn(model, { agent: overriddenAgent, systemPrompt: 'sys prompt', input: 'user prompt' })
 
     assert.strictEqual(overriddenOutput.status, 'success')
     assert.strictEqual(overriddenOutput.model, 'google/override-model')
     assert.strictEqual(overriddenOutput.modelSource, 'env override')
 
-    // 3. Error execution preserves model and modelSource
-    const errorOutput = await runAgent(parsed, 'sys', 'msg')
+    // 3. Error execution preserves model and modelSource; no model wired means no provider is reached (#170)
+    const errorOutput = await runAgentTurn(noModel, { agent: parsed, systemPrompt: 'sys', input: 'msg' })
     assert.strictEqual(errorOutput.status, 'error')
     assert.strictEqual(errorOutput.model, 'file/writer-model')
     assert.strictEqual(errorOutput.modelSource, 'file')
