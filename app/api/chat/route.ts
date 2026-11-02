@@ -3,8 +3,9 @@ import { buildSystemPrompt, runAgent } from '@/lib/runner'
 import { bindAgentTools } from '@/lib/tools/registry'
 import { runToolContext } from '@/lib/tools/context'
 import { makeContextReader } from '@/lib/fs/contextReader'
-import { ChatMessage, RunMeta, AgentOutput } from '@/lib/types'
+import type { ChatMessage, RunMeta } from '@/lib/types'
 import { newRunId } from '@/lib/logger'
+import { chatRunMeta } from '@/lib/stretchLog'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { sseResponse } from '@/lib/sse'
 
@@ -31,40 +32,14 @@ export async function POST(req: NextRequest) {
 
     const lastUserMessage = history[history.length - 1].content
 
-    // Handle Run Metadata
-    let runId = existingRunId
-    let meta: RunMeta
-    let currentStep = 0
-
-    if (runId) {
-      try {
-        meta = runs.read(runId)
-        currentStep = meta.agentOutputs.length
-      } catch (e) {
-        // If runId not found, fallback to new
-        runId = newRunId()
-        meta = {
-          runId,
-          chainName: `Chat with ${agentDef.name}`,
-          seedPrompt: history[0].content, // First message is the seed
-          startedAt: new Date().toISOString(),
-          status: 'running',
-          agentOutputs: [],
-        }
-        runs.create(meta)
-      }
-    } else {
-      runId = newRunId()
-      meta = {
-        runId,
-        chainName: `Chat with ${agentDef.name}`,
-        seedPrompt: history[0].content,
-        startedAt: new Date().toISOString(),
-        status: 'running',
-        agentOutputs: [],
-      }
-      runs.create(meta)
-    }
+    // An unknown runId starts a new run rather than failing the chat.
+    const known = ((): RunMeta | undefined => {
+      try { return existingRunId ? runs.read(existingRunId) : undefined } catch { return undefined }
+    })()
+    const meta = known ?? chatRunMeta(newRunId(), `Chat with ${agentDef.name}`, history[0].content)
+    if (!known) runs.create(meta)
+    const { runId } = meta
+    const currentStep = runs.nextStep(runId)
 
     const systemPrompt = buildSystemPrompt(agentDef, skills, lastUserMessage, makeContextReader(root))
 

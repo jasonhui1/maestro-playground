@@ -6,6 +6,7 @@ import { versionKey } from './runVersionModel'
 import { pinnedWorkspace } from './pinnedWorkspace'
 import { newRunId } from './logger'
 import type { LiveWorkspace, Workspace } from './runFolders'
+import { stretchLog, type NewRun, type RunEdit, type StretchLog } from './stretchLog'
 import { runChainGraph } from './executor'
 import { runToolContext } from './tools/context'
 import { buildLayoutModel, failLayoutModel } from './layoutModel'
@@ -64,7 +65,8 @@ function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refus
 
 export interface RunSession {
   ws: Workspace
-  runId: string
+  /** Already opened. */
+  log: StretchLog
   chain: ChainDef
   workspace: RunDefinitions
   seedPrompt: string
@@ -74,10 +76,6 @@ export interface RunSession {
   context: Record<string, string>
   /** Outputs handed to the graph as done: `logged` are already on disk here, never logged again (ADR-0011); `fresh` are logged first. */
   replay: { logged: AgentOutput[]; fresh: AgentOutput[] }
-  /** The step the first new log takes; 0 for a new run folder. */
-  firstStep: number
-  /** Stamped on every newly logged record; 0 stamps nothing. */
-  versionNumber: number
   /** Hold records the run carries before this stretch. */
   holds?: HoldRecord[]
   /** Every record the run holds before this stretch, including ones it reruns; the new records follow it. */
@@ -91,7 +89,8 @@ export interface RunSession {
  * as SSE, ending with the run's meta.json written as complete, waiting or error.
  */
 export function streamChainRun(s: RunSession): Response {
-  const { ws: { root, runs }, runId, chain } = s
+  const { ws: { root }, log, chain } = s
+  const { runId } = log
   const replay = [...s.replay.logged, ...s.replay.fresh]
   const onDisk = new Set(s.replay.logged)
 
@@ -104,8 +103,6 @@ export function streamChainRun(s: RunSession): Response {
     const sendLayout = () => send({ type: 'layout', model: buildLayoutModel(chain, soFar, s.dice) })
     sendLayout()
 
-    let step = s.firstStep
-    const stepOf = new Map<string, number>()
     const nameOf = new Map<string, string>()
     // A warning is found downstream, after its node's log is already on disk —
     // so the log is rewritten from the same record the executor amended (#37).
@@ -120,33 +117,31 @@ export function streamChainRun(s: RunSession): Response {
         chain, { ...s.workspace, root },
         {
           onStart: (nodeId, agent) => {
-            const n = step++
-            stepOf.set(nodeId, n)
+            const n = log.start(nodeId)
             nameOf.set(nodeId, agent)
             send({ type: 'agent_start', agentName: agent, nodeId, step: n, kind: kindById.get(nodeId) })
           },
           onToken: (nodeId, token, tokenType, turn) => {
-            send({ type: 'token', agentName: nameOf.get(nodeId), nodeId, token, tokenType, step: stepOf.get(nodeId), kind: kindById.get(nodeId), turn })
+            send({ type: 'token', agentName: nameOf.get(nodeId), nodeId, token, tokenType, step: log.stepOf(nodeId), kind: kindById.get(nodeId), turn })
           },
           onDone: (nodeId, output) => {
             if (onDisk.has(output)) return
-            let n = stepOf.get(nodeId)
-            if (n === undefined) { n = step++; stepOf.set(nodeId, n); nameOf.set(nodeId, output.agentName) }
-            if (s.versionNumber > 0) output.versionNumber = s.versionNumber
-            runs.writeStep(runId, n, output)
+            if (!nameOf.has(nodeId)) nameOf.set(nodeId, output.agentName)
+            const n = log.stepFor(nodeId)
+            log.write(n, output)
             loggedOf.set(nodeId, { step: n, output })
             send({ type: 'agent_done', agentName: output.agentName, nodeId, step: n, output, kind: kindById.get(nodeId) })
             soFar.push({ ...output, nodeId })
             sendLayout()
           },
           onToolEvent: (nodeId, event) => {
-            send({ ...event, nodeId, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
+            send({ ...event, nodeId, step: log.stepOf(nodeId), kind: kindById.get(nodeId) })
           },
           onWarning: warning => {
             const nodeId = warning.fromNode
-            send({ type: 'section_missing', nodeId, warning, step: stepOf.get(nodeId), kind: kindById.get(nodeId) })
+            send({ type: 'section_missing', nodeId, warning, step: log.stepOf(nodeId), kind: kindById.get(nodeId) })
             const logged = loggedOf.get(nodeId)
-            if (logged) runs.writeStep(runId, logged.step, logged.output)
+            if (logged) log.write(logged.step, logged.output)
           },
           onHold: hold => { reached.push(hold) },
         },
@@ -157,16 +152,16 @@ export function streamChainRun(s: RunSession): Response {
       )
 
       const stretch = s.history ? [...s.history, ...results.filter(o => !onDisk.has(o))] : results
-      const agentOutputs = keepConversations(stretch, runs.read(runId).agentOutputs)
+      const agentOutputs = keepConversations(stretch, log.read().agentOutputs)
       if (reached.length > 0) {
         const holds = mergeHolds(s.holds ?? [], reached)
-        runs.update(runId, { status: 'waiting', agentOutputs, holds })
+        log.close({ status: 'waiting', agentOutputs, holds })
         // Wave-mate holds pause together, so each is announced (#93).
         for (const { nodeId } of reached) {
           send({ type: 'run_waiting', runId, nodeId, hold: holds.findLast(h => h.nodeId === nodeId)! })
         }
       } else {
-        runs.update(runId, { status: 'complete', completedAt: new Date().toISOString(), agentOutputs })
+        log.close({ status: 'complete', completedAt: new Date().toISOString(), agentOutputs })
         send({ type: 'run_complete', runId })
       }
     } catch (error) {
@@ -175,7 +170,7 @@ export function streamChainRun(s: RunSession): Response {
       // sent rather than copying this message onto panels itself (#77).
       send({ type: 'layout', model: failLayoutModel(buildLayoutModel(chain, soFar, s.dice), errorMessage) })
       send({ type: 'error', error: errorMessage })
-      runs.update(runId, { status: 'error' })
+      log.close({ status: 'error' })
     }
   })
 }
@@ -185,79 +180,32 @@ export function runStartEvent(runId: string, dice: RunDice | undefined): Extract
 }
 
 /** A new run folder for `chain`, streamed from step 0: a fresh run, or a fork replaying `replay` (#99). */
-export interface StartRunInput {
+export interface StartRunInput extends NewRun {
   chain: ChainDef
   workspace: RunSession['workspace']
-  title: string
-  seedPrompt: string
-  inputs?: RunMeta['inputs']
   /** Rolls a fork keeps; `startRun` rolls every other dice node. */
   dice?: RunDice
   dicePins?: DicePins
-  parameter?: RunMeta['parameter']
   /** A request's context overrides, laid over a fork's pinned context files. */
   context?: unknown
   pinnedContext?: Record<string, string>
-  versions: Record<string, number>
-  /** The entry point's version, stamped on every log; 0 stamps nothing. */
-  versionNumber: number
   replay?: AgentOutput[]
-  holds?: HoldRecord[]
-  forkedFrom?: { runId: string; nodeId: string }
-  forkAnchors?: string[]
-  replayedNodeIds?: string[]
-  replayedSlots?: string[]
-  sourceOutputs?: AgentOutput[]
-  modelOverride?: string
-  imageOverride?: RunMeta['imageOverride']
-  chainSlug?: string
-  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
-  variance?: RunMeta['variance']
+  /** A fork's edit to its source, written once the fork's folder exists. */
+  source?: RunEdit
 }
 
 export function startRun(ws: Workspace, run: StartRunInput): Response {
   const { chain, workspace, seedPrompt, parameter, versionNumber, holds } = run
-  const runId = newRunId()
   const dice = rollRunDice(chain, workspace, run.dice, run.dicePins)
-  ws.runs.create(newRunMeta(runId, { ...run, dice }))
+  const log = stretchLog(ws.runs, { create: { runId: newRunId(), run: { ...run, dice } }, source: run.source }, versionNumber)
+  log.open()
   return streamChainRun({
-    ws, runId, chain, workspace, seedPrompt, versionNumber, holds,
+    ws, log, chain, workspace, seedPrompt, holds,
     inputs: run.inputs,
     dice,
     context: { ...run.pinnedContext, ...contextOverrides(run.context) },
     paramValue: parameter?.value ?? '',
     replay: { logged: [], fresh: run.replay ?? [] },
-    firstStep: 0,
     modelOverride: run.modelOverride,
   })
-}
-
-/** The meta.json a new run folder starts with, running and with nothing logged yet. */
-export function newRunMeta(runId: string, run: StartRunInput): RunMeta {
-  const { chain, seedPrompt, parameter, versionNumber, holds } = run
-  return {
-    runId,
-    chainName: run.title,
-    seedPrompt,
-    parameter,
-    ...(run.inputs ? { inputs: run.inputs } : {}),
-    ...diceField(run.dice),
-    startedAt: new Date().toISOString(),
-    status: 'running',
-    agentOutputs: [],
-    ...(holds ? { holds } : {}),
-    graph: { nodes: chain.nodes, edges: chain.edges, ...(chain.inputs ? { inputs: chain.inputs } : {}) },
-    ...(run.forkedFrom ? { branchedFromRunId: run.forkedFrom.runId, branchedFromNode: run.forkedFrom.nodeId } : {}),
-    ...(run.forkAnchors ? { forkAnchors: run.forkAnchors } : {}),
-    ...(run.replayedNodeIds ? { replayedNodeIds: run.replayedNodeIds } : {}),
-    ...(run.replayedSlots ? { replayedSlots: run.replayedSlots } : {}),
-    ...(run.sourceOutputs ? { sourceOutputs: run.sourceOutputs } : {}),
-    versionNumber: versionNumber > 0 ? versionNumber : undefined,
-    versions: run.versions,
-    ...(run.modelOverride ? { modelOverride: run.modelOverride } : {}),
-    ...(run.imageOverride ? { imageOverride: run.imageOverride } : {}),
-    ...(run.chainSlug ? { chainSlug: run.chainSlug } : {}),
-    ...(run.entrypoint ? { entrypoint: run.entrypoint } : {}),
-    ...(run.variance ? { variance: run.variance } : {}),
-  }
 }

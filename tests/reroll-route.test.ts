@@ -11,23 +11,9 @@ import type { HoldRecord, RunMeta } from '@/lib/types'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
-// Each decider call answers a numbered set, so a test can tell the sets apart.
-let deciderCalls = 0
-let deciderFails: 'throw' | 'malformed' | undefined
-let deciderGate: Promise<void> | undefined
-let afterGate: Promise<void> | undefined
-const fake = fakeModel(({ agentSlug }) => {
-  if (agentSlug === 'decider') {
-    deciderCalls++
-    // A pending answer keeps the reroll in flight; the fake awaits whatever it is handed.
-    if (deciderGate) return deciderGate.then(() => answer('## Candidate 1\nlate')) as unknown as ReturnType<typeof answer>
-    if (deciderFails === 'throw') throw new Error('provider down')
-    if (deciderFails === 'malformed') return answer('no sections at all', [5, 5])
-    return answer(`## Candidate 1\nset ${deciderCalls} one\n\n## Candidate 2\nset ${deciderCalls} two`, [10, 10])
-  }
-  if (agentSlug === 'after' && afterGate) return afterGate.then(() => answer('from after')) as unknown as ReturnType<typeof answer>
-  return answer(`from ${agentSlug}`)
-})
+const fake = fakeModel(({ agentSlug }) => agentSlug === 'decider'
+  ? answer('## Candidate 1\none\n\n## Candidate 2\ntwo', [10, 10])
+  : answer(`from ${agentSlug}`))
 vi.mock('@/lib/chatCall', () => ({ createChatCall: fake.createChatCall }))
 
 const CHAIN = `---
@@ -70,10 +56,6 @@ beforeEach(() => {
   for (const [slug, input] of [['proposer', 'input'], ['decider', 'input'], ['after', 'direction']]) {
     write(`agents/${slug}.md`, `---\nname: ${slug}\nmodel: openai/gpt-4o-mini\n---\n${slug} on {${input}}\n`)
   }
-  deciderCalls = 0
-  deciderFails = undefined
-  deciderGate = undefined
-  afterGate = undefined
   fake.reset()
 })
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }) })
@@ -105,11 +87,8 @@ async function resume(runId: string, body: Record<string, unknown>) {
 
 const meta = (runId: string): RunMeta => JSON.parse(fs.readFileSync(path.join(root, 'logs', runId, 'meta.json'), 'utf-8'))
 const openHold = (runId: string): HoldRecord => meta(runId).holds!.findLast(h => !h.resolvedAt)!
-const logFiles = (runId: string) => fs.readdirSync(path.join(root, 'logs', runId)).filter(f => f.endsWith('.md')).sort()
-const logText = (runId: string, file: string) => fs.readFileSync(path.join(root, 'logs', runId, file), 'utf-8')
 const runIds = () => fs.readdirSync(path.join(root, 'logs')).sort()
 const forkedId = (events: Array<Record<string, unknown>>) => events.find(e => e.type === 'run_start')!.runId as string
-const deciderPrompts = () => fake.seen.filter(t => t.messages[0].content?.startsWith('decider on')).map(t => t.messages[0].content ?? '')
 
 test('a reroll\'s run_start carries the run\'s rolls, in place and forked (#155)', async () => {
   fs.writeFileSync(path.join(root, 'agents/after.md'), '---\nname: after\nmodel: openai/gpt-4o-mini\ndice:\n  hair: [bob]\n---\nafter on {direction}\n')
@@ -122,164 +101,42 @@ test('a reroll\'s run_start carries the run\'s rolls, in place and forked (#155)
   }
 })
 
-test('reroll twice with saved feedback, then resume with a pick from the second set (#134)', async () => {
+// Decisions, replay and persistence are the continuation's, tested in continue-run.test.ts; this is parse → call → respond.
+test('a reroll streams fresh candidates in the same run, which waits again (#134)', async () => {
   const runId = await startWaiting()
-  assert.strictEqual(openHold(runId).revision, 1)
-  const proposerLog = logText(runId, '00-proposer.md')
-  fake.reset()
-
-  const saved = await saveFeedback(runId, 'Less tragic, but keep a real consequence')
-  assert.strictEqual(saved.status, 200)
-  assert.strictEqual((await saved.json()).hold.feedback, 'Less tragic, but keep a real consequence')
-
-  const first = await drainSse(await reroll(runId, { revision: 1 }))
-  const waiting = first.events.at(-1)!
-  assert.strictEqual(waiting.type, 'run_waiting')
-  assert.strictEqual((waiting.hold as HoldRecord).revision, 2)
-  assert.deepStrictEqual((waiting.hold as HoldRecord).candidates.map(c => c.body), ['set 2 one', 'set 2 two'])
-
-  const second = await drainSse(await reroll(runId, { revision: 2 }))
-  assert.strictEqual(second.events.at(-1)!.type, 'run_waiting')
-
-  // Only the decider ran, each time with the feedback once on its original prompt.
-  assert.strictEqual(fake.seen.length, 2)
-  const prompts = deciderPrompts()
-  assert.strictEqual(prompts.length, 2)
-  for (const prompt of prompts) {
-    assert.strictEqual(prompt.split('Less tragic, but keep a real consequence').length, 2)
-    assert.ok(prompt.startsWith('decider on from proposer'))
-  }
-
-  const after = meta(runId)
-  assert.strictEqual(after.status, 'waiting')
-  const hold = openHold(runId)
-  assert.strictEqual(hold.revision, 3)
-  assert.deepStrictEqual(hold.candidates.map(c => c.body), ['set 3 one', 'set 3 two'])
-  assert.strictEqual(hold.feedback, 'Less tragic, but keep a real consequence')
-  // Earlier candidates stay in the decider's logs; upstream logs are untouched.
-  assert.deepStrictEqual(after.agentOutputs.map(o => o.nodeId), ['proposer', 'decider', 'decider', 'decider'])
-  assert.deepStrictEqual(logFiles(runId), ['00-proposer.md', '01-decider.md', '02-decider.md', '03-decider.md'])
-  assert.ok(logText(runId, '01-decider.md').includes('set 1 one'))
-  assert.ok(logText(runId, '02-decider.md').includes('set 2 one'))
-  assert.ok(logText(runId, '03-decider.md').includes("reroll_feedback: 'Less tragic, but keep a real consequence'"))
-  assert.strictEqual(logText(runId, '00-proposer.md'), proposerLog)
-
-  const resumed = await drainSse(await resume(runId, { chosen: 'Candidate 2', revision: 3 }))
-  assert.strictEqual(resumed.events.at(-1)!.type, 'run_complete')
-  const afterPrompt = fake.seen.at(-1)!.messages[0].content ?? ''
-  assert.ok(afterPrompt.includes('PICK: Candidate 2\nset 3 two'), afterPrompt)
-})
-
-test('feedback: omitted keeps the saved value, empty clears it, and it reaches only the reroll prompt', async () => {
-  const runId = await startWaiting()
-  fake.reset()
-  await drainSse(await reroll(runId, { feedback: 'darker' }))
+  const { events } = await drainSse(await reroll(runId, { feedback: 'darker', revision: 1 }))
+  assert.deepStrictEqual([events[0].type, events[0].runId], ['run_start', runId])
+  const waiting = events.at(-1)!
+  assert.deepStrictEqual([waiting.type, waiting.runId, (waiting.hold as HoldRecord).revision], ['run_waiting', runId, 2])
   assert.strictEqual(openHold(runId).feedback, 'darker')
-  await drainSse(await reroll(runId))
-  await drainSse(await reroll(runId, { feedback: '' }))
-  assert.strictEqual(openHold(runId).feedback, undefined)
-
-  const prompts = deciderPrompts()
-  assert.deepStrictEqual(prompts.map(p => p.includes('darker')), [true, true, false])
-  assert.strictEqual(prompts[2], 'decider on from proposer')
-
-  await drainSse(await resume(runId, { direction: 'go on' }))
-  assert.ok(!(fake.seen.at(-1)!.messages[0].content ?? '').includes('darker'))
 })
 
-test('a failed reroll keeps the old candidates and the saved feedback, records the attempt, and leaves the run waiting', async () => {
+test('a fork reroll streams a new run (#147)', async () => {
   const runId = await startWaiting()
-  const before = openHold(runId)
+  const { events } = await drainSse(await reroll(runId, { like: 'Candidate 1', revision: 1 }))
+  const forkId = forkedId(events)
+  assert.notStrictEqual(forkId, runId)
+  assert.deepStrictEqual(runIds(), [runId, forkId].sort())
+  assert.strictEqual(meta(forkId).branchedFromRunId, runId)
+})
 
-  for (const failure of ['throw', 'malformed'] as const) {
-    deciderFails = failure
-    const { events } = await drainSse(await reroll(runId, { feedback: 'kinder', revision: 1 }))
-    assert.ok(events.some(e => e.type === 'reroll_failed'), failure)
-    assert.strictEqual(events.at(-1)!.type, 'run_waiting')
-    const hold = openHold(runId)
-    assert.deepStrictEqual(hold.candidates, before.candidates)
-    assert.strictEqual(hold.revision, 1)
-    assert.strictEqual(hold.feedback, 'kinder')
-    // The attempt is recorded, but the decider still reads as its usable output.
-    const outputs = meta(runId).agentOutputs
-    assert.strictEqual(outputs.at(-1)!.status, 'success')
-    const attempt = outputs.at(-2)!
-    assert.strictEqual(attempt.status, 'error')
-    assert.deepStrictEqual(attempt.reroll, { holdId: 'hold', feedback: 'kinder' })
+test('a body reroll cannot read is a bad request; an unknown run is not found', async () => {
+  const runId = await startWaiting()
+  for (const body of [{ feedback: 3 }, { revision: 'one' }, { fork: 'yes' }, { like: '  ' }, { like: 'Candidate 1', fork: false }]) {
+    assert.strictEqual((await reroll(runId, body)).status, 400, JSON.stringify(body))
   }
+  assert.strictEqual((await reroll('no-such-run')).status, 404)
   assert.strictEqual(meta(runId).status, 'waiting')
-  // The malformed answer still spent tokens, and they are counted.
-  assert.ok((meta(runId).agentOutputs.at(-2)!.costUsd ?? 0) > 0)
-
-  deciderFails = undefined
-  await drainSse(await resume(runId, { chosen: 'Candidate 1', revision: 1 }))
-  assert.strictEqual(meta(runId).status, 'complete')
 })
 
-test('stale revisions are conflicts; a legacy pick is refused only once a reroll replaced the set', async () => {
+test('feedback is saved on the open hold of a waiting run; empty clears it (#134)', async () => {
   const runId = await startWaiting()
-  assert.strictEqual((await reroll(runId, { revision: 2 })).status, 409)
-  await drainSse(await reroll(runId, { revision: 1 }))
-
-  assert.strictEqual((await resume(runId, { chosen: 'Candidate 2', revision: 1 })).status, 409)
-  assert.strictEqual((await resume(runId, { chosen: 'Candidate 2' })).status, 409)
-  assert.strictEqual((await reroll(runId, { revision: 1 })).status, 409)
-  const custom = await drainSse(await resume(runId, { custom: 'my own' }))
-  assert.strictEqual(custom.events.at(-1)!.type, 'run_complete')
-})
-
-test('with two open holds, reroll and feedback touch only the named one', async () => {
-  fs.writeFileSync(path.join(root, 'chains/twin-chain.md'), `---
-name: twin-chain
-nodes:
-  - id: seed
-    kind: seed
-  - id: decider
-    kind: decider
-    agent: decider
-  - id: hold
-    kind: hold
-  - id: other
-    kind: decider
-    agent: decider
-  - id: second
-    kind: hold
-edges:
-  - from: seed
-    to: decider.input
-  - from: decider
-    to: hold.in
-  - from: seed
-    to: other.input
-  - from: other
-    to: second.in
----
-`)
-  const { POST } = await import('../app/api/run/route')
-  const { events } = await drainSse(await POST(req({ chainName: 'twin-chain', seedPrompt: 'go' })))
-  const runId = events.find(e => e.type === 'run_start')!.runId as string
-  const second = () => meta(runId).holds!.find(h => h.nodeId === 'second')!
-  const before = second()
-
-  await drainSse(await reroll(runId, { feedback: 'darker' }))
-  assert.strictEqual(openHold(runId).nodeId, 'second')
-  assert.strictEqual(meta(runId).holds!.find(h => h.nodeId === 'hold')!.revision, 2)
-  assert.deepStrictEqual(second(), before)
-  assert.strictEqual(second().feedback, undefined)
-})
-
-test('a reroll in flight claims the run: a second action is refused', async () => {
-  const runId = await startWaiting()
-  let release = () => {}
-  deciderGate = new Promise(resolve => { release = resolve })
-  const inFlight = drainSse(await reroll(runId))
-  assert.strictEqual(meta(runId).status, 'running')
-  assert.strictEqual((await reroll(runId)).status, 409)
-  assert.strictEqual((await resume(runId, { direction: 'go' })).status, 409)
-  assert.strictEqual((await saveFeedback(runId, 'x')).status, 409)
-  release()
-  await inFlight
-  assert.strictEqual(meta(runId).status, 'waiting')
+  const saved = await saveFeedback(runId, 'Less tragic')
+  assert.strictEqual(saved.status, 200)
+  assert.strictEqual((await saved.json()).hold.feedback, 'Less tragic')
+  assert.strictEqual(openHold(runId).feedback, 'Less tragic')
+  await saveFeedback(runId, '')
+  assert.strictEqual(openHold(runId).feedback, undefined)
 })
 
 test('feedback needs an open hold on a waiting run', async () => {
@@ -287,126 +144,4 @@ test('feedback needs an open hold on a waiting run', async () => {
   await drainSse(await resume(runId, { direction: 'go' }))
   assert.strictEqual((await saveFeedback(runId, 'x')).status, 409)
   assert.strictEqual((await saveFeedback(runId, 3)).status, 400)
-})
-
-test('rerolling an answered hold forks: the source keeps its answer, the fork waits on a fresh set (#147)', async () => {
-  const runId = await startWaiting()
-  await drainSse(await resume(runId, { chosen: 'Candidate 1', revision: 1 }))
-  const source = JSON.stringify(meta(runId))
-  const sourceLogs = logFiles(runId)
-  fake.reset()
-
-  const { events } = await drainSse(await reroll(runId, { feedback: 'darker', revision: 1 }))
-  const forkId = forkedId(events)
-  assert.notStrictEqual(forkId, runId)
-  const waiting = events.at(-1)!
-  assert.strictEqual(waiting.type, 'run_waiting')
-  assert.strictEqual(waiting.runId, forkId)
-  const hold = waiting.hold as HoldRecord
-  assert.strictEqual(hold.revision, 2)
-  assert.strictEqual(hold.resolvedAt, undefined)
-  assert.strictEqual(hold.chosen, undefined)
-  assert.strictEqual(hold.feedback, 'darker')
-  assert.deepStrictEqual(hold.candidates.map(c => c.body), ['set 2 one', 'set 2 two'])
-
-  // Only the decider ran; the source is untouched.
-  assert.strictEqual(fake.seen.length, 1)
-  assert.ok(deciderPrompts()[0].includes('darker'))
-  assert.strictEqual(JSON.stringify(meta(runId)), source)
-  assert.deepStrictEqual(logFiles(runId), sourceLogs)
-
-  const fork = meta(forkId)
-  assert.strictEqual(fork.status, 'waiting')
-  assert.strictEqual(fork.branchedFromRunId, runId)
-  assert.strictEqual(fork.branchedFromNode, 'hold')
-  assert.deepStrictEqual(fork.agentOutputs.map(o => o.nodeId), ['proposer', 'decider', 'decider'])
-  assert.deepStrictEqual(logFiles(forkId), ['00-proposer.md', '01-decider.md', '02-decider.md'])
-  assert.deepStrictEqual(openHold(forkId), hold)
-
-  const resumed = await drainSse(await resume(forkId, { chosen: 'Candidate 2', revision: 2 }))
-  assert.strictEqual(resumed.events.at(-1)!.type, 'run_complete')
-  assert.ok((fake.seen.at(-1)!.messages[0].content ?? '').includes('PICK: Candidate 2\nset 2 two'))
-})
-
-test('`like` forks from an open hold, asks for more like that candidate, and the fork keeps it through later rerolls (#147)', async () => {
-  const runId = await startWaiting()
-  const source = JSON.stringify(meta(runId))
-  fake.reset()
-
-  const { events } = await drainSse(await reroll(runId, { like: 'candidate 1', revision: 1 }))
-  const forkId = forkedId(events)
-  assert.notStrictEqual(forkId, runId)
-  assert.strictEqual(JSON.stringify(meta(runId)), source)
-  const like = { candidate: { heading: 'Candidate 1', body: 'set 1 one' }, revision: 1 }
-  assert.deepStrictEqual(openHold(forkId).like, like)
-  assert.ok(deciderPrompts()[0].includes('set 1 one'))
-  assert.ok(deciderPrompts()[0].startsWith('decider on from proposer'))
-
-  // In place inside the fork: the original prompt plus the same candidate, once.
-  await drainSse(await reroll(forkId, { revision: 2 }))
-  const again = deciderPrompts()[1]
-  assert.ok(again.startsWith('decider on from proposer'))
-  assert.strictEqual(again.split('set 1 one').length, 2)
-  assert.strictEqual(openHold(forkId).revision, 3)
-  assert.deepStrictEqual(openHold(forkId).like, like)
-  assert.deepStrictEqual(meta(forkId).agentOutputs.map(o => o.nodeId), ['proposer', 'decider', 'decider', 'decider'])
-
-  assert.strictEqual((await reroll(runId, { like: 'Candidate 9' })).status, 400)
-  assert.strictEqual((await reroll(runId, { like: 'Candidate 1', fork: false })).status, 400)
-  assert.strictEqual((await reroll(runId, { fork: true, revision: 2 })).status, 409)
-})
-
-test('a failed fork reroll leaves no run behind and the source untouched (#147)', async () => {
-  const runId = await startWaiting()
-  const source = JSON.stringify(meta(runId))
-  for (const failure of ['throw', 'malformed'] as const) {
-    deciderFails = failure
-    const { events } = await drainSse(await reroll(runId, { fork: true }))
-    assert.strictEqual(events.at(-1)!.type, 'reroll_failed', failure)
-    assert.ok(!events.some(e => e.type === 'run_waiting'))
-    assert.deepStrictEqual(runIds(), [runId])
-    assert.strictEqual(JSON.stringify(meta(runId)), source)
-  }
-})
-
-test('a fork reroll does not wait for the source to finish running (#147)', async () => {
-  const runId = await startWaiting()
-  let release = () => {}
-  afterGate = new Promise(resolve => { release = resolve })
-  const inFlight = drainSse(await resume(runId, { chosen: 'Candidate 2', revision: 1 }))
-  assert.strictEqual(meta(runId).status, 'running')
-
-  const { events } = await drainSse(await reroll(runId, { like: 'Candidate 1', revision: 1 }))
-  assert.strictEqual(events.at(-1)!.type, 'run_waiting')
-  const forkId = forkedId(events)
-  assert.deepStrictEqual(meta(forkId).agentOutputs.map(o => o.nodeId), ['proposer', 'decider', 'decider'])
-
-  release()
-  await inFlight
-  assert.strictEqual(meta(runId).status, 'complete')
-  assert.strictEqual(meta(runId).holds![0].chosen, 'Candidate 2')
-})
-
-test('a fork of a hold rerolled in place starts from the original record, takes only the request feedback, and refuses a stale like (#147)', async () => {
-  const runId = await startWaiting()
-  await drainSse(await reroll(runId, { feedback: 'darker', revision: 1 }))
-  fake.reset()
-
-  // `Candidate 1` now means set 2's; without a revision it could land on the wrong set.
-  assert.strictEqual((await reroll(runId, { like: 'Candidate 1' })).status, 409)
-  const { events } = await drainSse(await reroll(runId, { like: 'Candidate 1', revision: 2 }))
-  const forkId = forkedId(events)
-  const prompt = deciderPrompts()[0]
-  assert.ok(prompt.includes('set 2 one'))
-  assert.ok(!prompt.includes('darker'))
-
-  const hold = openHold(forkId)
-  assert.strictEqual(hold.feedback, undefined)
-  assert.strictEqual(hold.revision, 3)
-  assert.deepStrictEqual(hold.like, { candidate: { heading: 'Candidate 1', body: 'set 2 one' }, revision: 2 })
-  const outputs = meta(forkId).agentOutputs
-  assert.deepStrictEqual(outputs.map(o => o.nodeId), ['proposer', 'decider', 'decider'])
-  assert.strictEqual(outputs[1].reroll, undefined)
-  assert.ok(outputs[1].output.includes('set 1 one'))
-  assert.strictEqual(openHold(runId).revision, 2)
 })

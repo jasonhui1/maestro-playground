@@ -1,7 +1,5 @@
-import { hasAnsweredHold } from './hold'
 import { badRequest } from './refusal'
 import { chatTarget } from './nodeChat'
-import { runLog } from './partialRun'
 import type { AgentOutput, Refusal, RunMeta } from './types'
 
 /** A promote request, read: the node, and the `### Turn N` of its reply (the last by default). */
@@ -24,8 +22,6 @@ export interface Promotion {
   source: AgentOutput
   /** The promoted reply as the node's new output. */
   revision: AgentOutput
-  /** An answered hold lies downstream: rerunning in place would ask it again, so this forks (#99). */
-  forks: boolean
 }
 
 /**
@@ -49,8 +45,6 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
   const at = replies[n - 1]
   const reply = conversation[at]
 
-  const forks = hasAnsweredHold(meta.holds, runLog(meta).below(nodeId))
-
   const { record } = target
   const source: AgentOutput = {
     ...record,
@@ -70,5 +64,5 @@ export function planPromotion(meta: RunMeta, nodeId: string, turn?: number): Pro
     timestamp: new Date().toISOString(),
   }
   const flaggedOutputs = meta.agentOutputs.map((o, i) => (i === target.index ? source : o))
-  return { flaggedOutputs, source, revision, forks }
+  return { flaggedOutputs, source, revision }
 }

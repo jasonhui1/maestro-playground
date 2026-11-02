@@ -159,8 +159,6 @@ export interface HoldUpdate {
 export interface HoldAnswer extends HoldUpdate {
   /** The answer as a replayable output. */
   output: AgentOutput
-  /** Re-answering an answered hold forks rather than rewriting the run (#99). */
-  mode: 'resume' | 'fork'
 }
 
 // Records are copied into and out of meta.json, so a hold is known by where and when it was reached.
@@ -195,13 +193,7 @@ export function answerHold(holds: HoldRecord[], hold: HoldRecord, direction: str
     },
     record,
     holds: replaceHold(holds, hold, record),
-    mode: forksAt(hold, false) ? 'fork' : 'resume',
   }
-}
-
-/** Whether a continuation at `hold` forks: when asked to, or when the hold is already answered (#99, #76, #147). */
-export function forksAt(hold: HoldRecord, asked: boolean): boolean {
-  return asked || hold.resolvedAt !== undefined
 }
 
 /** Whether any of `nodeIds` is a hold already answered: rerunning it in place would ask it again (#99). */
