@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { RunMeta } from '@/lib/types'
-import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/changedSince'
+import { changedSince, type ChangedSinceResult } from '@/lib/changedSince'
+import { isRunOf, previousRun } from '@/lib/runIndex'
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
@@ -61,7 +62,7 @@ export default function HistoryPage() {
   const previousRunsMap = useMemo(() => {
     const map = new Map<string, ChangedSinceResult>()
     for (const r of allRuns) {
-      const pred = findPreviousRun(allRuns, r)
+      const pred = previousRun(allRuns, r)
       map.set(r.runId, changedSince(pred, r))
     }
     return map
@@ -97,9 +98,10 @@ export default function HistoryPage() {
       items.push({ kind: 'variance', group: buildVarianceGroup(runsByGroup.get(groupId) ?? []) })
     }
 
+    const chain = filterChain ? { kind: 'chain' as const, slug: filterChain, name: chains.find(c => c.slug === filterChain)?.name } : undefined
     return items.filter(item => {
       if (item.kind === 'run') {
-        if (filterChain && item.run.chainName !== filterChain) return false
+        if (chain && !isRunOf(item.run, chain)) return false
         if (filterStatus && item.run.status !== filterStatus) return false
         if (filterKeyword) {
           const kw = filterKeyword.toLowerCase()
@@ -110,7 +112,7 @@ export default function HistoryPage() {
         return true
       }
 
-      if (filterChain && item.group.chainName !== filterChain) return false
+      if (chain && !item.group.runs.some(r => isRunOf(r, chain))) return false
       if (filterStatus && varianceGroupStatus(item.group) !== filterStatus) return false
       if (filterKeyword) {
         const kw = filterKeyword.toLowerCase()
@@ -120,7 +122,7 @@ export default function HistoryPage() {
       }
       return true
     })
-  }, [allRuns, filterChain, filterStatus, filterKeyword])
+  }, [allRuns, chains, filterChain, filterStatus, filterKeyword])
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-6">
@@ -135,7 +137,7 @@ export default function HistoryPage() {
               onChange={(e) => setFilterChain(e.target.value)}
             >
               <option value="">All Chains</option>
-              {chains.map(c => <option key={c.slug} value={c.name}>{c.name}</option>)}
+              {chains.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
 
             <div className="relative">

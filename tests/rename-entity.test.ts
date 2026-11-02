@@ -361,3 +361,17 @@ test('the workspace loads cleanly after a rename, with no dangling reference', a
   const node = ws.chains[0].nodes[0]
   assert.ok(node.kind === 'agent' && ws.agents.some(a => a.slug === node.agent))
 })
+
+test("a rename finds and repoints its runs through the workspace's run folders (#168)", async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  const { memoryRunFolders } = await import('../lib/runFolders')
+  const runs = memoryRunFolders()
+  runs.create({ runId: 'r1', chainName: 'decision', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [], versions: { 'agent/panel-optimist': 3 } })
+
+  const { planRename, renameWorkspaceEntity } = await rename()
+  assert.deepStrictEqual(planRename(wp, 'agent', 'panel-optimist', 'optimist', runs).runs, ['r1'])
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', runs)
+  assert.deepStrictEqual(runs.read('r1').versions, { 'agent/optimist': 3 })
+  assert.ok(!fs.existsSync(path.join(wp, 'logs')), 'nothing reached the disk run folders')
+})

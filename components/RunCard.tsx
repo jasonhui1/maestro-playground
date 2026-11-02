@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { RunMeta } from '@/lib/types'
 import { summarizeRun } from '@/lib/runLedger'
+import { runSubject } from '@/lib/runIndex'
 import { statusStyle } from '@/lib/runStatus'
 import { formatDuration, formatClockTime, formatDate } from '@/lib/timeFormat'
 import { CostCell } from '@/components/CostCell'
@@ -50,8 +51,8 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
   const ledger = summarizeRun(run)
 
   const style = statusStyle(ledger.status)
-  const isChat = run.chainName.startsWith('Chat with ')
-  const href = isChat ? `/chat?runId=${run.runId}` : `/history/${run.runId}`
+  const { kind, href } = runSubject(run)
+  const isChat = kind === 'chat'
 
   return (
     <>

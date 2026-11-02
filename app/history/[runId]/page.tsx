@@ -1,18 +1,13 @@
 'use client'
-import { useState, useEffect, use, useMemo, useCallback } from 'react'
-import { RunMeta, ChainNode } from '@/lib/types'
-import { AgentStreamOutput } from '@/components/AgentStreamOutput'
-import TokenCostBar from '@/components/TokenCostBar'
+import { useState, useEffect, use, useMemo } from 'react'
+import { RunMeta } from '@/lib/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
-import ChainCanvas from '@/components/editor/ChainCanvas'
-import type { EditorNodeData } from '@/components/editor/nodeData'
-import { socketHandles } from '@/lib/nodeSockets'
 import { forkFromNode } from '@/lib/forkFromNode'
 import DockSplit from '@/components/workspace/DockSplit'
 import RunDock from '@/components/trace/RunDock'
-import { findChainForRun } from '@/lib/resolveRunChain'
+import { runChain } from '@/lib/runIndex'
 import { useResultView } from '@/hooks/useResultView'
 import { PANEL_FITS } from '@/lib/panelFit'
 import { OptionSwitch } from '@/components/result/OptionSwitch'
@@ -23,9 +18,6 @@ import { ResumeForm } from '@/components/trace/ResumeForm'
 import { DAGTraceView } from '@/components/trace/DAGTraceView'
 
 type Fetched = { runId: string; run?: RunMeta; error?: string }
-
-// Every edit handler a read-only canvas is still required to be handed.
-const noop = () => {}
 
 // The page is only a fetch gate: it holds no view state, so RunDetail below can
 // assume a loaded run and derive everything from it without null guards.
@@ -76,10 +68,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
 
 function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) {
   const router = useRouter()
-  const g = run.graph
 
-  const agents = useWorkspaceStore(s => s.files.agents)
-  const tools = useWorkspaceStore(s => s.files.tools)
   const chains = useWorkspaceStore(s => s.files.chains)
   // Gates the view below on the one fetch classification needs, so a classified run
   // opens straight into its result view instead of flashing the trace first (#72).
@@ -93,9 +82,8 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   const [picked, setPicked] = useState<'result' | 'trace' | null>(null)
   const [comparingSource, setComparingSource] = useState(false)
 
-  // Matches how /api/run resolves a chainName (lib/resolveRunChain.ts); reads the
-  // chain's *current* declaration, not what it looked like when the run happened (#72).
-  const resultChain = useMemo(() => findChainForRun(chains, run.chainName), [chains, run.chainName])
+  // The chain's *current* declaration, not what it looked like when the run happened (#72).
+  const resultChain = useMemo(() => runChain(run, chains), [chains, run])
   const view = useResultView({ run, chain: resultChain })
   const viewMode = picked ?? (view.renderable ? 'result' : 'trace')
   const switches = <OptionSwitch label="fit" options={PANEL_FITS} value={view.fit} onChange={view.setFit} />
@@ -103,41 +91,6 @@ function RunDetail({ run, onChanged }: { run: RunMeta; onChanged: () => void }) 
   useEffect(() => {
     useWorkspaceStore.getState().load().finally(() => setChainsLoaded(true))
   }, [])
-
-  // A read-only stand-in for the chain the run was executed from, so node kinds can
-  // resolve their slots. Empty when the run predates graph capture; buildData is only
-  // ever called by the canvas, which renders only when `g` exists.
-  const chainDef = useMemo(() => ({
-    slug: run.chainName,
-    name: run.chainName,
-    description: '',
-    filePath: '',
-    nodes: g?.nodes ?? [],
-    edges: g?.edges ?? [],
-  }), [g, run.chainName])
-
-  const selectedIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId])
-  const canvasIds = useMemo(() => new Set((g?.nodes ?? []).map(n => n.id)), [g])
-  const selectOnCanvas = useCallback((ids: string[]) => setSelectedNodeId(prev =>
-    // The rail lists nodes inside subchains, which the canvas has no node for. It
-    // reports those as "nothing selected", which must not clear the rail's pick.
-    ids.length === 0 && prev && !canvasIds.has(prev) ? prev : ids[0] ?? null
-  ), [canvasIds])
-
-  const buildData = useCallback((node: ChainNode): EditorNodeData => {
-    const workspace = { chain: chainDef, agents, chains: [], tools }
-    return {
-      node,
-      sockets: socketHandles(node, workspace),
-      agents: agents.map(a => ({ slug: a.slug, name: a.name })),
-      contextFiles: [],
-      run: view.states[node.id],
-      issues: [],
-      onChange: () => {},
-      chains: [],
-      readOnly: true,
-    }
-  }, [chainDef, agents, tools, view.states])
 
   async function handleFork(nodeId: string, opts?: { modelOverride?: string | null }) {
     setIsForking(true)

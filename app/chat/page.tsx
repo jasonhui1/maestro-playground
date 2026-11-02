@@ -9,6 +9,7 @@ import { streamRun, type ChatStreamEvent } from '@/lib/runStream'
 import { Bot, Settings2, AlertCircle, Loader2, ChevronLeft, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
+import { runSubject } from '@/lib/runIndex'
 
 function ChatContent() {
   const searchParams = useSearchParams()
@@ -54,12 +55,10 @@ function ChatContent() {
     async function fetchRecent() {
       setIsLoadingRecent(true)
       try {
-        const res = await fetch('/api/runs')
-        const allRuns: RunMeta[] = await res.json()
-        const agentChats = allRuns
-          .filter(run => run.chainName === `Chat with ${selectedAgent}`)
-          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
-        setRecentChats(agentChats)
+        const slug = agents.find(a => a.name === selectedAgent)?.slug
+        if (!slug) return
+        const res = await fetch(`/api/runs?kind=chat&slug=${encodeURIComponent(slug)}`)
+        setRecentChats(await res.json())
       } catch (err) {
         console.error('Failed to fetch recent chats:', err)
       } finally {
@@ -67,7 +66,7 @@ function ChatContent() {
       }
     }
     fetchRecent()
-  }, [selectedAgent, activeRunId])
+  }, [selectedAgent, agents, activeRunId])
 
   // Load history if runId is present
   useEffect(() => {
@@ -92,11 +91,7 @@ function ChatContent() {
         setActiveRunId(runIdParam)
         
         // Set the agent from the first output if available
-        if (meta.agentOutputs.length > 0) {
-          setSelectedAgent(meta.agentOutputs[0].agentName)
-        } else if (meta.chainName.startsWith('Chat with ')) {
-          setSelectedAgent(meta.chainName.replace('Chat with ', ''))
-        }
+        setSelectedAgent(meta.agentOutputs[0]?.agentName ?? runSubject(meta).name)
       } catch (err) {
         console.error('Failed to fetch history:', err)
         setError('Failed to load chat history.')

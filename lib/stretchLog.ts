@@ -1,6 +1,7 @@
 import { diceField, type RunDice } from './dice'
 import type { RunFolders } from './runFolders'
-import type { AgentOutput, ChainDef, HoldRecord, RunMeta } from './types'
+import { chatTitle } from './runIndex'
+import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta } from './types'
 
 /** What a new run folder's meta.json records about the run it starts. */
 export interface NewRun {
@@ -22,7 +23,7 @@ export interface NewRun {
   modelOverride?: string
   imageOverride?: RunMeta['imageOverride']
   chainSlug?: string
-  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
+  entrypoint?: RunMeta['entrypoint']
   variance?: RunMeta['variance']
 }
 
@@ -57,8 +58,11 @@ function newRunMeta(runId: string, run: NewRun): RunMeta {
 }
 
 /** The meta.json a chat with one agent starts: no graph, nothing pinned. */
-export function chatRunMeta(runId: string, title: string, seedPrompt: string): RunMeta {
-  return { runId, chainName: title, seedPrompt, startedAt: new Date().toISOString(), status: 'running', agentOutputs: [] }
+export function chatRunMeta(runId: string, agent: Pick<AgentDef, 'name' | 'slug'>, seedPrompt: string): RunMeta {
+  return {
+    runId, chainName: chatTitle(agent.name), seedPrompt, startedAt: new Date().toISOString(), status: 'running', agentOutputs: [],
+    entrypoint: { kind: 'chat', slug: agent.slug },
+  }
 }
 
 /** A change to an existing run's meta.json, with one earlier log rewritten. */
