@@ -15,7 +15,7 @@
 
 import OpenAI from 'openai'
 import assert from 'node:assert'
-import { DEFAULT_MAX_TOOL_TURNS } from '../../lib/runner'
+import { DEFAULT_MAX_TOOL_TURNS } from '../../lib/agentTurn'
 import { client, loreTools as tools, MODEL, PROVIDER_LABEL, reasoningBody, save } from './provider'
 
 const SYSTEM_PROMPT =
@@ -41,7 +41,7 @@ async function main() {
   console.log(`provider: ${PROVIDER_LABEL}  model: ${MODEL}`)
 
   // ---- Step 1: run a real tool loop to produce a proposer-shaped record ----
-  // Mirrors the app's own loop (lib/runner.ts, DEFAULT_MAX_TOOL_TURNS).
+  // Mirrors the app's own loop (lib/agentTurn.ts, DEFAULT_MAX_TOOL_TURNS).
   console.log('[1/3] running a real tool loop (system + user -> N tool calls -> final output)')
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT },

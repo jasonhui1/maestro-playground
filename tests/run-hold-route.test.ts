@@ -1,24 +1,21 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import type { AgentOutput, RunMeta } from '../lib/types'
+import type { RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 
 // The model is the only stand-in: the executor, route, logger and run-read routes are real.
 const ran: string[] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: { slug: string; name: string }, systemPrompt: string): Promise<AgentOutput> => {
-    ran.push(agent.slug)
-    return {
-      agentName: agent.name, systemPrompt, input: '', output: '## Candidate 1\nkeep it\n\n## Candidate 2\ncut it',
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+requestEntry.model = fakeModel(({ agentSlug }) => {
+  ran.push(agentSlug!)
+  return answer('## Candidate 1\nkeep it\n\n## Candidate 2\ncut it')
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -137,7 +134,7 @@ edges:
 
   const waiting = events.filter(e => e.type === 'run_waiting')
   assert.deepStrictEqual(waiting.map(e => e.nodeId).sort(), ['hold', 'hold2'])
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   const meta = runs.read(waiting[0].runId as string)
   assert.strictEqual(meta.status, 'waiting')
   assert.deepStrictEqual(meta.holds?.map(h => h.nodeId).sort(), ['hold', 'hold2'])

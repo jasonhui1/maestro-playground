@@ -1,4 +1,5 @@
 import { test, describe, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -407,7 +408,7 @@ describe('GET /api/runs/[runId]/changed-since route (#131)', () => {
   test('200 with changed-since projection and diff content', async () => {
     const wp = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-changed-since-'))
     requestEntry.root = wp
-    const ws = diskWorkspace(wp)
+    const ws = diskWorkspace(wp, noModel)
 
     // Create version snapshots
     const v1 = snapshotVersion(wp, 'agent', 'writer', '---\nname: Writer\nmodel: gpt-4\n---\nPrompt v1\n')

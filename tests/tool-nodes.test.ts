@@ -3,13 +3,14 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { AgentOutput } from '../lib/types'
+import { answer } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 const { draw, retrieve, model } = vi.hoisted(() => ({ draw: vi.fn(), retrieve: vi.fn(), model: vi.fn() }))
 vi.mock('../lib/tools/novelaiExecutor', () => ({ novelaiExecutor: draw }))
 vi.mock('../lib/tools/retrieveExecutor', () => ({ retrieveExecutor: retrieve }))
-vi.mock('../lib/runner', () => ({ runAgent: model }))
+requestEntry.model = () => model
 
 const roots: string[] = []
 afterEach(() => {
@@ -150,10 +151,7 @@ Draw.
 })
 
 test('a designer feeds its named sections straight into a tool and the log records the resolved call', async () => {
-  model.mockImplementation(async (agent, systemPrompt) => ({
-    agentName: agent.name, systemPrompt, input: '', output: '## Character\nsilver hair\n\n## Clothes\nred coat',
-    tokensIn: 1, tokensOut: 1, costUsd: 0, latencyMs: 0, model: 'fake', timestamp: new Date().toISOString(), status: 'success',
-  }))
+  model.mockImplementation(async () => answer('## Character\nsilver hair\n\n## Clothes\nred coat'))
   const { write } = workspace()
   write('agents/designer.md', '---\nname: designer\noutputs:\n  - name: Character\n  - name: Clothes\n---\nDesign.\n')
   const events = await launch({ chain: { nodes: [

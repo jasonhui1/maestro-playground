@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { buildSystemPrompt, runAgent } from '@/lib/runner'
-import { bindAgentTools } from '@/lib/tools/registry'
+import { buildSystemPrompt } from '@/lib/prompt'
+import { runAgentTurn } from '@/lib/agentTurn'
 import { runToolContext } from '@/lib/tools/context'
 import { makeContextReader } from '@/lib/fs/contextReader'
 import type { ChatMessage, RunMeta } from '@/lib/types'
@@ -54,19 +54,17 @@ export async function POST(req: NextRequest) {
       send({ type: 'run_id', runId })
 
       try {
-        const result = await runAgent(
-          agentDef,
+        const result = await runAgentTurn(ws.model, {
+          agent: agentDef,
           systemPrompt,
-          lastUserMessage,
-          {
-            onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
-            history: fullHistory,
-            // A human talking to an agent gets the tools its file declares, under
-            // the same cap a run uses — the agent file says what it may use (#112).
-            boundTools: bindAgentTools(agentDef, tools, runToolContext(ws, runId)),
-            onToolEvent: event => send(event),
-          }
-        )
+          input: lastUserMessage,
+          history: fullHistory,
+          // A human talking to an agent gets the tools its file declares, under
+          // the same cap a run uses — the agent file says what it may use (#112).
+          tools: { defs: tools, context: runToolContext(ws, runId) },
+          onToken: (token, tokenType) => send({ type: 'token', token, tokenType }),
+          onToolEvent: event => send(event),
+        })
 
         // Persist the output
         runs.writeStep(runId, currentStep, result)

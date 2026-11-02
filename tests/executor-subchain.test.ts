@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { AgentDef, AgentOutput, ChainDef } from '../lib/types'
@@ -8,7 +9,7 @@ const agent = (slug: string, systemPrompt: string): AgentDef => ({
   input_from: 'user', output_format: 'markdown', outputs: [], inputs: [], systemPrompt, filePath: '',
 })
 // the fake runner echoes the *resolved* system prompt, so injected input values show up in the output
-const fakeRun = async (a: AgentDef, systemPrompt: string): Promise<AgentOutput> => ({
+const fakeRun = async ({ agent: a, systemPrompt: systemPrompt }: AgentTurn): Promise<AgentOutput> => ({
   agentName: a.name, systemPrompt, input: '', output: systemPrompt,
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: '', timestamp: new Date().toISOString(), status: 'success',
 })

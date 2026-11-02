@@ -427,7 +427,7 @@ test('runChainGraph executes nested section edge and reports warnings', async ()
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings1.push(w) },
     {
       seedPrompt: 'GO',
-      run: async (agent, prompt) => {
+      run: async ({ agent, systemPrompt: prompt }) => {
         if (agent.slug === 'world-builder') {
           return {
             agentName: agent.name, systemPrompt: '', input: prompt,
@@ -456,7 +456,7 @@ test('runChainGraph executes nested section edge and reports warnings', async ()
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings2.push(w) },
     {
       seedPrompt: 'GO',
-      run: async (agent, prompt) => ({
+      run: async ({ agent, systemPrompt: prompt }) => ({
         agentName: agent.name, systemPrompt: '', input: prompt,
         output: '## Act 1\nNo act 2 here',
         tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: agent.model,
@@ -475,7 +475,7 @@ test('runChainGraph executes nested section edge and reports warnings', async ()
     { onStart() {}, onToken() {}, onDone() {}, onWarning: w => warnings3.push(w) },
     {
       seedPrompt: 'GO',
-      run: async (agent, prompt) => {
+      run: async ({ agent, systemPrompt: prompt }) => {
         if (agent.slug === 'world-builder') {
           return {
             agentName: agent.name, systemPrompt: '', input: prompt,

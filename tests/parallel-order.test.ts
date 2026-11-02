@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -14,7 +15,7 @@ const noop = { onStart() {}, onToken() {}, onDone() {} }
 // Finishing order is deliberately the reverse of topo order, so a result array that
 // merely echoed completion order would fail the assertions below.
 const delays: Record<string, number> = { w1: 45, w2: 30, w3: 15, syn: 0 }
-const stub = (async (a: AgentDef, sys: string) => {
+const stub = (async ({ agent: a, systemPrompt: sys }: AgentTurn) => {
   await new Promise(r => setTimeout(r, delays[a.slug] ?? 0))
   return {
     agentName: a.name, systemPrompt: sys, input: '', output: `out-${a.slug}`,

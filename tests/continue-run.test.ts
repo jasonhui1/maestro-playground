@@ -13,9 +13,10 @@ import { agentSlots } from '../lib/tokens'
 import { startRun, type LiveWorkspace } from '../lib/runSession'
 import { memoryWorkspace } from '../lib/runFolders'
 import { prepareRunRequest, type RunRequestBody } from '../lib/runRequest'
-import type { AgentDef, AgentOutput, ChainDef, ChatMessage, HoldRecord, RunMeta } from '../lib/types'
+import type { AgentDef, ChainDef, ChatMessage, HoldRecord, RunMeta } from '../lib/types'
+import { answer as modelAnswer, fakeModel } from './helpers/fakeModel'
 
-// The run folders, version snapshots and model are in memory; the executor and the continuation are real.
+// The run folders, version snapshots and model are in memory; the executor, agent turn and continuation are real.
 let nextId = 0
 vi.mock('@/lib/logger', async importOriginal => ({
   ...await importOriginal<typeof import('../lib/logger')>(),
@@ -23,7 +24,7 @@ vi.mock('@/lib/logger', async importOriginal => ({
 }))
 
 
-type Model = (agent: AgentDef, systemPrompt: string) => string | Promise<string>
+type Model = (agent: Pick<AgentDef, 'slug'>, systemPrompt: string) => string | Promise<string>
 const defaultModel: Model = (agent, systemPrompt) =>
   agent.slug === 'decider' ? `## Candidate 1\none [${systemPrompt}]\n\n## Candidate 2\ntwo`
     : agent.slug === 'sections' ? '## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.'
@@ -31,20 +32,14 @@ const defaultModel: Model = (agent, systemPrompt) =>
 let model: Model = defaultModel
 const ran: { slug: string; systemPrompt: string; model: string }[] = []
 
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: AgentDef, systemPrompt: string, input: string): Promise<AgentOutput> => {
-    ran.push({ slug: agent.slug, systemPrompt, model: agent.model })
-    const output = await model(agent, systemPrompt)
-    return {
-      agentName: agent.name, systemPrompt, input, output,
-      tokensIn: 5, tokensOut: 5, costUsd: 0.001, latencyMs: 0, model: agent.model, timestamp: new Date().toISOString(), status: 'success',
-    }
-  },
-}))
+const fake = fakeModel(async ({ agentSlug, model: ranOn, system }) => {
+  ran.push({ slug: agentSlug!, systemPrompt: system, model: ranOn })
+  return modelAnswer(await model({ slug: agentSlug! }, system), [5, 5])
+})
 
 function agent(slug: string, systemPrompt: string, dice?: unknown): AgentDef {
   const def: AgentDef = {
-    slug, name: slug, model: 'm', description: '', skills: [], context: [], input_from: 'user',
+    slug, name: slug, model: 'openai/gpt-4o-mini', description: '', skills: [], context: [], input_from: 'user',
     output_format: 'markdown', outputs: [], inputs: [], systemPrompt, filePath: '',
     ...(dice ? { dice: normalizeDice(dice, slug) } : {}),
   }
@@ -226,13 +221,13 @@ inputs:
 `
 
 let chain: ChainDef
-let ws = memoryWorkspace({} as LiveWorkspace)
+let ws = memoryWorkspace({} as LiveWorkspace, fake.model)
 
 function useChain(text: string) {
   chain = parseChainContent(text, 'held')
   ws = memoryWorkspace({
     agents, skills: [], chains: [chain], tools: [], templates: [], context: [], defaults: {},
-  } as unknown as LiveWorkspace)
+  } as unknown as LiveWorkspace, fake.model)
 }
 
 beforeEach(() => {

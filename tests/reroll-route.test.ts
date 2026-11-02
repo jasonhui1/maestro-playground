@@ -14,7 +14,7 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 const fake = fakeModel(({ agentSlug }) => agentSlug === 'decider'
   ? answer('## Candidate 1\none\n\n## Candidate 2\ntwo', [10, 10])
   : answer(`from ${agentSlug}`))
-vi.mock('@/lib/chatCall', () => ({ createChatCall: fake.createChatCall }))
+requestEntry.model = fake.model
 
 const CHAIN = `---
 name: held-chain

@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import type { ChainDef, AgentDef, AgentOutput } from '../lib/types'
@@ -23,7 +24,7 @@ function chain(): ChainDef {
   }
 }
 
-const stubRun = (async (a: AgentDef, sys: string) => ({
+const stubRun = (async ({ agent: a, systemPrompt: sys }: AgentTurn) => ({
   agentName: a.name, systemPrompt: sys, input: '', output: 'done',
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
 }) as AgentOutput) as never

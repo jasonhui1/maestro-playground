@@ -1,4 +1,5 @@
 import { test, afterEach, vi } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
@@ -11,6 +12,7 @@ import { buildLayoutModel } from '../lib/layoutModel'
 import { extractSections } from '../lib/graph'
 import { answerHold } from '../lib/hold'
 import type { AgentDef, AgentOutput, ChainDef, HoldRecord, RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 // #78: the hold reads these panels and offers CANON? ticks from each proposer.
@@ -37,14 +39,17 @@ const reply = (slug: string) => {
   if (slug === 'greenlight') return PITCH_SECTIONS.map(s => `## ${s}\n${s} body`).join('\n\n')
   return `## Take\n${slug} take\n\n## Proposed canon\n- ${slug} line`
 }
-const stub = async (a: AgentDef, sys: string): Promise<AgentOutput> => {
+const stub = async ({ agent: a, systemPrompt: sys }: AgentTurn): Promise<AgentOutput> => {
   ran.push(a.slug)
   return {
     agentName: a.name, systemPrompt: sys, input: '', output: reply(a.slug),
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(), status: 'success',
   }
 }
-vi.mock('@/lib/runner', () => ({ runAgent: (a: AgentDef, sys: string) => stub(a, sys) }))
+requestEntry.model = fakeModel(({ agentSlug }) => {
+  ran.push(agentSlug!)
+  return answer(reply(agentSlug!))
+}).model
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 

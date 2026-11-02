@@ -26,3 +26,5 @@ The core promise splits into two tiers to accommodate this: structure (which age
 - Branch/replay semantics change: pre-branch nodes reuse logged tool calls wholesale; re-run nodes use live tools (frozen-replay toggle deferred).
 - Cost and iteration caps compose multiplicatively when a tool-using agent sits inside a loop zone (`maxIterations × maxToolTurns`) — both caps stay visible in workspace files.
 - Silent markdown-convention violations (a model skipping `## Changes`/`## Summary`) become a real failure mode and must surface as visible warnings, not silently degrade.
+
+> Note (#170): `runAgent` / `lib/runner.ts` is now `runAgentTurn` in `lib/agentTurn.ts`; see CONTEXT.md "Agent turn".

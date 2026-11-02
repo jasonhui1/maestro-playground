@@ -21,3 +21,5 @@ De-risk scripts that need "a model" (starting with `scripts/derisk/convention-ch
 - Single-run de-risk scripts under-cover the "especially cheaper OpenRouter ones" risk the design map calls out (2026-07-11, tools-design-map.md) until someone actually runs with `DERISK_PROVIDER=openrouter` and an `OPENROUTER_API_KEY`.
 - A compliance finding from one of these scripts (e.g. #19's 5/5 on `gemma-4-31b-it`) is evidence about that model only — it does not generalize to whatever model a given workspace's agents actually name, and should be captioned as such wherever it's cited (see the #16/#19 issue comments).
 - If a workspace ever standardizes its agents' `model:` frontmatter to match `.env.example`'s stated default (or vice versa), this ADR's premise (the two disagree) goes away and future de-risk scripts can target that single agreed default directly.
+
+> Note (#170): `runAgent` / `lib/runner.ts` is now `runAgentTurn` in `lib/agentTurn.ts`; see CONTEXT.md "Agent turn".

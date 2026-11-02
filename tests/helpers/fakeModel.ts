@@ -1,9 +1,10 @@
-import type { ChatCall, ChatCallHooks, ChatCallResponse, WireMessage } from '../../lib/tools/loop'
+import type { ChatCallHooks, ChatCallResponse, WireMessage } from '../../lib/tools/loop'
+import type { ModelFactory } from '../../lib/model'
+import type { AgentDef } from '../../lib/types'
 
 /**
- * The model, and only the model, stood in for a route test (#112):
- * `vi.mock('@/lib/chatCall', () => import('./helpers/fakeModel'))` leaves
- * runAgent, the tool loop, cost accounting, the routes and the logger real.
+ * The model, and only the model, stood in (#112, #170): set `requestEntry.model = fake.model`
+ * for a route, or hand `fake.model` to runAgentTurn; the turn, tool loop, cost and logger stay real.
  */
 
 export const answer = (content: string, usage?: [number, number]): ChatCallResponse => ({
@@ -32,7 +33,7 @@ export interface SeenTurn {
 }
 
 export interface FakeModel {
-  createChatCall: (agent: { slug?: string; model: string }) => ChatCall
+  model: ModelFactory
   seen: SeenTurn[]
   reset(): void
 }
@@ -43,13 +44,13 @@ export interface FakeModel {
  * `seen`, so a test asserts on the transcript it sent, not the loop's own turns.
  */
 export function fakeModel(
-  respond: (turn: SeenTurn & { last: WireMessage; agentSlug?: string; hooks?: ChatCallHooks }) => ChatCallResponse,
+  respond: (turn: SeenTurn & { last: WireMessage; system: string; agent: AgentDef; agentSlug?: string; hooks?: ChatCallHooks }) => ChatCallResponse | Promise<ChatCallResponse>,
 ): FakeModel {
   const seen: SeenTurn[] = []
   return {
     seen,
     reset: () => { seen.length = 0 },
-    createChatCall: (agent) => async (req, hooks) => {
+    model: (agent) => async (req, hooks) => {
       const last = req.messages.at(-1)!
       if (last.role === 'tool') {
         const text = `grounded: ${last.content}`
@@ -62,7 +63,9 @@ export function fakeModel(
         messages: [...req.messages],
       }
       seen.push(turn)
-      return respond({ ...turn, last, agentSlug: agent.slug, hooks })
+      const first = req.messages[0]
+      const system = first?.role === 'system' ? first.content : ''
+      return respond({ ...turn, last, system, agent, agentSlug: agent.slug, hooks })
     },
   }
 }

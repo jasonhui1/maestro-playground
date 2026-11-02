@@ -1,8 +1,7 @@
 import { ChainDef, ChainNode, AgentDef, AgentOutput, FixedParts, HoldRecord } from './types'
 import type { RunDefinitions } from './runDefinitions'
 import { makeContextReader } from './fs/contextReader'
-import { runAgent } from './runner'
-import { bindAgentTools } from './tools/registry'
+import type { RunAgentTurn } from './agentTurn'
 import { executeToolNode } from './tools/toolNode'
 import type { ToolContext } from './tools/context'
 import { agentPartSockets } from './tools/parts'
@@ -14,7 +13,6 @@ import { pairedZones, type Zone } from './zones'
 import { evalCondition } from './condition'
 import { outputKey, runStateKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
-import { withModelOverride } from './modelOverride'
 import { kindOf, agentSlugOf, resolveNodeSkills, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 import { innerDice, type RunDice } from './dice'
@@ -56,8 +54,8 @@ export interface RunRequest {
   dice?: RunDice
   /** Outputs handed to the graph as already done: a resume, a fork, or an answered hold. */
   replay?: AgentOutput[]
-  /** The agent runner; ADR-0002 fixes its shape. */
-  run?: typeof runAgent
+  /** Runs each agent node's turn; production binds the request's model (ADR-0002, #170). */
+  run: RunAgentTurn
   /** Subchain recursion depth; callers outside the executor leave it at 0. */
   depth?: number
   /** Model override for this run (#128). */
@@ -74,7 +72,7 @@ export async function runChainGraph(
 ): Promise<AgentOutput[]> {
   const { root: workspacePath, agents = [], skills = [], chains = [], tools = [] } = defs
   const { seedPrompt, paramValue = '', context: contextOverrides = {}, inputs = {}, dice = {}, replay: startOutputs = [],
-    run: runFn = runAgent, depth = 0, modelOverride, toolContext = { workspacePath } } = request
+    run: runFn, depth = 0, modelOverride, toolContext = { workspacePath } } = request
   if (depth > MAX_SUBCHAIN_DEPTH) throw new Error('subchain recursion too deep')
   const agentBySlug = new Map(agents.map(a => [a.slug, a]))
   const nodeById = new Map(chain.nodes.map(n => [n.id, n]))
@@ -165,29 +163,20 @@ export async function runChainGraph(
 
   const runAgentNode = async (node: ChainNode, agent: AgentDef, round?: number, anchorId: string = node.id): Promise<AgentOutput> => {
     callbacks.onStart(node.id, agent.name)
-    const effectiveAgent = withModelOverride(agent, modelOverride)
     if (agent.dice && !dice[node.id]) throw new Error(`node "${node.id}" rolls dice, but the run pinned no roll for it`)
-    const resolved = resolveNodePrompt(node, chain, effectiveAgent, nodeOutputs, seedPrompt, readContext, paramValue, dice)
+    const resolved = resolveNodePrompt(node, chain, agent, nodeOutputs, seedPrompt, readContext, paramValue, dice)
     resolved.warnings.forEach(reportWarning)
     // A per-node `skills!`/`skills+` marker never mutates the shared resolved agent —
     // two nodes naming the same agent may still produce two different system prompts.
-    const systemPrompt = injectSkills({ ...effectiveAgent, skills: resolveNodeSkills(node, effectiveAgent.skills) }, skills, resolved.prompt)
-    // Binding is all the scheduler knows about tools: it hands the runner a list
-    // and gets back one AgentOutput, exactly as before (ADR-0002). Whether that
-    // took one API call or nine is entirely below this line.
-    const fixedParts = partsFixedBy(node, effectiveAgent)
-    const boundTools = bindAgentTools(effectiveAgent, tools, { ...toolContext, fixedParts })
-    const output = await runFn(
-      effectiveAgent, systemPrompt, 'Follow your instructions.',
-      {
-        onToken: (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
-        boundTools,
-        onToolEvent: callbacks.onToolEvent ? e => callbacks.onToolEvent!(node.id, e) : undefined,
-      },
-    )
+    const systemPrompt = injectSkills({ ...agent, skills: resolveNodeSkills(node, agent.skills) }, skills, resolved.prompt)
+    const output = await runFn({
+      agent, systemPrompt, input: 'Follow your instructions.', modelOverride,
+      tools: { defs: tools, context: { ...toolContext, fixedParts: partsFixedBy(node, agent) } },
+      onToken: (t, ty, turn) => callbacks.onToken(node.id, t, ty, turn),
+      onToolEvent: callbacks.onToolEvent ? e => callbacks.onToolEvent!(node.id, e) : undefined,
+    })
     output.nodeId = node.id
     if (round !== undefined) output.round = round
-    if (Object.keys(fixedParts).length > 0) output.fixedParts = fixedParts
     nodeOutputs.set(node.id, output); emit(anchorId, output); callbacks.onDone(node.id, output)
     return output
   }

@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import type { AgentTurn } from '../lib/agentTurn'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { buildLayoutModel } from '../lib/layoutModel'
@@ -20,7 +21,7 @@ const record = (nodeId: string, output: string): AgentOutput => ({
   tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',
 })
 // Echoes the resolved prompt, so a reader's output is exactly what its edge delivered.
-const echo = async (a: AgentDef, systemPrompt: string): Promise<AgentOutput> => record('', systemPrompt)
+const echo = async ({ systemPrompt }: AgentTurn): Promise<AgentOutput> => record('', systemPrompt)
 const noop = { onStart() {}, onToken() {}, onDone() {} }
 const delivered = (results: AgentOutput[], nodeId: string): string =>
   results.filter(r => r.nodeId === nodeId).at(-1)!.output.replace(/^IN=/, '')

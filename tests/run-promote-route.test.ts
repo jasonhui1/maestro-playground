@@ -1,10 +1,12 @@
 import { test, afterEach, vi } from 'vitest'
+import { noModel } from '../lib/model'
 import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import matter from 'gray-matter'
-import type { AgentOutput, ChatMessage, RunMeta } from '../lib/types'
+import type { ChatMessage, RunMeta } from '../lib/types'
+import { answer, fakeModel } from './helpers/fakeModel'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -12,29 +14,15 @@ vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
 // The model is the only stand-in: the executor, routes and logger are real.
 const ran: { slug: string; systemPrompt: string }[] = []
 const chats: ChatMessage[][] = []
-vi.mock('@/lib/runner', () => ({
-  runAgent: async (
-    agent: { slug: string; name: string },
-    systemPrompt: string,
-    userMessage: string,
-    options: { history?: ChatMessage[] } = {},
-  ): Promise<AgentOutput> => {
-    const base = {
-      agentName: agent.name, systemPrompt, input: userMessage,
-      tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: new Date().toISOString(),
-    }
-    if (options.history) {
-      chats.push(options.history)
-      const n = options.history.filter(m => m.role === 'user').length - 1 // the turn number
-      return { ...base, output: `revised ${n}`, thought: `why ${n}`, status: 'success' }
-    }
-    ran.push({ slug: agent.slug, systemPrompt })
-    const output = agent.slug === 'decider'
-      ? `## Candidate 1\nbuilt on [${systemPrompt}]`
-      : `first from ${agent.slug}`
-    return { ...base, output, status: 'success' }
-  },
-}))
+requestEntry.model = fakeModel(({ messages, agentSlug, system }) => {
+  if (messages.some(m => m.role === 'assistant')) {
+    chats.push(messages as ChatMessage[])
+    const n = messages.filter(m => m.role === 'user').length - 1 // the turn number
+    return answer(`<thought>why ${n}</thought>revised ${n}`)
+  }
+  ran.push({ slug: agentSlug!, systemPrompt: system })
+  return answer(agentSlug === 'decider' ? `## Candidate 1\nbuilt on [${system}]` : `first from ${agentSlug}`)
+}).model
 
 afterEach(() => {
   ran.length = 0
@@ -127,7 +115,7 @@ async function promote(runId: string, nodeId: string, body: object = {}): Promis
 }
 
 async function readMeta(runId: string): Promise<RunMeta> {
-  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root)
+  const { runs } = (await import('../lib/runFolders')).diskWorkspace(requestEntry.root, noModel)
   return runs.read(runId)
 }
 

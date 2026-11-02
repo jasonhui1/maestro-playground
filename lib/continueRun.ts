@@ -10,7 +10,7 @@ import { loggedStep } from './nodeChat'
 import { loadRunFor } from './loadRun'
 import { newRunId } from './logger'
 import { conflict, toResponse } from './refusal'
-import { resolveContinuationModelOverride, withModelOverride } from './modelOverride'
+import { resolveContinuationModelOverride } from './modelOverride'
 import { diceField, rollRunDice } from './dice'
 import type { LiveWorkspace, Workspace } from './runFolders'
 import { stretchLog, type RunEdit } from './stretchLog'
@@ -198,8 +198,7 @@ function streamStretch(
 
   if ('reroll' in stretch) {
     const common = {
-      ws, workspace, source: meta, chain, versionNumber, hold: stretch.hold.record,
-      ready: { ...stretch.reroll, agent: withModelOverride(stretch.reroll.agent, modelOverride) },
+      ws, workspace, source: meta, chain, versionNumber, hold: stretch.hold.record, ready: stretch.reroll, modelOverride,
     }
     if (stretch.place === 'fork') {
       const start = forkStart()

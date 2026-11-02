@@ -1,8 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
-import { runAgent } from '../lib/runner'
-import type { BoundTool } from '../lib/tools/registry'
+import type { AgentTurn, RunAgentTurn } from '../lib/agentTurn'
 import type { AgentDef, AgentOutput, ChainDef, ToolDef, ToolCallRecord } from '../lib/types'
 
 const noop = { onStart() {}, onToken() {}, onDone() {} }
@@ -24,11 +23,11 @@ function agentDef(over: Partial<AgentDef> = {}): AgentDef {
   }
 }
 
-// Records what the scheduler handed the runner, then answers like a tool-using node.
+// Records what the scheduler handed the turn, then answers like a tool-using node.
 function spyRun(output: string, toolCalls?: ToolCallRecord[]) {
-  const seen: Array<{ agent: string; boundTools: BoundTool[] }> = []
-  const runFn: typeof runAgent = async (agent, _sp, _um, options) => {
-    seen.push({ agent: agent.slug, boundTools: options?.boundTools ?? [] })
+  const seen: Array<{ agent: string; tools: AgentTurn['tools'] }> = []
+  const runFn: RunAgentTurn = async ({ agent, tools }) => {
+    seen.push({ agent: agent.slug, tools })
     return {
       agentName: agent.name, systemPrompt: '', input: '', output,
       tokensIn: 1, tokensOut: 1, costUsd: 0, latencyMs: 0,
@@ -59,7 +58,7 @@ async function main() {
     result: 'Owned by Mirna Copperhand.', latencyMs: 12, isError: false,
   }
 
-  // 1. The scheduler binds an agent's declared tools and passes them down.
+  // 1. The scheduler hands the turn the workspace's tools and where they save; the turn binds them (#170).
   {
     const agents = [agentDef({ tools: ['retrieve'] })]
     const { runFn, seen } = spyRun('FINAL TEXT', [record])
@@ -68,9 +67,8 @@ async function main() {
     )
 
     assert.strictEqual(seen.length, 1)
-    assert.strictEqual(seen[0].boundTools.length, 1, 'declared tool was bound and handed to the runner')
-    assert.strictEqual(seen[0].boundTools[0].def.name, 'retrieve')
-    assert.strictEqual(typeof seen[0].boundTools[0].execute, 'function')
+    assert.deepStrictEqual(seen[0].tools?.defs, [retrieveTool], 'the workspace tools reach the turn')
+    assert.strictEqual(seen[0].tools?.context.workspacePath, '/ws')
 
     // 2. Downstream sees final text only — there is no transcript to wire.
     const downstream = results.find(r => r.nodeId === 'out')!
@@ -79,25 +77,6 @@ async function main() {
 
     const writer = results.find(r => r.nodeId === 'writer')!
     assert.strictEqual(writer.toolCalls?.length, 1, 'the transcript stays on the node that produced it')
-  }
-
-  // 3. An agent that declares no tools gets an empty list — the tool-less path.
-  {
-    const agents = [agentDef()]
-    const { runFn, seen } = spyRun('PLAIN')
-    await runChainGraph(chain, { agents, tools: [retrieveTool], root: '/ws' }, noop,
-      { seedPrompt: 'SEED', run: runFn })
-    assert.strictEqual(seen[0].boundTools.length, 0, 'an available tool is not bound unless declared')
-  }
-
-  // 4. A ref with no matching tool file binds to nothing rather than throwing —
-  //    validateChain already blocks the run before it reaches here.
-  {
-    const agents = [agentDef({ tools: ['nonexistent'] })]
-    const { runFn, seen } = spyRun('PLAIN')
-    await runChainGraph(chain, { agents, tools: [retrieveTool], root: '/ws' }, noop,
-      { seedPrompt: 'SEED', run: runFn })
-    assert.strictEqual(seen[0].boundTools.length, 0)
   }
 
   // 5. Branch-from-here: a replayed output carries its tool records forward and
@@ -111,7 +90,7 @@ async function main() {
       toolCalls: [record], toolTurns: 1,
     }
     let called = 0
-    const runFn: typeof runAgent = async () => { called++; throw new Error('should not run') }
+    const runFn: RunAgentTurn = async () => { called++; throw new Error('should not run') }
 
     const results = await runChainGraph(
       chain, { agents, tools: [retrieveTool], root: '/ws' }, noop,
@@ -145,7 +124,7 @@ async function main() {
       { seedPrompt: 'SEED', run: runFn })
 
     assert.strictEqual(seen.length, 1, 'the inner agent node ran')
-    assert.strictEqual(seen[0].boundTools.length, 1, 'tools were threaded through the subchain recursion')
+    assert.deepStrictEqual(seen[0].tools?.defs, [retrieveTool], 'tools were threaded through the subchain recursion')
   }
 
   // 6. The scheduler stamps the node id onto whatever the loop narrates, and the
@@ -153,10 +132,10 @@ async function main() {
   {
     const agents = [agentDef({ tools: ['retrieve'] })]
     const stamped: Array<{ nodeId: string; type: string; turn: number }> = []
-    const runFn: typeof runAgent = async (_a, _sp, _um, options) => {
-      options?.onToolEvent?.({ type: 'tool_pending', turn: 1 })
-      options?.onToolEvent?.({ type: 'tool_call', turn: 1, name: 'retrieve', args: {} })
-      options?.onToken?.('narration', 'output', 1)
+    const runFn: RunAgentTurn = async ({ onToolEvent, onToken }) => {
+      onToolEvent?.({ type: 'tool_pending', turn: 1 })
+      onToolEvent?.({ type: 'tool_call', turn: 1, name: 'retrieve', args: {} })
+      onToken?.('narration', 'output', 1)
       return {
         agentName: 'writer', systemPrompt: '', input: '', output: 'X',
         tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0,

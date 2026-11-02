@@ -30,7 +30,7 @@ const fake = fakeModel(({ agentSlug, hooks }) => {
     }],
   }
 })
-vi.mock('@/lib/chatCall', () => ({ createChatCall: fake.createChatCall }))
+requestEntry.model = fake.model
 
 afterEach(() => {
   fake.reset()
