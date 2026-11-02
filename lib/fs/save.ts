@@ -2,9 +2,9 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import yaml from 'js-yaml'
 import path from 'path'
-import { resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, EntityType } from './workspace'
+import { resolveEntityPath, resolveFolderPath, sanitizeSlug, sanitizeFolder, ENTITY_TYPES, EntityType } from './workspace'
 import { WorkspaceError } from './errors'
-import { address, type Address } from './address'
+import { addressExisting, type Address } from './address'
 import { validateYaml } from './validate'
 import { getAgentTemplate, getSkillTemplate, getChainTemplate, getTemplateTemplate, getToolTemplate } from './templates'
 import { CreationParams } from '../types'
@@ -27,9 +27,15 @@ function fileText(data: Record<string, unknown>, content: string) {
   return matter.stringify(content, data)
 }
 
+// A save may be the first write into a type, so it makes the type directory itself.
+function writeFile(root: string, type: EntityType, filePath: string, text: string) {
+  fs.mkdirSync(path.join(root, ENTITY_TYPES[type]), { recursive: true })
+  fs.writeFileSync(filePath, text, 'utf-8')
+}
+
 /** Writes where a slug already points — a variant saves into its declaring file (ADR-0013). */
-export function saveAddressed(target: Address, data: Record<string, unknown>, content: string) {
-  fs.writeFileSync(target.filePath, fileText(data, content), 'utf-8')
+export function saveAddressed(root: string, type: EntityType, target: Address, data: Record<string, unknown>, content: string) {
+  writeFile(root, type, target.filePath, fileText(data, content))
   return { filePath: target.filePath, slug: sanitizeSlug(target.storageSlug) }
 }
 
@@ -41,7 +47,7 @@ export function saveWorkspaceEntity(root: string, { type, slug, data, content, f
   // resolveEntityPath handles sanitization and security checks
   const filePath = resolveEntityPath(root, type, cleanSlug, folder)
 
-  fs.writeFileSync(filePath, fileContent, 'utf-8')
+  writeFile(root, type, filePath, fileContent)
   return { filePath, slug: cleanSlug }
 }
 
@@ -95,13 +101,11 @@ export function createWorkspaceFolder(root: string, type: string, folder: string
 // A move only ever changes the path a slug resolves to (ADR-0012): the slug, .versions
 // history, and every chain reference by slug are untouched.
 export function moveWorkspaceEntity(root: string, type: EntityType, slug: string, folder: string) {
-  const { kind, filePath: currentPath, storageSlug } = address(root, type, slug)
-  if (kind === 'variant') {
-    throw new WorkspaceError('INVALID_NAME', `"${slug}" is a variant declared in ${storageSlug}.md — edit that file instead.`)
+  const found = addressExisting(root, type, slug)
+  if (found.kind === 'variant') {
+    throw new WorkspaceError('INVALID_NAME', `"${slug}" is a variant declared in ${found.storageSlug}.md — edit that file instead.`)
   }
-  if (!fs.existsSync(currentPath)) {
-    throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
-  }
+  const currentPath = found.filePath
 
   // resolveFolderPath already confines destDir to the type directory, and a
   // basename carries no path separators, so targetPath can't escape it either.

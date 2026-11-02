@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { readEntity, saveEntity, moveEntity, deleteEntity } from '@/lib/fs/workspaceFiles'
+import {
+  isValidEntityType, readEntity, saveEntity, moveWorkspaceEntity, deleteWorkspaceEntity, type EntityType,
+} from '@/lib/fs/workspaceFiles'
 import { requestWorkspace } from '@/lib/requestWorkspace'
 import { workspaceErrorResponse } from '../../errors'
 
@@ -64,7 +65,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Missing folder' }, { status: 400 })
     }
 
-    const result = moveEntity(requestWorkspace().root, type as EntityType, slug, folder)
+    const result = moveWorkspaceEntity(requestWorkspace().root, type as EntityType, slug, folder)
     return NextResponse.json({ success: true, ...result })
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
@@ -82,7 +83,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
-    return NextResponse.json(deleteEntity(requestWorkspace().root, type as EntityType, slug))
+    return NextResponse.json(deleteWorkspaceEntity(requestWorkspace().root, type as EntityType, slug))
   } catch (err: unknown) {
     return workspaceErrorResponse(err)
   }

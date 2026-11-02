@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
-import { isValidEntityType, EntityType } from '@/lib/fs/workspace'
-import { address } from '@/lib/fs/workspaceFiles'
+import { isValidEntityType, address, type EntityType } from '@/lib/fs/workspaceFiles'
 import chokidar from 'chokidar'
 import fs from 'fs'
 import path from 'path'

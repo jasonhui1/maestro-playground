@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { address } from './address'
+import { address, addressExisting } from './address'
 import { WorkspaceError } from './errors'
 import { parseSkill } from './parseSkill'
 import { parseChain } from './parseChain'
@@ -10,10 +10,7 @@ import { loadAgentDefaults } from './defaults'
 import { walkDirectories } from './discover'
 import { buildChainFromTemplate } from './forkChain'
 import { forbiddenAgentFields, forbiddenAgentFieldMessage, validateEntityFrontmatter } from './validate'
-import {
-  createWorkspaceEntity, createWorkspaceFolder, deleteWorkspaceFolder, renameWorkspaceFolder,
-  saveAddressed, saveWorkspaceEntity, moveWorkspaceEntity,
-} from './save'
+import { createWorkspaceEntity, createWorkspaceFolder, saveAddressed, saveWorkspaceEntity } from './save'
 import {
   ENTITY_TYPES, loadAgent, loadWorkspace, resolveEntityPath, resolveFolderPath, sanitizeFolder, sanitizeSlug,
   type EntityType,
@@ -25,11 +22,11 @@ import { chainToData } from '../serializeChain'
  * (ADR-0012, ADR-0013); each operation then acts on that file. A refusal is a
  * `WorkspaceError` whose `kind` the route maps to a status (#117).
  */
-export { address, type Address } from './address'
-export { planRename, renameWorkspaceEntity as renameEntity, type RenamePlan } from './rename'
-export { deleteWorkspaceEntity as deleteEntity } from './delete'
-export { moveWorkspaceEntity as moveEntity }
-export { renameWorkspaceFolder as renameFolder, deleteWorkspaceFolder as deleteFolder }
+export { address, addressExisting, type Address } from './address'
+export { planRename, renameWorkspaceEntity, type RenamePlan } from './rename'
+export { deleteWorkspaceEntity } from './delete'
+export { moveWorkspaceEntity, renameWorkspaceFolder, deleteWorkspaceFolder } from './save'
+export { isValidEntityType, type EntityType } from './workspace'
 
 const PARSERS: Record<EntityType, (root: string, filePath: string, slug: string) => object> = {
   agent: (root, filePath) => loadAgent(root, filePath),
@@ -42,8 +39,7 @@ const PARSERS: Record<EntityType, (root: string, filePath: string, slug: string)
 
 /** One file, parsed, plus its raw text. A variant reads as its declaring file (#118, #123). */
 export function readEntity(root: string, type: EntityType, slug: string) {
-  const { filePath } = address(root, type, slug)
-  if (!fs.existsSync(filePath)) throw new WorkspaceError('NOT_FOUND', 'Entity not found')
+  const { filePath } = addressExisting(root, type, slug)
 
   const parsed = PARSERS[type](root, filePath, slug)
   return { ...parsed, raw: fs.readFileSync(filePath, 'utf-8') }
@@ -67,7 +63,7 @@ export function saveEntity(
   const defaults = type === 'agent' ? loadAgentDefaults(root) : undefined
   const warnings = validateEntityFrontmatter(type, data, defaults).errors
 
-  const saved = saveAddressed(address(root, type, slug), data, content)
+  const saved = saveAddressed(root, type, address(root, type, slug), data, content)
   return warnings.length > 0 ? { ...saved, warnings } : saved
 }
 

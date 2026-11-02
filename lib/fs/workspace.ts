@@ -8,7 +8,6 @@ import { discoverFiles, findBySlug } from './discover'
 import type { VariantSource } from './variantIndex'
 import { ENTITY_DIRS } from '../entityDirs'
 import path from 'path'
-import fs from 'fs'
 import { WorkspaceError } from './errors'
 import { knownModelCatalogue } from '../pricing'
 import { resolveProvider } from '../provider'
@@ -47,9 +46,6 @@ export function resolveEntityPath(root: string, type: string, slug: string, fold
 
   const subDir = ENTITY_TYPES[type]
   const absoluteSubDir = path.join(root, subDir)
-  if (!fs.existsSync(absoluteSubDir)) {
-    fs.mkdirSync(absoluteSubDir, { recursive: true })
-  }
 
   const safeSlug = sanitizeSlug(slug)
   const filename = safeSlug.toLowerCase().endsWith('.md') ? safeSlug : `${safeSlug}.md`

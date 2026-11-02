@@ -44,7 +44,7 @@ The `{ chain, agents, chains }` bundle of already-loaded workspace files passed 
 
 ## Address
 
-What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete all act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. _Avoid_: resolve (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
+What a slug answers to under a type, decided once by `address()` in `lib/fs/address.ts` (#164): a **file** of that name, a **variant** declared inside another file (ADR-0013), or **new** (nothing answers; it carries the path a save would take). A variant's address points at its declaring file, and its `storageSlug` is that file's slug. Read, save, move, rename and delete act on an address; the file routes reach them only through `lib/fs/workspaceFiles.ts`. Create does not: it places a new file by slug and folder and never consults one, so a new agent can never land in a declaring file. _Avoid_: locate (the path primitives in `lib/fs/workspace.ts` place a file; they do not decide what a name means).
 
 ## Run folders
 

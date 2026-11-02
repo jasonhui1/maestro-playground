@@ -2,7 +2,7 @@ import matter from 'gray-matter'
 import fs from 'fs'
 import path from 'path'
 import { EntityType } from './workspace'
-import { address } from './address'
+import { addressExisting } from './address'
 import { WorkspaceError } from './errors'
 import { parseFile, inboundRefs, variantIndex, declaredVariants, RefHit } from './entityRefs'
 
@@ -39,8 +39,9 @@ function describe(blockers: (RefHit & { name: string })[]): string {
  * naming its variants — never its own slug.
  */
 export function planDelete(root: string, type: EntityType, slug: string): DeletePlan {
-  const { kind, filePath, variantOf } = address(root, type, slug)
-  if (kind === 'new') throw new WorkspaceError('NOT_FOUND', `Entity not found: ${type}/${slug}`)
+  const found = addressExisting(root, type, slug)
+  const { filePath } = found
+  const variantOf = found.kind === 'variant' ? found.variantOf : undefined
 
   const declared = variantOf ? [] : declaredVariants(filePath)
   const removed = variantOf || !declared.length ? [slug] : declared

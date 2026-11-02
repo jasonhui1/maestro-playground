@@ -4,8 +4,8 @@ import path from 'path'
 import os from 'os'
 import yaml from 'js-yaml'
 import {
-  address, readEntity, saveEntity, createEntity, createFolder, listFolders, moveEntity,
-  planRename, renameEntity, deleteEntity,
+  address, readEntity, saveEntity, createEntity, createFolder, listFolders, moveWorkspaceEntity,
+  planRename, renameWorkspaceEntity, deleteWorkspaceEntity,
 } from '../lib/fs/workspaceFiles'
 import { isWorkspaceError, type WorkspaceErrorKind } from '../lib/fs/errors'
 
@@ -48,7 +48,7 @@ function chain(name: string, agent: string) {
   return `---\nname: ${name}\nnodes:\n  - id: a\n    kind: agent\n    agent: ${agent}\nedges: []\n---\n`
 }
 
-test('address: a file of that name, a variant, or a place for a new file', () => {
+test('address: a file of that name, a variant, or a place for a new file, touching no disk', () => {
   const wp = newWorkspace()
   const premortem = write(wp, 'agents/premortem.md', PREMORTEM)
   const plain = write(wp, 'agents/panel/plain.md', PLAIN)
@@ -57,10 +57,9 @@ test('address: a file of that name, a variant, or a place for a new file', () =>
   expect(address(wp, 'agent', 'rot')).toMatchObject({
     kind: 'variant', filePath: premortem, storageSlug: 'premortem', variantOf: 'premortem',
   })
-  expect(address(wp, 'agent', 'fresh', { folder: 'panel' })).toMatchObject({
-    kind: 'new', filePath: path.join(wp, 'agents', 'panel', 'fresh.md'),
-  })
+  expect(address(wp, 'agent', 'fresh')).toMatchObject({ kind: 'new', filePath: path.join(wp, 'agents', 'fresh.md') })
   expect(address(wp, 'skill', 'rot').kind).toBe('new')
+  expect(fs.existsSync(path.join(wp, 'skills'))).toBe(false)
 })
 
 test('readEntity reads a variant as its declaring file and refuses a missing slug', () => {
@@ -71,7 +70,7 @@ test('readEntity reads a variant as its declaring file and refuses a missing slu
   const rot = readEntity(wp, 'agent', 'rot') as { raw: string }
   expect(rot.raw).toBe(PREMORTEM)
   expect(readEntity(wp, 'context', 'brand')).toMatchObject({ slug: 'brand', name: 'brand', raw: 'Brand.\n' })
-  expect(refusal(() => readEntity(wp, 'skill', 'ghost'))).toEqual({ kind: 'NOT_FOUND', message: 'Entity not found' })
+  expect(refusal(() => readEntity(wp, 'skill', 'ghost'))).toEqual({ kind: 'NOT_FOUND', message: 'Entity not found: skill/ghost' })
 })
 
 test('saveEntity writes a variant into its declaring file and never a twin', () => {
@@ -180,11 +179,11 @@ test('moveEntity moves a file but refuses a variant, naming its declaring file',
   write(wp, 'agents/premortem.md', PREMORTEM)
   write(wp, 'agents/plain.md', PLAIN)
 
-  expect(moveEntity(wp, 'agent', 'plain', 'panel').filePath).toBe(path.join(wp, 'agents', 'panel', 'plain.md'))
-  expect(refusal(() => moveEntity(wp, 'agent', 'rot', 'panel'))).toEqual({
+  expect(moveWorkspaceEntity(wp, 'agent', 'plain', 'panel').filePath).toBe(path.join(wp, 'agents', 'panel', 'plain.md'))
+  expect(refusal(() => moveWorkspaceEntity(wp, 'agent', 'rot', 'panel'))).toEqual({
     kind: 'INVALID_NAME', message: '"rot" is a variant declared in premortem.md — edit that file instead.',
   })
-  expect(refusal(() => moveEntity(wp, 'agent', 'ghost', 'panel')).kind).toBe('NOT_FOUND')
+  expect(refusal(() => moveWorkspaceEntity(wp, 'agent', 'ghost', 'panel')).kind).toBe('NOT_FOUND')
 })
 
 test('rename and delete address a variant the way save and read do', () => {
@@ -192,13 +191,13 @@ test('rename and delete address a variant the way save and read do', () => {
   const premortem = write(wp, 'agents/premortem.md', PREMORTEM)
 
   expect(planRename(wp, 'agent', 'rot', 'decay').variantOf).toBe('premortem')
-  renameEntity(wp, 'agent', 'rot', 'decay')
+  renameWorkspaceEntity(wp, 'agent', 'rot', 'decay')
   expect(address(wp, 'agent', 'decay').filePath).toBe(premortem)
   expect(address(wp, 'agent', 'rot').kind).toBe('new')
 
-  deleteEntity(wp, 'agent', 'decay')
+  deleteWorkspaceEntity(wp, 'agent', 'decay')
   expect(fs.readFileSync(premortem, 'utf-8')).not.toContain('decay')
-  expect(refusal(() => deleteEntity(wp, 'agent', 'ghost'))).toEqual({
+  expect(refusal(() => deleteWorkspaceEntity(wp, 'agent', 'ghost'))).toEqual({
     kind: 'NOT_FOUND', message: 'Entity not found: agent/ghost',
   })
 })
@@ -208,6 +207,15 @@ test('delete is refused while a chain still names the file', () => {
   write(wp, 'agents/plain.md', PLAIN)
   write(wp, 'chains/base.md', chain('Base', 'plain'))
 
-  expect(refusal(() => deleteEntity(wp, 'agent', 'plain')).kind).toBe('IN_USE')
+  expect(refusal(() => deleteWorkspaceEntity(wp, 'agent', 'plain')).kind).toBe('IN_USE')
   expect(fs.existsSync(path.join(wp, 'agents', 'plain.md'))).toBe(true)
+})
+
+test('refusing a missing slug leaves the workspace untouched', () => {
+  const wp = newWorkspace()
+
+  expect(refusal(() => deleteWorkspaceEntity(wp, 'agent', 'ghost')).kind).toBe('NOT_FOUND')
+  expect(refusal(() => planRename(wp, 'agent', 'ghost', 'spirit')).kind).toBe('NOT_FOUND')
+  expect(refusal(() => moveWorkspaceEntity(wp, 'agent', 'ghost', 'panel')).kind).toBe('NOT_FOUND')
+  expect(fs.readdirSync(wp)).toEqual([])
 })

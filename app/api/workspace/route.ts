@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadWorkspace, isValidEntityType } from '@/lib/fs/workspace'
-import { createEntity, createFolder } from '@/lib/fs/workspaceFiles'
+import { loadWorkspace } from '@/lib/fs/workspace'
+import { isValidEntityType, createEntity, createFolder } from '@/lib/fs/workspaceFiles'
 import { CAPABILITIES } from '@/lib/capabilities'
 import { workspaceErrorResponse } from './errors'
 import { requestWorkspace } from '@/lib/requestWorkspace'

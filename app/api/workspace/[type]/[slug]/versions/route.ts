@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listVersions, getVersionContent } from '@/lib/fs/versions';
-import { isValidEntityType, EntityType } from '@/lib/fs/workspace';
-import { address } from '@/lib/fs/workspaceFiles';
+import { isValidEntityType, address, type EntityType } from '@/lib/fs/workspaceFiles';
 import { requestWorkspace } from '@/lib/requestWorkspace';
 
 export async function GET(
