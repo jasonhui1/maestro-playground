@@ -3,7 +3,7 @@ import assert from 'node:assert'
 import matter from 'gray-matter'
 import { continueRun, type ContinuePlan } from '../lib/continueRun'
 import { saveFeedback, type RerollRequest } from '../lib/reroll'
-import type { AnswerRequest } from '../lib/hold'
+import { readAnswerRequest, type AnswerRequest } from '../lib/hold'
 import { readForkRequest } from '../lib/fork'
 import { toResponse } from '../lib/refusal'
 import { parseChainContent } from '../lib/parseChain'
@@ -373,8 +373,11 @@ describe('resume', () => {
     assert.strictEqual(logOf(runId, 2).content.trim(), expected)
     assert.deepStrictEqual([meta(runId).holds![0].custom, meta(runId).holds![0].chosen], ['Halo as a pet that grows', undefined])
 
+    // A null chosen reads as none (#96).
     const plain = await start()
-    await events(answer(plain, { direction: 'go' }))
+    const request = readAnswerRequest({ chosen: null, direction: 'go' })
+    assert.ok(!('error' in request))
+    await events(go(plain, { answer: request }))
     assert.strictEqual(logOf(plain, 2).data.chosen, undefined)
     assert.strictEqual(meta(plain).holds![0].chosen, undefined)
   })
@@ -779,6 +782,7 @@ describe('reroll', () => {
     const second = () => meta(runId).holds!.find(h => h.nodeId === 'second')!
     const before = second()
     await events(reroll(runId, { feedback: 'darker' }))
+    assert.strictEqual(openHold(runId).nodeId, 'second')
     assert.strictEqual(meta(runId).holds!.find(h => h.nodeId === 'hold')!.revision, 2)
     assert.deepStrictEqual(second(), before)
   })
@@ -791,6 +795,7 @@ describe('reroll', () => {
     assert.strictEqual(meta(runId).status, 'running')
     assert.strictEqual(reroll(runId).status, 409)
     assert.strictEqual(answer(runId, { direction: 'go' }).status, 409)
+    assert.strictEqual(saveFeedback(ws, runId, 'hold', { feedback: 'x' }).status, 409)
     release()
     await inFlight
     assert.strictEqual(meta(runId).status, 'waiting')

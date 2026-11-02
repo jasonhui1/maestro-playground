@@ -107,7 +107,7 @@ export function readyReroll(workspace: LiveWorkspace, meta: RunMeta, hold: HoldR
 }
 
 /** A reroll ready to stream: where it writes, what reruns, and the hold it refreshes. */
-export interface RerollStretch {
+export interface RerollStream {
   ws: Workspace
   workspace: LiveWorkspace
   source: RunMeta
@@ -125,7 +125,7 @@ export interface RerollStretch {
 const NO_CANDIDATES = 'Reroll produced no `## Candidate N` sections; the earlier candidates stay'
 
 /** The producer feeding the hold reruns once, then the stretch waits at the hold again (#134). */
-export function streamReroll(r: RerollStretch): Response {
+export function streamReroll(r: RerollStream): Response {
   const { log, chain, hold, holds, fork } = r
   const { runId } = log
   const { dice } = r.source
@@ -169,7 +169,7 @@ export function streamReroll(r: RerollStretch): Response {
 
 /** One streamed attempt of the producer at `step`; a success with no candidates is marked failed (#134). */
 async function attemptReroll(
-  send: SseSend, { ws, workspace, source, ready, hold, versionNumber }: RerollStretch, step: number,
+  send: SseSend, { ws, workspace, source, ready, hold, versionNumber }: RerollStream, step: number,
 ): Promise<{ attempt: AgentOutput; input: string }> {
   const { producer, edge, baseline, agent } = ready
   const { feedback } = hold
