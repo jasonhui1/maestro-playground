@@ -6,7 +6,8 @@ import { unprocessable } from './refusal'
 import { validateChain } from './chainGraph'
 import { chainForResume } from './resolveRunChain'
 import { pinnedWorkspace } from './pinnedWorkspace'
-import type { LiveWorkspace, Workspace } from './runFolders'
+import type { LiveWorkspace } from './runFolders'
+import type { VersionedRoot } from './versionStore'
 import type { RunDefinitions } from './runDefinitions'
 
 interface ContextFile {
@@ -97,19 +98,17 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
 /** Which files a fork reruns: the live ones, or the source run's pins (ADR-0011). */
 export type ContinuationVersions = 'current' | 'pinned'
 
-/** Where a run's files come from. */
 export type RunFilesFrom =
   /** A new run over `chain`: every file it touches is snapshotted. */
-  | { start: ChainDef; entrypoint?: RunMeta['entrypoint'] }
+  | { kind: 'start'; chain: ChainDef; entrypoint?: RunMeta['entrypoint'] }
   /** A stretch in the run's own folder: the live files, under the run's own pins (ADR-0011). */
-  | { resume: RunMeta }
-  /** A new run forked from `fork`: the live files snapshotted, or the source's pins read back. */
-  | { fork: RunMeta; versions: ContinuationVersions }
+  | { kind: 'inPlace'; run: RunMeta }
+  /** A new run forked from `run`: the live files snapshotted, or the source's pins read back. */
+  | { kind: 'fork'; run: RunMeta; files: ContinuationVersions }
 
-/** The files a run reads, and the versions it records of them. */
 export interface RunFiles {
   chain: ChainDef
-  workspace: RunDefinitions
+  definitions: RunDefinitions
   versions: Record<string, number>
   /** The entry file's version, stamped on every log; 0 stamps nothing. */
   versionNumber: number
@@ -117,44 +116,44 @@ export interface RunFiles {
   pinnedContext: Record<string, string>
 }
 
-type VersionedRoot = Pick<Workspace, 'root' | 'versions'>
-
-/** The files run `from` reads: live or pinned definitions, versions and version number, under one keying rule (#169). */
-export function runFiles(ws: VersionedRoot, live: LiveWorkspace, from: Extract<RunFilesFrom, { start: ChainDef }>): RunFiles
+export function runFiles(ws: VersionedRoot, live: LiveWorkspace, from: Extract<RunFilesFrom, { kind: 'start' }>): RunFiles
 export function runFiles(ws: VersionedRoot, live: LiveWorkspace, from: RunFilesFrom): RunFiles | Refusal
 export function runFiles(ws: VersionedRoot, live: LiveWorkspace, from: RunFilesFrom): RunFiles | Refusal {
-  if ('start' in from) return snapshot(ws, from.start, live, from.entrypoint)
-  if ('resume' in from) {
-    const chain = graphOver(from.resume, live)
+  if (from.kind === 'start') return snapshot(ws, from.chain, live, from.entrypoint)
+  const { run } = from
+  if (from.kind === 'inPlace') {
+    const chain = graphOver(run, live)
     if ('error' in chain) return chain
     // The run's pins stay as it started (ADR-0011); only the stamped entry file is snapshotted (#169).
-    const entry = collectTouchedFiles(chain, live).get(entryKey(chain, from.resume.entrypoint))
+    const entry = collectTouchedFiles(chain, live).get(entryKey(chain, live, run.entrypoint))
     const versionNumber = entry ? ws.versions.snapshot(entry.type, entry.slug, entry.content) : 0
-    return { chain, workspace: live, versions: from.resume.versions ?? {}, versionNumber, pinnedContext: {} }
+    return { chain, definitions: live, versions: run.versions ?? {}, versionNumber, pinnedContext: {} }
   }
-  const source = from.fork
-  if (from.versions === 'current') {
-    const chain = graphOver(source, live)
-    return 'error' in chain ? chain : snapshot(ws, chain, live, source.entrypoint)
+  if (from.files === 'current') {
+    const chain = graphOver(run, live)
+    return 'error' in chain ? chain : snapshot(ws, chain, live, run.entrypoint)
   }
-  if (!source.versions) return unprocessable('Run has no pinned versions')
-  const pinned = pinnedWorkspace(ws, live, source.versions)
+  if (!run.versions) return unprocessable('Run has no pinned versions')
+  const pinned = pinnedWorkspace(ws, live, run.versions)
   if ('error' in pinned) return pinned
-  const { context: pinnedContext, ...workspace } = pinned
-  const chain = graphOver(source, workspace)
+  const { context: pinnedContext, ...definitions } = pinned
+  const chain = graphOver(run, definitions)
   if ('error' in chain) return chain
-  return { chain, workspace, versions: source.versions, versionNumber: source.versions[entryKey(chain, source.entrypoint)] ?? source.versionNumber ?? 0, pinnedContext }
+  const versionNumber = run.versions[entryKey(chain, definitions, run.entrypoint)] ?? run.versionNumber ?? 0
+  return { chain, definitions, versions: run.versions, versionNumber, pinnedContext }
 }
 
 /**
  * The key of the file a run is versioned by: an agent or tool entry's own file, else its chain.
- * A continued agent or tool run's graph has no chain file, so the entrypoint names it (#169).
+ * A continued agent or tool run's graph has no chain file, so the entrypoint names it (#169);
+ * a variant's file is its declaring one (ADR-0013).
  */
-function entryKey(chain: ChainDef, entrypoint: RunMeta['entrypoint']): string {
+function entryKey(chain: ChainDef, defs: RunDefinitions, entrypoint: RunMeta['entrypoint']): string {
   const { kind, slug } = entrypoint ?? {}
-  return slug && (kind === 'agent' || kind === 'tool') ? versionKey(kind, slug) : versionKey('chain', chain.slug)
+  if (!slug || (kind !== 'agent' && kind !== 'tool')) return versionKey('chain', chain.slug)
+  const variantOf = kind === 'agent' ? defs.agents.find(a => a.slug === slug)?.variantOf : undefined
+  return versionKey(kind, variantOf ?? slug)
 }
-
 
 function snapshot(ws: VersionedRoot, chain: ChainDef, live: LiveWorkspace, entrypoint: RunMeta['entrypoint']): RunFiles {
   const versions: Record<string, number> = {}
@@ -163,13 +162,13 @@ function snapshot(ws: VersionedRoot, chain: ChainDef, live: LiveWorkspace, entry
     versions[key] = ws.versions.snapshot(file.type, file.slug, file.content)
     if (file.type === 'context') pinnedContext[file.slug] = matter(file.content).content
   }
-  return { chain, workspace: live, versions, versionNumber: versions[entryKey(chain, entrypoint)] ?? 0, pinnedContext }
+  return { chain, definitions: live, versions, versionNumber: versions[entryKey(chain, live, entrypoint)] ?? 0, pinnedContext }
 }
 
-function graphOver(meta: RunMeta, ws: RunDefinitions): ChainDef | Refusal {
-  const chain = chainForResume(meta, ws.chains)
+function graphOver(meta: RunMeta, defs: RunDefinitions): ChainDef | Refusal {
+  const chain = chainForResume(meta, defs.chains)
   if (!chain) return unprocessable('Run has no recorded graph')
-  const validation = validateChain(chain, ws)
+  const validation = validateChain(chain, defs)
   if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
   return chain
 }

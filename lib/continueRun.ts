@@ -12,9 +12,9 @@ import { newRunId } from './logger'
 import { conflict, toResponse } from './refusal'
 import { resolveContinuationModelOverride, withModelOverride } from './modelOverride'
 import { diceField, rollRunDice } from './dice'
-import type { Workspace } from './runFolders'
+import type { LiveWorkspace, Workspace } from './runFolders'
 import { stretchLog, type RunEdit } from './stretchLog'
-import { contextOverrides, startRun, streamChainRun, type LiveWorkspace, type StartRunInput } from './runSession'
+import { contextOverrides, startRun, streamChainRun, type StartRunInput } from './runSession'
 import { runFiles, type ContinuationVersions } from './runFiles'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
@@ -158,15 +158,15 @@ function streamStretch(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, stretch: Stretch, context: Record<string, string>,
 ): Response | Refusal {
   const loaded = runFiles(ws, workspace, stretch.place === 'fork'
-    ? { fork: meta, versions: stretch.versions ?? 'current' }
-    : { resume: meta })
+    ? { kind: 'fork', run: meta, files: stretch.versions ?? 'current' }
+    : { kind: 'inPlace', run: meta })
   if ('error' in loaded) return loaded
   const modelOverride = resolveContinuationModelOverride(meta.modelOverride, stretch.modelOverride)
   const history = stretch.history ?? meta.agentOutputs
   const kept = runLog({ agentOutputs: history, graph: meta.graph, holds: meta.holds }).replayFor(stretch.anchors)
   const outputs = 'outputs' in stretch ? stretch.outputs : []
   const flag = 'flag' in stretch ? stretch.flag : undefined
-  const { chain, workspace: defs, versionNumber } = loaded
+  const { chain, definitions: defs, versionNumber } = loaded
 
   const forkStart = (): StartRunInput & { replay: AgentOutput[]; holds: HoldRecord[] } => ({
     chain, workspace: defs, title: meta.chainName, seedPrompt: meta.seedPrompt, parameter: meta.parameter,

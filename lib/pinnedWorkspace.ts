@@ -8,7 +8,7 @@ import { parseChain } from './fs/parseChain'
 import { parseVersionKey } from './runVersionModel'
 import type { RunDefinitions } from './runDefinitions'
 import type { Refusal } from './types'
-import type { Workspace } from './runFolders'
+import type { VersionedRoot } from './versionStore'
 
 export interface PinnedWorkspace extends RunDefinitions {
   /** Pinned context files by slug, as the executor's context overrides take them. */
@@ -38,7 +38,7 @@ const PINNABLE: Record<string, {
  * what a fork asked for with `versions: 'pinned'` runs against. A pin whose version is gone refuses.
  */
 export function pinnedWorkspace(
-  { root, versions: store }: Pick<Workspace, 'root' | 'versions'>,
+  { root, versions: store }: VersionedRoot,
   live: Defs & { defaults: Record<string, unknown> },
   versions: Record<string, number>,
 ): PinnedWorkspace | Refusal {

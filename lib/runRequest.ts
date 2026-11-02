@@ -81,7 +81,7 @@ export function prepareRunRequest(ws: Workspace, body: RunRequestBody): { input:
   const dice = readDicePins(body.dice, chain, workspace)
   if ('error' in dice) return dice
 
-  const { versions, versionNumber, pinnedContext } = runFiles(ws, workspace, { start: chain, entrypoint: { kind, slug: chain.slug } })
+  const { versions, versionNumber, pinnedContext } = runFiles(ws, workspace, { kind: 'start', chain, entrypoint: { kind, slug: chain.slug } })
   const slug = typeof body.chainSlug === 'string'
     ? body.chainSlug
     : typeof body.slug === 'string'

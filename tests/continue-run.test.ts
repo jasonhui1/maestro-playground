@@ -681,7 +681,10 @@ describe('version pins (#169)', () => {
   function useFiles(edit: Record<string, string> = {}) {
     const raw = (slug: string, body: string) => edit[slug] ?? `---\nname: ${slug}\nmodel: m\n---\n${body}\n`
     const defs = {
-      agents: agents.map(a => ({ ...a, filePath: `agents/${a.slug}.md`, rawContent: raw(a.slug, a.systemPrompt) })),
+      agents: [
+        ...agents.map(a => ({ ...a, filePath: `agents/${a.slug}.md`, rawContent: raw(a.slug, a.systemPrompt) })),
+        { ...agent('prop-bold', 'boldly propose {input}'), variantOf: 'prop', filePath: 'agents/prop.md', rawContent: raw('prop', 'propose {input}') },
+      ],
       skills: [], tools: [], templates: [], context: [], defaults: {},
       chains: [{ ...chain, filePath: 'chains/held.md', rawContent: edit.held ?? HELD }],
     } as unknown as LiveWorkspace
@@ -710,6 +713,27 @@ describe('version pins (#169)', () => {
     const pinned = runIdOf(await events(fork(source, { from: 'prop', versions: 'pinned' })))
     assert.deepStrictEqual([meta(current).versionNumber, meta(current).versions!['agent/prop']], [2, 2])
     assert.deepStrictEqual([meta(pinned).versionNumber, meta(pinned).versions!['agent/prop']], [1, 1])
+  })
+
+  test('a variant agent run is numbered by its declaring file (ADR-0013)', async () => {
+    useFiles()
+    const source = await launch({ agentName: 'prop-bold' })
+    assert.strictEqual(meta(source).versionNumber, 1)
+    const forkId = runIdOf(await events(fork(source, { from: 'prop-bold' })))
+    assert.deepStrictEqual(stamps(forkId), [1])
+  })
+
+  test('in place, an agent run keeps the agent\'s version number', async () => {
+    useFiles()
+    const source = await launch({ agentName: 'prop' })
+    converse(source, 'prop', ['push'])
+    ws.runs.update(source, { status: 'waiting' })
+    const before = stamps(source).length
+    const streamed = await events(promote(source, 'prop'))
+    assert.strictEqual(runIdOf(streamed), source, 'promoted in place')
+    const promoted = stamps(source).slice(before)
+    assert.ok(promoted.length > 0)
+    assert.deepStrictEqual(promoted, promoted.map(() => 1))
   })
 
   test('in place snapshots only the file it stamps, and keeps the run\'s pins', async () => {

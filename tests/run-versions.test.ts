@@ -46,7 +46,7 @@ async function load() {
   const { diskWorkspace } = await import('../lib/runFolders')
   type Live = Parameters<typeof runFiles>[1]
   const pin = (root: string, chain: Parameters<typeof collectTouchedFiles>[0], live: Live) =>
-    runFiles(diskWorkspace(root), live, { start: chain }).versions
+    runFiles(diskWorkspace(root), live, { kind: 'start', chain }).versions
   return { ws, rv: { collectTouchedFiles, parseVersionKey, pin } }
 }
 

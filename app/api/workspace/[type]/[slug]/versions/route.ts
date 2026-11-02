@@ -17,6 +17,10 @@ export async function GET(
   const { storageSlug } = address(root, type as EntityType, slug);
   const { searchParams } = new URL(req.url);
   const version = searchParams.get('version');
+  // A template is never versioned (ADR-0011).
+  if (type === 'template') {
+    return version ? NextResponse.json({ error: 'Version not found' }, { status: 404 }) : NextResponse.json([]);
+  }
 
   try {
     if (version) {
