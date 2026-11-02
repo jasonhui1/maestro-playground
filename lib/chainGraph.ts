@@ -5,6 +5,8 @@ import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 import { scanTokens, endpointOf, socketKey } from './tokens'
 
+const zoneBodyKinds = allKinds.filter(k => kindOf(k).zoneRole === 'body')
+
 export function topoOrder(chain: ChainDef): string[] {
   const ids = chain.nodes.map(n => n.id)
   const indeg = new Map<string, number>(ids.map(id => [id, 0]))
@@ -149,15 +151,15 @@ export function validateChain(
     if (n.kind === 'report' && !hasWiredIn(n)) warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
     if (n.kind === 'join' && !hasWiredIn(n)) warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
     if (n.kind === 'hold' && !hasWiredIn(n)) add(`Node "${n.id}": hold needs its "in" input wired`, { nodeId: n.id })
-    // A zone runs as one atomic unit and its body executes only agent/decider nodes,
-    // so a zoned join would never run, and a zoned hold could never pause.
-    if ((n.kind === 'join' || n.kind === 'hold') && n.zone) {
-      add(`Node "${n.id}": a ${n.kind} cannot sit inside a loop zone`, { nodeId: n.id, zone: n.zone })
+    // A zone runs as one atomic unit whose body executes only `zoneRole: 'body'` kinds,
+    // so any other kind in it would silently never run (#163).
+    if (n.zone && kindOf(n.kind).zoneRole === 'none') {
+      add(`Node "${n.id}": a ${n.kind} cannot sit inside loop zone "${n.zone}" (a zone body runs only ${zoneBodyKinds.join(' and ')} nodes)`, { nodeId: n.id, zone: n.zone })
     }
     if (n.inputs !== undefined) {
       if (typeof n.inputs !== 'object' || n.inputs === null || Array.isArray(n.inputs)) {
         add(`Node "${n.id}": inputs must be a key-value mapping`, { nodeId: n.id })
-      } else if (n.kind !== 'agent' && n.kind !== 'decider') {
+      } else if (!kindOf(n.kind).acceptsLiterals) {
         add(`Node "${n.id}" of kind "${n.kind}" does not accept literal inputs`, { nodeId: n.id })
       } else {
         const declared = new Set(kindOf(n.kind).inputs(n, workspace).map(s => s.name))

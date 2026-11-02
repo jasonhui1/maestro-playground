@@ -4,6 +4,7 @@ import { Handle, Position } from '@xyflow/react'
 import { inputHandles, outputHandles, type SocketHandle } from '@/lib/nodeSockets'
 import type { ChainNode } from '@/lib/types'
 import { hasLiteralInput } from '@/lib/chainGraph'
+import { kindOf } from '@/lib/nodeKinds'
 
 /** Loop nodes wear the zone's amber; `muted` marks a fallback slot, like a branch's default. */
 export type SocketTone = 'default' | 'loop' | 'muted'
@@ -230,7 +231,7 @@ export function SocketList({
           ? dotTitle(h, tone, true)
           : (isInput ? dotTitle(h, tone) : label)
         const isWired = isInput && (wiredSockets?.has(h.id) ?? false)
-        const isInputNodeKind = node?.kind === 'agent' || node?.kind === 'decider'
+        const isInputNodeKind = node !== undefined && kindOf(node.kind).acceptsLiterals
         const showLiteralInput = isInput && !isWired && isInputNodeKind && onChange !== undefined
         const isSet = isInput && hasLiteralInput(node, h.id)
         const literalValue = isSet ? (node!.inputs![h.id] ?? '') : ''

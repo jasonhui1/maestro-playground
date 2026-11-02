@@ -1,5 +1,5 @@
 import { AgentDef, ChainDef, ChainNode, SkillDef, ToolDef } from './types'
-import { agentSlugOf, resolveNodeSkills } from './nodeKinds'
+import { kindOf, fieldValue, resolveNodeSkills } from './nodeKinds'
 import { snapshotVersion } from './fs/versions'
 import matter from 'gray-matter'
 import { versionKey } from './runVersionModel'
@@ -48,19 +48,7 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
     for (const node of c.nodes) walkNode(node)
   }
 
-  const walkNode = (node: ChainNode) => {
-    if (node.kind === 'context') {
-      const file = ws.context.find(f => f.slug === node.file)
-      if (file) add('context', file.slug, file.rawContent)
-      return
-    }
-    if (node.kind === 'subchain') {
-      const ref = ws.chains.find(x => x.slug === node.subchain)
-      if (ref) walk(ref)
-      return
-    }
-    const slug = agentSlugOf(node)
-    if (!slug) return
+  const walkAgent = (node: ChainNode, slug: string) => {
     const agent = ws.agents.find(a => a.slug === slug)
     if (!agent) return
     // A variant has no file of its own, so the key is the declaring file (ADR-0013).
@@ -75,6 +63,24 @@ export function collectTouchedFiles(chain: ChainDef, ws: VersionedWorkspace): Ma
     for (const name of agent.tools ?? []) {
       const tool = ws.tools.find(t => t.name === name)
       if (tool) add('tool', tool.slug, tool.rawContent)
+    }
+  }
+
+  // The files a node names are its descriptor's `ref` fields (ADR-0001). A node's skill
+  // fields are not walked on their own: they override or extend the agent's list.
+  const walkNode = (node: ChainNode) => {
+    for (const field of kindOf(node.kind).fields) {
+      const slug = fieldValue(node, field)
+      if (!field.ref || typeof slug !== 'string') continue
+      if (field.ref === 'context') {
+        const file = ws.context.find(f => f.slug === slug)
+        if (file) add('context', file.slug, file.rawContent)
+      } else if (field.ref === 'chain') {
+        const ref = ws.chains.find(x => x.slug === slug)
+        if (ref) walk(ref)
+      } else if (field.ref === 'agent') {
+        walkAgent(node, slug)
+      }
     }
   }
 
