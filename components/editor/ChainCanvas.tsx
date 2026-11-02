@@ -8,7 +8,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type { ChainNode, ChainEdge, ChainNodeKind } from '@/lib/types'
 import type { EditorNodeData, EditorNodeDataOf } from './nodeData'
-import { computeZoneFrames } from '@/lib/zoneFrames'
+import { zoneFrames } from '@/lib/zones'
 import { edgeFromConnection } from '@/lib/editorOps'
 import { applySelectChanges, applyViewChanges, emptyCanvasView, overlay, type CanvasView } from '@/lib/canvasView'
 import InstanceSwitcher from '@/components/workspace/InstanceSwitcher'
@@ -241,7 +241,7 @@ function CanvasContent(props: ChainCanvasProps) {
   // state, so a caller handing us a fresh `selectedIds` array costs one recompute
   // instead of an effect that re-fires into "Maximum update depth exceeded" (#64).
   const base = useMemo<Node[]>(() => {
-    const frames: Node[] = computeZoneFrames(chainNodes).map(f => ({
+    const frames: Node[] = zoneFrames(chainNodes).map(f => ({
       id: `zone-frame-${f.zone}`,
       type: 'zoneFrame',
       position: { x: f.x, y: f.y },

@@ -7,7 +7,6 @@ import {
   deleteNode,
   deleteEdge,
   updateNode,
-  renameZone,
   moveMany,
   makeLoopZone,
   copySubgraph,
@@ -328,20 +327,6 @@ test('undo/redo withHistory respects NON_HISTORIC and restores graph state', () 
   h = historied(h, editorOps.setGraph([{ id: 'g1', kind: 'seed' }], []))
   assert.strictEqual(h.past.length, 2, 'setGraph must not push history')
   assert.strictEqual(h.present.nodes[0].id, 'g1')
-})
-
-test('renameZone renames loop boundaries and all member nodes', () => {
-  const nodes: ChainNode[] = [
-    { id: 'ls-1', kind: 'loop-start', zone: 'zone-1', state: [] },
-    { id: 'agent-1', kind: 'agent', agent: 'worker', zone: 'zone-1' },
-    { id: 'le-1', kind: 'loop-end', zone: 'zone-1', until: '', maxIterations: 3 },
-    { id: 'outside', kind: 'agent', agent: 'other' },
-  ]
-  const renamed = renameZone(nodes, 'zone-1', 'zone-alpha')
-  assert.strictEqual(renamed.find(n => n.id === 'ls-1')?.zone, 'zone-alpha')
-  assert.strictEqual(renamed.find(n => n.id === 'le-1')?.zone, 'zone-alpha')
-  assert.strictEqual(renamed.find(n => n.id === 'agent-1')?.zone, 'zone-alpha')
-  assert.strictEqual(renamed.find(n => n.id === 'outside')?.zone, undefined)
 })
 
 test('updateNode on loop-start or loop-end synchronizes zone across boundaries and member nodes', () => {

@@ -1,6 +1,7 @@
 import { ChainNode, ChainEdge, ChainDef } from './types'
 import { inputAcceptsMany } from './nodeKinds'
 import { edgeShapeError } from './chainGraph'
+import { isBoundary, renameZone } from './zones'
 
 export function uniqueNodeId(kind: string, existing: string[]): string {
   const set = new Set(existing)
@@ -51,15 +52,6 @@ export function deleteEdge(edges: ChainEdge[], edge: ChainEdge): ChainEdge[] {
   )
 }
 
-export function renameZone(
-  nodes: ChainNode[],
-  oldZone: string,
-  newZone: string,
-): ChainNode[] {
-  if (!oldZone || oldZone === newZone) return nodes
-  return nodes.map(n => (n.zone === oldZone ? { ...n, zone: newZone } : n))
-}
-
 export function updateNode(
   nodes: ChainNode[],
   id: string,
@@ -68,7 +60,7 @@ export function updateNode(
   const target = nodes.find(n => n.id === id)
   if (
     target &&
-    (target.kind === 'loop-start' || target.kind === 'loop-end') &&
+    isBoundary(target) &&
     patch.zone !== undefined &&
     target.zone &&
     patch.zone !== target.zone

@@ -10,11 +10,12 @@ import { injectSkills } from './prompt'
 import { resolveNodePrompt, readSocket } from './resolveNode'
 import { SectionWarning, sameSectionWarning, emitSectionWarnings } from './sectionWarning'
 import { topoOrder, hasLiteralInput } from './chainGraph'
+import { pairedZones, type Zone } from './zones'
 import { evalCondition } from './condition'
 import { outputKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
 import { withModelOverride } from './modelOverride'
-import { kindOf, agentSlugOf, resolveNodeSkills, zoneStateName, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
+import { kindOf, agentSlugOf, resolveNodeSkills, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
 import type { ToolLoopEvent } from './tools/events'
 import { innerDice, type RunDice } from './dice'
 
@@ -213,28 +214,7 @@ export async function runChainGraph(
   }
 
   // --- zones ---
-  interface ZoneState { name: string; accumulate: boolean; separator: string }
-  interface Zone { id: string; startId: string; endId: string; bodyIds: string[]; states: ZoneState[]; until: string; maxIterations: number }
-  const zonesByStart = new Map<string, Zone>()
-  {
-    const byZone = new Map<string, ChainNode[]>()
-    for (const n of chain.nodes) if (n.zone) { const a = byZone.get(n.zone) ?? []; a.push(n); byZone.set(n.zone, a) }
-    for (const [zid, members] of byZone) {
-      const start = members.find(n => n.kind === 'loop-start')
-      const end = members.find(n => n.kind === 'loop-end')
-      if (!start || !end) continue
-      zonesByStart.set(start.id, {
-        id: zid, startId: start.id, endId: end.id,
-        bodyIds: members.filter(n => kindOf(n.kind).zoneRole !== 'boundary').map(n => n.id),
-        states: (start.state || []).map(state => ({
-          name: zoneStateName(state),
-          accumulate: typeof state !== 'string' && state.accumulate === true,
-          separator: typeof state !== 'string' ? (state.separator ?? '\n\n') : '\n\n',
-        })),
-        until: end.until || '', maxIterations: end.maxIterations || 1,
-      })
-    }
-  }
+  const zonesByStart = new Map(pairedZones(chain).map(zone => [zone.startId, zone]))
 
   const setStateSockets = (nodeId: string, state: Map<string, string>, anchorId: string = nodeId) => {
     for (const [name, val] of state) {
@@ -243,17 +223,6 @@ export async function runChainGraph(
       emit(anchorId, rec)
     }
   }
-  const bodyOrder = (zone: Zone): string[] => {
-    const set = new Set(zone.bodyIds)
-    const indeg = new Map(zone.bodyIds.map(id => [id, 0]))
-    const adj = new Map(zone.bodyIds.map(id => [id, [] as string[]]))
-    for (const e of chain.edges) if (set.has(e.fromNode) && set.has(e.toNode)) { adj.get(e.fromNode)!.push(e.toNode); indeg.set(e.toNode, (indeg.get(e.toNode) || 0) + 1) }
-    const q = zone.bodyIds.filter(id => (indeg.get(id) || 0) === 0)
-    const order: string[] = []
-    while (q.length) { const id = q.shift()!; order.push(id); for (const t of adj.get(id) || []) { indeg.set(t, (indeg.get(t) || 0) - 1); if ((indeg.get(t) || 0) === 0) q.push(t) } }
-    return order
-  }
-
   const runZone = async (zone: Zone) => {
     const incoming = (id: string) => incomingByNode.get(id) || []
     const roundProducers = new Set([zone.startId, ...zone.bodyIds])
@@ -264,13 +233,12 @@ export async function runChainGraph(
       const idx = incoming(zone.startId).find(i => chain.edges[i].toSocket === stateDef.name)
       state.set(stateDef.name, idx !== undefined ? edgeValue(chain.edges[idx]) : '')
     }
-    const order = bodyOrder(zone)
     let finalState = state
     for (let round = 0; round < zone.maxIterations; round++) {
       for (const index of roundEdges) live.delete(index)
       setStateSockets(zone.startId, state, zone.startId)
       markOut(zone.startId, () => true)
-      for (const id of order) {
+      for (const id of zone.bodyOrder) {
         const bn = nodeById.get(id)!
         if (kindOf(bn.kind).zoneRole !== 'body') continue
         // A kind marked `body` needs an arm here; failing beats a node that silently never runs (#163).
