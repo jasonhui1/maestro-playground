@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { RunMeta } from '@/lib/types'
 import { changedSince, type ChangedSinceResult } from '@/lib/changedSince'
-import { isRunOf, previousRun } from '@/lib/runIndex'
+import { chainRef, filterRuns, isRunOf, previousRun } from '@/lib/runIndex'
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
@@ -98,19 +98,15 @@ export default function HistoryPage() {
       items.push({ kind: 'variance', group: buildVarianceGroup(runsByGroup.get(groupId) ?? []) })
     }
 
-    const chain = filterChain ? { kind: 'chain' as const, slug: filterChain, name: chains.find(c => c.slug === filterChain)?.name } : undefined
+    const selected = chains.find(c => c.slug === filterChain)
+    const chain = selected ? chainRef(selected) : undefined
+    const shown = new Set(filterRuns(allRuns, {
+      of: chain,
+      status: (filterStatus || undefined) as RunMeta['status'] | undefined,
+      keyword: filterKeyword || undefined,
+    }).map(r => r.runId))
     return items.filter(item => {
-      if (item.kind === 'run') {
-        if (chain && !isRunOf(item.run, chain)) return false
-        if (filterStatus && item.run.status !== filterStatus) return false
-        if (filterKeyword) {
-          const kw = filterKeyword.toLowerCase()
-          if (!item.run.seedPrompt.toLowerCase().includes(kw) && !item.run.runId.toLowerCase().includes(kw)) {
-            return false
-          }
-        }
-        return true
-      }
+      if (item.kind === 'run') return shown.has(item.run.runId)
 
       if (chain && !item.group.runs.some(r => isRunOf(r, chain))) return false
       if (filterStatus && varianceGroupStatus(item.group) !== filterStatus) return false

@@ -4,24 +4,18 @@ import { runIndex, type RunFilter, type RunSubjectKind } from '@/lib/runIndex'
 import type { RunMeta } from '@/lib/types'
 import type { Workspace } from '@/lib/runFolders'
 
-const SUBJECT_KINDS: RunSubjectKind[] = ['chain', 'agent', 'tool', 'chat', 'inline']
-
-/**
- * `entityType` + `slug` is a workspace file's history: the runs an agent took part in, or
- * a chain's runs. `kind` + `slug` is the runs of one subject. Names find older runs (#168).
- */
+/** An agent file's history is the runs it took part in; `kind` + `slug` lists one subject's runs (#168). */
 function subjectFilter(ws: Workspace, params: URLSearchParams): RunFilter {
   const slug = params.get('slug')
   if (!slug) return {}
-  const { agents, chains } = ws.definitions()
-  const agentName = () => agents.find(a => a.slug === slug)?.name
+  const { agents, chains, tools } = ws.definitions()
   const entityType = params.get('entityType')
-  if (entityType === 'agent') return { involving: { slug, name: agentName() } }
-  if (entityType === 'chain') return { of: { kind: 'chain', slug, name: chains.find(c => c.slug === slug)?.name } }
-  const kind = params.get('kind') as RunSubjectKind | null
-  if (kind === 'chat' || kind === 'agent') return { of: { kind, slug, name: agentName() } }
-  if (kind && SUBJECT_KINDS.includes(kind)) return { of: { kind, slug } }
-  return {}
+  const nameIn = (defs: { slug: string; name: string }[]) => defs.find(d => d.slug === slug)?.name
+  if (entityType === 'agent') return { involving: { slug, name: nameIn(agents) } }
+  const kind = (params.get('kind') ?? (entityType === 'chain' ? 'chain' : null)) as RunSubjectKind | null
+  if (!kind) return {}
+  const defs = { chain: chains, inline: chains, agent: agents, chat: agents, tool: tools }[kind] ?? []
+  return { of: { kind, slug, name: nameIn(defs) } }
 }
 
 export async function GET(req: NextRequest) {

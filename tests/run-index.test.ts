@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest'
 import { memoryRunFolders } from '../lib/runFolders'
-import { runIndex } from '../lib/runIndex'
+import { runChain, runIndex, runSubject } from '../lib/runIndex'
 import { chatRunMeta } from '../lib/stretchLog'
 import type { ChainDef, RunMeta } from '../lib/types'
 
@@ -20,21 +20,19 @@ const output = (agentName: string, nodeId?: string) => ({
 })
 
 test('a run says what it ran and where it opens', () => {
-  const index = indexOf(
-    run('c', '2026-01-01', { chainName: 'Story', chainSlug: 'story', entrypoint: { kind: 'chain', slug: 'story' } }),
-    run('a', '2026-01-01', { chainName: 'The Critic', chainSlug: 'critic', entrypoint: { kind: 'agent', slug: 'critic' } }),
-    chatRunMeta('n', { name: 'The Critic', slug: 'critic' }, 'hi'),
-    run('old-chat', '2026-01-01', { chainName: 'Chat with The Critic' }),
-    run('i', '2026-01-01', { chainName: 'Inline chain', entrypoint: { kind: 'inline' } }),
-  )
-  expect(index.subject('c')).toEqual({ kind: 'chain', slug: 'story', name: 'Story', href: '/history/c' })
-  expect(index.subject('a')).toEqual({ kind: 'agent', slug: 'critic', name: 'The Critic', href: '/history/a' })
-  expect(index.subject('n')).toEqual({ kind: 'chat', slug: 'critic', name: 'The Critic', href: '/chat?runId=n' })
-  expect(index.subject('old-chat')).toEqual({ kind: 'chat', name: 'The Critic', href: '/chat?runId=old-chat' })
-  expect(index.subject('i')).toEqual({ kind: 'inline', name: 'Inline chain', href: '/history/i' })
+  expect(runSubject(run('c', '2026-01-01', { chainName: 'Story', chainSlug: 'story', entrypoint: { kind: 'chain', slug: 'story' } })))
+    .toEqual({ kind: 'chain', slug: 'story', name: 'Story', href: '/history/c' })
+  expect(runSubject(run('a', '2026-01-01', { chainName: 'The Critic', chainSlug: 'critic', entrypoint: { kind: 'agent', slug: 'critic' } })))
+    .toEqual({ kind: 'agent', slug: 'critic', name: 'The Critic', href: '/history/a' })
+  expect(runSubject(chatRunMeta('n', { name: 'The Critic', slug: 'critic' }, 'hi')))
+    .toEqual({ kind: 'chat', slug: 'critic', name: 'The Critic', href: '/chat?runId=n' })
+  expect(runSubject(run('old-chat', '2026-01-01', { chainName: 'Chat with The Critic' })))
+    .toEqual({ kind: 'chat', name: 'The Critic', href: '/chat?runId=old-chat' })
+  expect(runSubject(run('i', '2026-01-01', { chainName: 'Inline chain', entrypoint: { kind: 'inline' } })))
+    .toEqual({ kind: 'inline', name: 'Inline chain', href: '/history/i' })
 })
 
-test('an agent whose name differs from its slug has every run it took part in listed (#168)', () => {
+test('an agent whose name differs from its slug has every run it took part in listed; a subchain inner node falls back to the name (#168)', () => {
   const graph = { nodes: [{ id: 'judge', kind: 'agent' as const, agent: 'critic' }], edges: [] }
   const index = indexOf(
     run('direct', '2026-01-01', { chainName: 'The Critic', entrypoint: { kind: 'agent', slug: 'critic' } }),
@@ -42,9 +40,10 @@ test('an agent whose name differs from its slug has every run it took part in li
     { ...chatRunMeta('chat', { name: 'The Critic', slug: 'critic' }, 'hi'), startedAt: '2026-01-03' },
     run('legacy', '2026-01-04', { chainName: 'Chat with The Critic', agentOutputs: [output('The Critic')] }),
     run('other', '2026-01-05', { graph: { nodes: [{ id: 'judge', kind: 'agent', agent: 'other' }], edges: [] }, agentOutputs: [output('The Critic', 'judge')] }),
+    run('subchain', '2026-01-06', { graph: { nodes: [{ id: 'sub', kind: 'subchain' }], edges: [] }, agentOutputs: [output('The Critic', 'sub/inner')] }),
   )
   expect(index.list({ involving: { slug: 'critic', name: 'The Critic' } }).map(r => r.runId))
-    .toEqual(['legacy', 'chat', 'in-chain', 'direct'])
+    .toEqual(['subchain', 'legacy', 'chat', 'in-chain', 'direct'])
 })
 
 test("a chain's runs include its editor runs and runs recorded before slugs, newest first", () => {
@@ -94,11 +93,10 @@ test('the runs pinning a file are found by its version key', () => {
     run('other', '2026-01-02', { versions: { 'agent/judge': 1 } }),
     run('unpinned', '2026-01-03'),
   )
-  expect(index.pinning('agent/critic')).toEqual(['pins'])
+  expect(index.list({ pinning: 'agent/critic' }).map(r => r.runId)).toEqual(['pins'])
 })
 
-test("a run's chain is found by slug, else by the title it ran under; an agent run has none", async () => {
-  const { runChain } = await import('../lib/runIndex')
+test("a run's chain is found by slug, else by the title it ran under; an agent run has none", () => {
   const chain = (slug: string, name: string) => ({ slug, name, description: '', nodes: [], edges: [], filePath: '' }) as ChainDef
   const chains = [chain('story', 'Renamed Story'), chain('old', 'Story'), chain('critic', 'The Critic')]
   expect(runChain(run('r', '2026', { chainSlug: 'story', entrypoint: { kind: 'chain', slug: 'story' } }), chains)?.slug).toBe('story')

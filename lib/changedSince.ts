@@ -275,5 +275,3 @@ export function changedSince(
     ...(continuationCaveat ? { continuationCaveat } : {}),
   }
 }
-
-export { isInlineRun, previousRun as findPreviousRun } from './runIndex'

@@ -60,7 +60,7 @@ The store over `logs/<runId>/` — meta.json plus one log per step — reached o
 
 ## Run index
 
-`lib/runIndex.ts` (#168) answers what a run ran over **run folders**: its **subject** (chain, agent, tool, chat or inline, with the slug its `entrypoint` records and where the run opens), the runs of a subject or that an agent took part in, the previous run of the same subject, and the runs pinning a file. Runs recorded before slugs are matched by the title they started under; only the index reads titles. _Avoid_: matching `chainName` or the `Chat with` title elsewhere.
+The one reader of what runs ran, over **run folders** (`lib/runIndex.ts`, #168). A run's **subject** is what it ran: a chain, agent, tool, chat or inline chain, by the slug its `entrypoint` records and the pins a rename repoints. The index lists a subject's runs, the runs an agent took part in, and a run's previous run of the same subject; runs from before slugs are matched by the title they started under. _Avoid_: entry point (the meta field, not the concept), run target.
 
 ## Variance group and spread
 

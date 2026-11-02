@@ -12,7 +12,7 @@ import {
 } from './entityRefs'
 import { parseVersionKey, versionKey, TouchedFile } from '../runVersionModel'
 import { scanTokens, proseRef, ProseRef } from '../tokens'
-import { diskRunFolders, type RunFolders } from '../runFolders'
+import type { RunFolders } from '../runFolders'
 import { runIndex } from '../runIndex'
 
 /**
@@ -66,7 +66,7 @@ function pinnedType(type: EntityType): TouchedFile['type'] | undefined {
 /** Every run that pins the old `type/slug` key (ADR-0011). */
 function collectRuns(runs: RunFolders, type: EntityType, from: string): string[] {
   const pinned = pinnedType(type)
-  return pinned ? runIndex(runs).pinning(versionKey(pinned, from)) : []
+  return pinned ? runIndex(runs).list({ pinning: versionKey(pinned, from) }).map(r => r.runId) : []
 }
 
 /**
@@ -92,7 +92,7 @@ function assertNameFree(root: string, type: EntityType, to: string, variants: Ma
  * the dialog shows that inline rather than as a plan.
  */
 export function planRename(
-  root: string, type: EntityType, from: string, to: string, runs: RunFolders = diskRunFolders(root),
+  root: string, type: EntityType, from: string, to: string, runs: RunFolders,
 ): RenamePlan {
   const cleanTo = sanitizeSlug(to)
   if (!cleanTo || cleanTo === '.' || cleanTo === '..') {
@@ -132,24 +132,29 @@ export function planRename(
 /**
  * Renames a file, its `.versions` history, every typed reference to it, and the pinned
  * key each past run recorded (#54). The file keeps its folder — only the slug changes,
- * and the slug is the reference. A failure part-way restores every file already written,
+ * and the slug is the reference. A failure part-way undoes everything already written,
  * so the workspace never loads with half a rename applied.
  */
 export function renameWorkspaceEntity(
-  root: string, type: EntityType, from: string, to: string, runs: RunFolders = diskRunFolders(root),
+  root: string, type: EntityType, from: string, to: string, runs: RunFolders,
 ) {
   const plan = planRename(root, type, from, to, runs)
   if (plan.to === from) return { filePath: plan.filePath, slug: from, plan }
 
-  const written = new Map<string, string>()
+  // Undone newest first, so the file moves back before its old bytes are restored: the
+  // other order would leave two files sharing a slug (ADR-0012).
+  const undo: (() => void)[] = []
+  const written = new Set<string>()
   const write = (filePath: string, body: string) => {
-    if (!written.has(filePath)) written.set(filePath, fs.readFileSync(filePath, 'utf-8'))
+    if (!written.has(filePath)) {
+      written.add(filePath)
+      const before = fs.readFileSync(filePath, 'utf-8')
+      undo.push(() => fs.writeFileSync(filePath, before, 'utf-8'))
+    }
     fs.writeFileSync(filePath, body, 'utf-8')
   }
-  const repinned = new Map<string, Record<string, number>>()
 
   const targetPath = path.join(path.dirname(plan.filePath), `${plan.to}.md`)
-  let moved = false
   try {
     const sites = refSitesFor(type)
     for (const edit of plan.rewrites) {
@@ -162,8 +167,8 @@ export function renameWorkspaceEntity(
     }
     for (const runId of plan.runs) {
       const versions = runs.read(runId).versions ?? {}
-      repinned.set(runId, versions)
       runs.update(runId, { versions: repoint(versions, type, from, plan.to) })
+      undo.push(() => runs.update(runId, { versions }))
     }
 
     if (plan.variantOf) {
@@ -171,16 +176,11 @@ export function renameWorkspaceEntity(
     } else {
       renameOwnName(plan.filePath, type, from, plan.to, write)
       fs.renameSync(plan.filePath, targetPath)
-      moved = true
+      undo.push(() => fs.renameSync(targetPath, plan.filePath))
       renameVersions(root, type, from, plan.to)
     }
   } catch (err) {
-    // The file moves back first: restoring bytes to the old path while the new path
-    // still holds the file would leave two files sharing a slug (ADR-0012). `moved`
-    // rather than existsSync — whatever else may sit at that path is not our file.
-    if (moved) fs.renameSync(targetPath, plan.filePath)
-    for (const [filePath, body] of written) fs.writeFileSync(filePath, body, 'utf-8')
-    for (const [runId, versions] of repinned) runs.update(runId, { versions })
+    for (const step of undo.reverse()) step()
     throw err
   }
 

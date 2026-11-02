@@ -2,7 +2,7 @@ import { AgentDef, ChainDef, ChainNode, ChainEdge, Refusal, RunMeta, ToolDef } f
 import { badRequest, notFound } from './refusal'
 import { agentSlots } from './tokens'
 import { toolNodeInputs } from './tools/spec'
-import { runChain } from './runIndex'
+import { chainNamed, runChain } from './runIndex'
 
 export interface RunChainBody {
   chainName?: string
@@ -17,11 +17,6 @@ export type ResolvedRunKind = 'inline' | 'chain' | 'agent' | 'tool'
 export type ResolvedRun =
   | { chain: ChainDef; title: string; kind: ResolvedRunKind }
   | Refusal
-
-/** A request names a chain by name, falling back to slug. */
-function findChain(chains: ChainDef[], chainName: string): ChainDef | undefined {
-  return chains.find(c => c.name === chainName) || chains.find(c => c.slug === chainName)
-}
 
 export function resolveRunChain(
   body: RunChainBody,
@@ -39,7 +34,7 @@ export function resolveRunChain(
     }
   }
   if (body.chainName) {
-    const found = findChain(ws.chains, body.chainName)
+    const found = chainNamed(ws.chains, body.chainName)
     if (!found) return notFound('Chain not found')
     return { kind: 'chain', title: found.name, chain: found }
   }
