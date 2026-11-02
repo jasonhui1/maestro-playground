@@ -5,6 +5,8 @@ import { isValidExecutorId } from './tools/spec'
 import { forbiddenAgentFieldMessage } from './fs/validate'
 import { scanTokens, endpointOf, socketKey } from './tokens'
 import { wiredByIssues } from './dice'
+import { topoSort } from './topoSort'
+import { zoneIssues } from './zones'
 
 type AddIssue = (message: string, ref?: Omit<ValidationIssue, 'message' | 'severity'>) => void
 /** A ref's "not found" message, or the clash that left the name out of the load (#151). */
@@ -16,29 +18,7 @@ function missingRefMessage(warnings: WorkspaceWarning[]): MissingRef {
   return (entityType, name, notFound) => byType.get(entityType)?.get(name) ?? notFound
 }
 
-const zoneBodyKinds = allKinds.filter(k => kindOf(k).zoneRole === 'body')
-
-export function topoOrder(chain: ChainDef): string[] {
-  const ids = chain.nodes.map(n => n.id)
-  const indeg = new Map<string, number>(ids.map(id => [id, 0]))
-  const adj = new Map<string, string[]>(ids.map(id => [id, []]))
-  for (const e of chain.edges) {
-    if (!indeg.has(e.toNode) || !adj.has(e.fromNode)) continue
-    adj.get(e.fromNode)!.push(e.toNode)
-    indeg.set(e.toNode, (indeg.get(e.toNode) || 0) + 1)
-  }
-  const queue = ids.filter(id => (indeg.get(id) || 0) === 0)
-  const order: string[] = []
-  while (queue.length) {
-    const id = queue.shift()!
-    order.push(id)
-    for (const t of adj.get(id) || []) {
-      indeg.set(t, (indeg.get(t) || 0) - 1)
-      if ((indeg.get(t) || 0) === 0) queue.push(t)
-    }
-  }
-  return order
-}
+export const topoOrder = (chain: ChainDef): string[] => topoSort(chain.nodes.map(n => n.id), chain.edges)
 
 // Shape rules an edge breaks on its own, before any node or socket lookup. The canvas
 // refuses a drag that breaks one (edgeFromConnection), so it enforces nothing more (#119).
@@ -178,11 +158,6 @@ export function validateChain(
     if (n.kind === 'report' && !hasWiredIn(n)) warn(`Node "${n.id}": report has no incoming edge`, { nodeId: n.id })
     if (n.kind === 'join' && !hasWiredIn(n)) warn(`Node "${n.id}": join has no incoming edges`, { nodeId: n.id })
     if (n.kind === 'hold' && !hasWiredIn(n)) add(`Node "${n.id}": hold needs its "in" input wired`, { nodeId: n.id })
-    // A zone runs as one atomic unit whose body executes only `zoneRole: 'body'` kinds,
-    // so any other kind in it would silently never run (#163).
-    if (n.zone && kindOf(n.kind).zoneRole === 'none') {
-      add(`Node "${n.id}": a ${n.kind} cannot sit inside loop zone "${n.zone}" (a zone body runs only ${zoneBodyKinds.join(' and ')} nodes)`, { nodeId: n.id, zone: n.zone })
-    }
     if (n.inputs !== undefined) {
       if (typeof n.inputs !== 'object' || n.inputs === null || Array.isArray(n.inputs)) {
         add(`Node "${n.id}": inputs must be a key-value mapping`, { nodeId: n.id })
@@ -232,7 +207,7 @@ export function validateChain(
   if (topoOrder(chain).length !== chain.nodes.length) add('Chain has a cycle')
   for (const { nodeId, message } of wiredByIssues(chain, { agents })) add(message, { nodeId })
 
-  validateZones(chain, add)
+  for (const { message, ...ref } of zoneIssues(chain)) add(message, ref)
   validateSubchains(chain, chains, { add, warn, missing })
   validateHoldPlacement(chain, chains, add)
 
@@ -258,68 +233,6 @@ export function validateChain(
     if (nodeById.get(p.node)?.kind !== 'seed') add(`Input "${p.name}" binds to "${p.node}", which is not a "seed" node`)
   }
   return { valid: errors.length === 0, errors, issues }
-}
-
-function validateZones(chain: ChainDef, add: AddIssue) {
-  for (const n of chain.nodes) {
-    if ((n.kind === 'loop-start' || n.kind === 'loop-end') && (!n.zone || !n.zone.trim())) {
-      add(`Node "${n.id}": ${n.kind} has no zone`, { nodeId: n.id })
-    }
-  }
-
-  const byZone = new Map<string, ChainNode[]>()
-  for (const n of chain.nodes) {
-    if (!n.zone || !n.zone.trim()) continue
-    const arr = byZone.get(n.zone) ?? []
-    arr.push(n); byZone.set(n.zone, arr)
-  }
-  const zoneOf = new Map(chain.nodes.map(n => [n.id, n.zone]))
-  for (const [zid, members] of byZone) {
-    const starts = members.filter(n => n.kind === 'loop-start')
-    const ends = members.filter(n => n.kind === 'loop-end')
-
-    if (starts.length === 0) {
-      if (ends.length > 0) {
-        for (const end of ends) {
-          add(`Loop end "${end.id}" in zone "${zid}" is missing a paired loop-start`, { zone: zid, nodeId: end.id })
-        }
-      } else {
-        add(`Zone "${zid}": needs exactly one loop-start (found 0)`, { zone: zid })
-      }
-    } else if (starts.length > 1) {
-      for (const start of starts) {
-        add(`Zone "${zid}": duplicate loop-start "${start.id}" (found ${starts.length})`, { zone: zid, nodeId: start.id })
-      }
-    }
-
-    if (ends.length === 0) {
-      if (starts.length > 0) {
-        for (const start of starts) {
-          add(`Loop start "${start.id}" in zone "${zid}" is missing a paired loop-end`, { zone: zid, nodeId: start.id })
-        }
-      } else {
-        add(`Zone "${zid}": needs exactly one loop-end (found 0)`, { zone: zid })
-      }
-    } else if (ends.length > 1) {
-      for (const end of ends) {
-        add(`Zone "${zid}": duplicate loop-end "${end.id}" (found ${ends.length})`, { zone: zid, nodeId: end.id })
-      }
-    }
-
-    for (const end of ends) {
-      if (!end.until || !end.until.trim()) add(`Zone "${zid}": loop-end needs an "until" condition`, { zone: zid, nodeId: end.id })
-      if (!end.maxIterations || end.maxIterations < 1 || !Number.isInteger(end.maxIterations)) add(`Zone "${zid}": loop-end needs a positive integer maxIterations`, { zone: zid, nodeId: end.id })
-    }
-  }
-  // boundary rule: an edge between different zones is allowed only into loop-start or out of loop-end
-  const kindOf = new Map(chain.nodes.map(n => [n.id, n.kind]))
-  for (const e of chain.edges) {
-    const fz = zoneOf.get(e.fromNode); const tz = zoneOf.get(e.toNode)
-    if (fz === tz) continue
-    const intoStart = kindOf.get(e.toNode) === 'loop-start'
-    const outOfEnd = kindOf.get(e.fromNode) === 'loop-end'
-    if (!intoStart && !outOfEnd) add(`Edge "${e.fromNode}.${e.fromSocket}" -> "${e.toNode}.${e.toSocket}" crosses a zone boundary (only loop-start/loop-end may cross)`, { edge: e })
-  }
 }
 
 // The edited chain takes precedence over any on-disk copy carrying the same slug.

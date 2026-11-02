@@ -1,4 +1,5 @@
 import { holdsKeptByFork } from './hold'
+import { zoneIdOf, zoneMembers } from './zones'
 import type { AgentOutput, ChainDef, ChainNode, ChainEdge, HoldRecord, RunMeta } from './types'
 
 // All ancestors of targetId (incl. itself), with any touched loop zone fully included.
@@ -9,7 +10,8 @@ export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: Ch
     arr.push(e.fromNode)
     incoming.set(e.toNode, arr)
   }
-  const zoneOf = new Map(chain.nodes.map(n => [n.id, n.zone]))
+  const zoneOf = new Map(chain.nodes.map(n => [n.id, zoneIdOf(n)]))
+  const members = zoneMembers(chain.nodes)
   const keep = new Set<string>([targetId])
 
   let changed = true
@@ -24,8 +26,8 @@ export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: Ch
     // pull in every member of any zone we've touched
     const zones = new Set<string>()
     for (const id of keep) { const z = zoneOf.get(id); if (z) zones.add(z) }
-    for (const n of chain.nodes) {
-      if (n.zone && zones.has(n.zone) && !keep.has(n.id)) { keep.add(n.id); changed = true }
+    for (const z of zones) for (const n of members.get(z) ?? []) {
+      if (!keep.has(n.id)) { keep.add(n.id); changed = true }
     }
   }
 
@@ -37,7 +39,8 @@ export function upstreamSubgraph(chain: ChainDef, targetId: string): { nodes: Ch
 
 // Every node downstream of sourceId (not itself), with any touched loop zone fully included.
 export function downstreamIds(graph: { nodes: ChainNode[]; edges: ChainEdge[] }, sourceId: string): Set<string> {
-  const zoneOf = new Map(graph.nodes.map(n => [n.id, n.zone]))
+  const zoneOf = new Map(graph.nodes.map(n => [n.id, zoneIdOf(n)]))
+  const members = zoneMembers(graph.nodes)
   const found = new Set<string>()
   const queue = [sourceId]
   const reach = (id: string) => {
@@ -49,7 +52,7 @@ export function downstreamIds(graph: { nodes: ChainNode[]; edges: ChainEdge[] },
     const id = queue.shift()!
     for (const e of graph.edges) if (e.fromNode === id) reach(e.toNode)
     const zone = id === sourceId ? undefined : zoneOf.get(id)
-    if (zone) for (const n of graph.nodes) if (n.zone === zone) reach(n.id)
+    if (zone) for (const n of members.get(zone) ?? []) reach(n.id)
   }
   return found
 }

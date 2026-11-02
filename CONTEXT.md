@@ -104,6 +104,8 @@ A **continuation** is one of resume, promote or fork handed to `continueRun` as 
 
 A loop-start/loop-end pair and the body nodes between them; iterates until the `until` condition or `maxIterations`. A `loop-start.state` entry is either a bare name with replace semantics or `{ name, accumulate: true, separator? }`. An accumulating state takes every live value entering the matching `loop-end` socket in edge order each round and appends it to the carried value; skipped producers contribute nothing, and `separator` defaults to a blank line. The canvas draws the zone as a `zoneFrame` bounding box — which is a visual, not a node kind.
 
+`lib/zones.ts` (#167) is the one place that knows zone semantics: membership and pairing, body order, state entries, validation issues and rename. The executor, validator, run-subgraph helpers and editor ask it rather than grouping nodes by `zone` themselves. A blank zone id is no zone. `lib/zoneLayout.ts` is the client-side canvas side: node size, frame boxes, and which zone a dropped node joins (a boundary never adopts one).
+
 ## Call site
 
 The place that names an agent and supplies its per-instance values: an `agent` node in a chain file. One agent file may have many call sites. The agent file holds what every call site shares. The call site holds what one node changes. _Avoid_: instance, invocation, usage.

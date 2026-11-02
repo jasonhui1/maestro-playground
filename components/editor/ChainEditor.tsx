@@ -8,7 +8,8 @@ import { socketHandles } from '@/lib/nodeSockets'
 import { uniqueNodeId, applyOp, editorOps, NON_HISTORIC, type EditorOp, type EditorGraph } from '@/lib/editorOps'
 import { withHistory, canUndo, canRedo } from '@/lib/history'
 import { upstreamSubgraph } from '@/lib/partialRun'
-import { computeZoneFrames, zoneAtPoint } from '@/lib/zoneFrames'
+import { zoneNames } from '@/lib/zones'
+import { NODE_W, NODE_H, adoptOnDrop } from '@/lib/zoneLayout'
 import type { ChainDef, ChainNode, ChainEdge, ChainNodeKind, ChainPort, ValidationIssue } from '@/lib/types'
 import type { RunDefinitions } from '@/lib/runDefinitions'
 import type { RunStateMap } from '@/lib/runState'
@@ -24,8 +25,6 @@ import ExternalChangeBanner from '@/components/workspace/ExternalChangeBanner'
 import { Play } from 'lucide-react'
 import InterfacePopover from './InterfacePopover'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-
-const NODE_W = 240, NODE_H = 120
 
 // Stable empty reference: a zustand v5 selector must return a cached value, never a fresh
 // `{}` each call, or useSyncExternalStore reports "getSnapshot should be cached" and loops.
@@ -176,15 +175,7 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
   }, [triggerRun, fileKey, slug, chain, iface])
 
   const updateNode = useCallback((id: string, patch: Partial<ChainNode>) => dispatch(editorOps.updateNode(id, patch)), [])
-  const moveNode = useCallback((id: string, pos: [number, number]) => {
-    const node = nodes.find(n => n.id === id)
-    if (!node || node.kind === 'loop-start' || node.kind === 'loop-end') {
-      dispatch(editorOps.moveNode(id, pos)); return
-    }
-    const frames = computeZoneFrames(nodes.filter(n => n.id !== id))
-    const zone = zoneAtPoint(frames, pos[0] + NODE_W / 2, pos[1] + NODE_H / 2)
-    dispatch(editorOps.updateNode(id, { pos, zone }))
-  }, [nodes])
+  const moveNode = useCallback((id: string, pos: [number, number]) => dispatch(editorOps.updateNode(id, adoptOnDrop(nodes, id, pos))), [nodes])
   const moveMany = useCallback((updates: { id: string; pos: [number, number] }[]) => dispatch(editorOps.moveMany(updates)), [])
   const addNodeOfKind = useCallback((kind: ChainNodeKind, pos: [number, number] = [80, 80], extra?: Partial<ChainNode>) => {
     dispatch(editorOps.addNode({
@@ -234,13 +225,7 @@ export default function ChainEditor({ slug, initialChain, defs, contextFiles, in
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedIds, clipboard, run])
 
-  const availableZones = useMemo(() => {
-    const set = new Set<string>()
-    for (const n of nodes) {
-      if (n.zone && n.zone.trim()) set.add(n.zone.trim())
-    }
-    return Array.from(set)
-  }, [nodes])
+  const availableZones = useMemo(() => zoneNames(nodes), [nodes])
 
   const buildData = useCallback((node: ChainNode): EditorNodeData => ({
     node,
