@@ -4,7 +4,7 @@ description: >-
   Designs one original anime girl for a gacha game from rolled dice, so every
   run differs; outputs her look for the illustrator
 skills: []
-max_tokens: 4000
+max_tokens: 10000
 outputs:
   - character
   - clothes
@@ -70,6 +70,35 @@ dice:
     - "fortune teller"
     - "phantom thief"
     - "space navigator"
+  # how the piece her role is known by shows; the designer picks the piece, never her weapon
+  role marker:
+    values:
+      "the piece her role is known by, in its classic form":
+      "the piece her role is known by, restyled by her culture":
+      "the piece her role is known by, built into her clothes": { rarity: uncommon }
+      "two small pieces her role is known by": { rarity: uncommon }
+  # her personality, fused into the core idea
+  archetype:
+    values:
+      "tsundere: prickly and proud on the outside, soft underneath":
+      "kuudere: cool and expressionless, quietly caring":
+      "dandere: shy and quiet until she trusts you":
+      "deredere: openly sweet and affectionate":
+      "genki: boundless energy, loud and cheerful":
+      "onee-san: the teasing, confident older-sister type":
+      "ojou-sama: the haughty, refined rich girl":
+      "chuunibyou: acts out a grand dark-power fantasy":
+      "dojikko: the clumsy, airheaded one":
+      "bokukko: the boyish tomboy, blunt and sporty":
+      "kamidere: sure she rules everyone, like a goddess":
+      "yamato nadeshiko: the graceful, traditional lady":
+      "yandere: sweet, with something unsettling underneath": { rarity: rare }
+  # how her archetype shows on this card: mostly true to type, sometimes cracked or pushed
+  moment:
+    values:
+      "in character":
+      "caught off guard: her type cracks for a moment": { rarity: uncommon }
+      "at full blast: her type pushed to the extreme": { rarity: uncommon }
   outfit: ["pleated skirt", "flared skirt", "wrap skirt", "tiered ruffle skirt", "high-low skirt", "fitted pencil skirt", "flowing skirt", "structured bubble skirt", "shorts", "trousers"]
   length: ["micro-mini", "mini", "mini", "above the knee", "knee-length", "midi", "ankle-length", "floor-length"]
   top: ["fitted corset bodice", "tailored blazer", "tube top", "halter top", "high-neck sleeveless top", "puff-sleeve blouse", "sailor blouse", "cropped hoodie", "wrap top with a crossed collar", "turtleneck", "bustier", "button-up shirt with the cuffs rolled", "leotard", "mandarin-collar bodice", "off-shoulder knit sweater", "waistcoat over bare shoulders", "long-sleeved bodysuit", "fitted military tunic", "cropped jacket over a bandeau", "lace-up peasant blouse"]
@@ -118,8 +147,9 @@ dice:
   hair: ["short bob", "pixie cut", "twin tails", "long straight hair", "wild curls", "twin braids", "high ponytail", "hime cut", "space buns", "shaved side with a long top", "drill curls", "messy wolf cut", "floor-length hair", "low side braid", "waist-length loose waves", "long flowing curls", "long layered hair", "long straight hair with blunt bangs", "long wavy hair with side-swept bangs", "long hime cut", "long high ponytail", "long low ponytail", "long side ponytail", "long twin tails", "long braided ponytail", "long single braid down her back", "long twin braids", "long crown braid with loose lengths", "long half-up ponytail", "long half-up bun", "long hair tied in a low bun", "long hair tied in twin buns with trailing locks", "long bubble ponytail tied at intervals", "long twin drill curls", "long jellyfish cut with a rounded upper layer and trailing lengths", "long ribbon-wrapped twin tails", "long hair looped into a bow with trailing ends", "long braided updo with waist-length loose strands"]
   build: ["normal", "curvy", "soft and round"]
   feature: ["freckles", "a scar", "a fang", "heterochromia", "pointed ears", "a tattoo", "glasses", "a bandage on her cheek", "an eyepatch", "animal ears", "small horns", "an ahoge", "thick eyebrows", "painted nails", "star-shaped pupils", "heart-shaped pupils", "slit pupils", "concentric-ring irises", "glowing irises", "a beauty mark beneath one eye", "tiny heart-shaped cheek markings", "glowing circuit lines on her cheek", "a gem set into her forehead", "a lock of hair in a contrasting palette colour", "hair fading between two palette colours", "fluffy fox ears", "tufted cat ears", "long rabbit ears", "fin-shaped ears", "small antlers", "a fluffy fox tail", "a slender devil tail with a heart-shaped tip", "a scaled dragon tail", "small translucent fairy wings", "a mechanical forearm", "visible ball joints at her wrists", "a translucent crystal horn", "pointed canine teeth"]
-  expression: ["smug", "flustered", "deadpan", "a big open laugh", "pouting", "sleepy", "a fierce scowl", "serene", "mischievous, tongue out", "teary but brave", "a wink and a bright idol smile", "a shy smile with flushed cheeks", "a startled wide-eyed gasp", "a determined grin with one fang showing", "half-lidded and unimpressed", "a smug sideways smirk", "an embarrassed puff-cheek pout", "sparkling-eyed excitement", "a haughty smile with her chin raised", "a tired smile behind a yawn", "a playful tongue-out wink", "a calm closed-eye smile"]
-  pose: ["mid-jump", "sitting on something", "looking back over her shoulder", "crouching", "stretching", "running", "lying on her side, propped on one elbow, facing the viewer", "spinning", "kneeling on one knee", "arms crossed, standing", "reaching toward the viewer", "making a finger-heart beside her cheek", "flashing a V-sign beside one eye", "holding a microphone mid-performance", "one hand on her hip, the other lifting her glasses", "balancing on one roller skate", "sitting sideways on a floating broom", "drawing a glowing symbol with one fingertip", "landing with her long hair and ribbons sweeping upward", "holding a transformation brooch out toward the viewer", "leaning over a DJ deck with one headphone lifted", "twirling something long over one shoulder", "a mid-dance turn with one hand framing her face", "cradling a mascot while it tugs her sleeve", "perched on a railing with her legs crossed"]
+  # how she moves, rolled as qualities: the designer chooses the pose itself
+  pose mode: ["action: caught mid-move", "showcase: a held pose that shows off her look"]
+  pose level: ["low: sitting, kneeling, crouching or lying", "standing", "off the ground: jumping, floating or perched up high"]
   palette: ["black, hot pink and silver", "mint, chocolate brown and cherry red", "mustard, navy and white", "lavender, silver and plum", "cobalt, white and orange", "forest green, cream and rust", "crimson, black and gold", "peach, teal and cream", "lilac, lemon and grey", "burgundy, blush and brass", "sky blue, coral and white", "olive, tan and red", "charcoal, acid green and white", "rose, sage and ivory", "midnight blue, copper and pale pink", "tangerine, deep purple and cream", "bubblegum pink, cyan and white", "black, electric violet and neon lime", "cherry red, cream and charcoal", "powder blue, blush pink and silver", "white, gold and lilac", "black, turquoise and chrome", "periwinkle, peach and ivory", "espresso, caramel and neon pink"]
   # fabrics only: a stiff material as the main garment draws as baskets, nets and balloons
   material: ["silk satin", "quilted satin", "glossy vinyl", "chunky knitted wool", "brocade", "faded denim", "tooled leather", "sheer organza", "latex", "crushed velvet", "sequins", "felt", "ripstop nylon", "technical sports knit", "holographic foil fabric", "iridescent PVC", "lace", "pleated chiffon", "reflective fabric", "faux fur", "mesh over opaque lining", "metallic lamé", "crisp cotton twill", "tweed", "corduroy", "jacquard", "patent leather", "tulle"]
@@ -134,29 +164,19 @@ You are a professional character designer for an anime gacha game. Design one or
 Dice, rolled for this girl:
 {dice}
 
-Start from culture, role, motif and occasion: fuse them into ONE core idea for
-this girl, in one sentence. Write it as a hook, not a list: the surprising or
-funny thing about her, in words a fan would use to describe her to a friend. Do
-not name the dice in it. Then design everything (hair, clothes, accessories,
-what skin shows) as a consequence of that idea. If two dice seem not to fit,
-reinterpret one through the other; never drop either.
+Start from culture, role, archetype, motif and occasion: fuse them into ONE
+core idea for this girl, in one sentence. Write it as a hook, not a list: the
+surprising or funny thing about her, in words a fan would use to describe her
+to a friend. Do not name the dice in it. Then design everything (hair,
+clothes, accessories, what skin shows) as a consequence of that idea. If two
+dice seem not to fit, reinterpret one through the other; never drop either.
 
-Her role must read from the visible design and acting, not just from
-the Core idea calling her an idol, knight, mechanic, or another role.
-Use the rolled garments, signature, styling, pose and expression to
-make that role recognizable. Let those rolls determine how she
-expresses it.
-
-Make the role legible through the treatment of those existing details.
-Role-specific props and accessories must occupy the rolled signature's
-type and location, or take the form of a rolled styling item. A role
-alone does not add another prop.
-
-Interpret culture and occasion through her role. When a detail seems
-at odds with it, give that detail a visible role-specific treatment
-while preserving the rolled garment, material, wear, pose and
-expression. Describe that treatment concretely in Clothes and Pose,
-so the illustrator can draw it.
+Her role is what she is: culture, archetype and occasion restyle it but
+never replace it. Show it first with the piece a fan knows her role by at a
+glance, treated as `role marker` says. Choose the piece yourself; it is never
+her weapon, and it is its own piece, apart from the signature. Describe it in
+Clothes by what it looks like, never with the rolled words, and in Pose name
+it right after her role.
 
 Culture can mean a historical tradition or a modern fashion subculture: use its
 garment shapes and styling vocabulary, adapted to her role and occasion.
@@ -182,7 +202,14 @@ The other dice are also rolled; make each one serve the core idea:
   by what it visibly does, not by a name.
 - signature, asymmetry, styling: details of the outfit. `reveal` is the skin
   shown; `unreal` is how it breaks reality.
-- hair, build, feature, expression, pose: her body and acting.
+- archetype, moment: her personality, as an anime fan would name it, and
+  how it shows on this card. Together they set her expression and how she
+  holds herself; choose both yourself so they show it, never naming her
+  type or writing the rolled words.
+- hair, build, feature: her body.
+- pose mode, pose level: how she moves. Choose her pose yourself so it
+  matches both, is something her role would do, and carries her archetype;
+  never write the rolled words.
 - palette, material, accent, wear: colours and surface. Use only the palette's
   three colours for her hair, eyes and clothes; they replace any traditional
   colours of her culture. Make the main garment of the material, and show the
@@ -230,6 +257,6 @@ Three or four sentences, head to toe, with colours and every accessory.
 
 ## Pose
 
-One sentence: her role and fashion or cultural styling, followed by
-her pose and expression. Describe concrete visible details, ready
-to pass directly to the image tool.
+One sentence that names her role plainly (a knight, an idol), then her
+pose and expression as concrete visible details, ready to pass directly to
+the image tool.

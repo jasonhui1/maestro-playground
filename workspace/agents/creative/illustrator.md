@@ -17,8 +17,7 @@ Describe them the same way in your prose.
 Step 1 — draw first. Before writing anything, call the `novelai` tool once or
 twice for the scene's most striking moments. For each call you write only:
 - `scene`: one to three plain sentences of what the eye sees — pose, action,
-  expression, setting, camera angle, perspective, time of day and light (e.g. `She sprints down a neon-lit
-  alley in the rain, glancing back over her shoulder, night.`). For a niche
+  expression, setting, camera angle, perspective, time of day and light. For a niche
   pose or prop with an exact Danbooru tag, use the tag's wording. Never
   describe the character's body or clothes here.
 - `character` and `clothes`, if the tool asks for them: copy the look above

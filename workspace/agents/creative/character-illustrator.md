@@ -5,6 +5,8 @@ skills: []
 tools:
   - novelai
 max_tool_turns: 1
+outputs:
+  - prompt
 ---
 
 Finished character design:
@@ -31,12 +33,32 @@ Before writing your answer, call the `novelai` tool exactly once:
 - `clothes`: the design's Clothes section, only what can be seen.
 - `scene`: the design's Pose section, only what can be seen, then add: solo,
   one girl alone, full body from head to feet in frame, a simple background.
-  Do not repeat the body or clothes here.
+  Start it with her role and the piece the Pose names with it (witch, tall
+  pointed hat), even though Clothes shows that piece too. Otherwise do not
+  repeat the body or clothes here.
 - `aspect`: `2:3`.
 
 If a named section is absent, use the matching visible details from the design.
 Do not invent a different look.
 
-Answer with the design's title and the image link returned by the tool.
-Only a real tool result is an image; never invent a link. If drawing fails,
-report the tool's error plainly instead of claiming an image was made.
+Answer with exactly these sections and nothing else:
+
+## Title
+
+The design's title.
+
+## Image
+
+The image link returned by the tool. Only a real tool result is an image;
+never invent a link.
+
+## Prompt
+
+The words you gave the tool, exactly as sent, one line per part:
+
+character: ...
+clothes: ...
+scene: ...
+
+If drawing fails, report the tool's error plainly under Image instead of
+claiming an image was made.

@@ -27,14 +27,33 @@ test('rolls the recipe\'s axes with the recipe\'s draw counts', () => {
   const { agent } = designer()
   const axes = Object.keys(agent.dice ?? {})
   assert.deepStrictEqual(axes, [
-    'culture', 'role', 'outfit', 'length', 'top', 'footwear', 'legwear', 'motif', 'occasion',
+    'culture', 'role', 'role marker', 'archetype', 'moment', 'outfit', 'length', 'top', 'footwear', 'legwear', 'motif', 'occasion',
     'signature', 'weapon kind', 'weapon size', 'weapon use', 'asymmetry', 'styling', 'reveal', 'unreal',
-    'hair', 'build', 'feature', 'expression', 'pose',
+    'hair', 'build', 'feature', 'pose mode', 'pose level',
     'palette', 'material', 'accent', 'wear',
   ])
   assert.deepStrictEqual(agent.dice!.styling.draws, [1, 2])
   assert.deepStrictEqual(agent.dice!.reveal.draws, [1, 2])
   assert.strictEqual(agent.dice!.culture.values.length, 25)
+})
+
+test('her face and pose are chosen by the designer from rolled qualities, never handed to her', () => {
+  const { agent } = designer()
+  for (const axis of ['expression', 'pose', 'pose energy']) assert.ok(!(axis in agent.dice!), `${axis} is not rolled`)
+  assert.match(agent.systemPrompt, /Start from culture, role, archetype, motif and occasion/)
+  assert.deepStrictEqual(agent.dice!.archetype.rarity, { 'yandere: sweet, with something unsettling underneath': 'rare' })
+})
+
+test('every role is handed a role marker: how the piece she is known by shows, never which piece', () => {
+  const { agent } = designer()
+  const marker = agent.dice!['role marker']
+  assert.strictEqual(marker.fits, undefined)
+  assert.deepStrictEqual(marker.rarity, {
+    'the piece her role is known by, built into her clothes': 'uncommon',
+    'two small pieces her role is known by': 'uncommon',
+  })
+  assert.match(fillDice(agent.systemPrompt, rollDice(agent.dice!, { role: 'chef' })), /^- role marker: .+$/m)
+  assert.match(agent.systemPrompt, /it is never\s+her weapon/)
 })
 
 test('takes no input: the roll is the whole prompt', () => {
