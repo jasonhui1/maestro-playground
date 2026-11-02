@@ -1,6 +1,6 @@
 import { AgentDef, AgentOutput, ChatMessage } from './types'
 import { replaceTokens, proseRef } from './tokens'
-import { calcCost, priceWarningFor } from './pricing'
+import { priceUsage } from './pricing'
 import { injectSkills } from './prompt'
 import { splitThought } from './modelStream'
 import { createChatCall } from './chatCall'
@@ -58,8 +58,7 @@ export async function runAgent(
       thought: thought || res.reasoning,
       tokensIn: res.tokensIn,
       tokensOut: res.tokensOut,
-      costUsd: calcCost(agent.model, res.tokensIn, res.tokensOut),
-      costWarning: priceWarningFor(agent.model),
+      ...priceUsage(agent.model, res.tokensIn, res.tokensOut),
       latencyMs: Date.now() - start,
       status: 'success',
       toolCalls: res.toolCalls,
@@ -77,8 +76,7 @@ export async function runAgent(
       output: '',
       tokensIn,
       tokensOut,
-      costUsd: calcCost(agent.model, tokensIn, tokensOut),
-      costWarning: priceWarningFor(agent.model),
+      ...priceUsage(agent.model, tokensIn, tokensOut),
       latencyMs: Date.now() - start,
       status: 'error',
       error: err instanceof Error ? err.message : String(err),

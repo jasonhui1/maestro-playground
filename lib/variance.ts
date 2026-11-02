@@ -2,6 +2,7 @@ import { buildCompareModel } from './compareModel'
 import { recordKey, runLog } from './partialRun'
 import type { AgentOutput, RunMeta } from './types'
 import type { RunEvent } from './runStream'
+import { summarizeCost } from './runLedger'
 
 export type VarianceRunEvent = (RunEvent & { instance: number }) | {
   type: 'variance_complete'
@@ -121,14 +122,7 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
   const spreads = spreadOf(entries.map(([, entry]) =>
     entry.samples.filter(sample => sample.status === 'success').map(sample => sample.output)))
 
-  let totalCost = 0
-  let hasUnpriced = false
-  for (const run of runs) {
-    for (const output of run.agentOutputs) {
-      if (output.costUsd === undefined) hasUnpriced = true
-      else totalCost += output.costUsd
-    }
-  }
+  const cost = summarizeCost(runs.flatMap(run => run.agentOutputs), { withholdPartialTotal: true })
 
   return {
     groupId: first?.variance?.groupId ?? '',
@@ -136,7 +130,7 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     seedPrompt: first?.seedPrompt ?? '',
     expectedRunCount,
     completedRunCount: runs.filter(run => run.status === 'complete').length,
-    ...(hasUnpriced ? { costWarning: 'one or more runs contain unpriced output' } : { costUsd: totalCost }),
+    ...(cost.costWarning ? { costWarning: cost.costWarning } : { costUsd: cost.costUsd ?? 0 }),
     runs,
     nodes: entries.map(([, entry], index) => {
       const successful = entry.samples.filter(sample => sample.status === 'success')
@@ -151,14 +145,4 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
       }
     }),
   }
-}
-
-/** Aggregate status across all runs in a variance group (#142). */
-export function varianceGroupStatus(group: VarianceGroup): RunMeta['status'] {
-  if (group.runs.some(r => r.status === 'error')) return 'error'
-  if (group.completedRunCount === group.expectedRunCount && group.runs.every(r => r.status === 'complete')) {
-    return 'complete'
-  }
-  if (group.runs.some(r => r.status === 'waiting')) return 'waiting'
-  return 'running'
 }

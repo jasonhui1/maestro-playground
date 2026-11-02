@@ -4,7 +4,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { RunMeta } from '@/lib/types'
-import { summarizeRunCost } from '@/lib/pricing'
+import { summarize } from '@/lib/runLedger'
+import { statusStyle as styleOf } from '@/lib/runStatus'
+import { formatDuration, formatClockTime, formatDate } from '@/lib/timeFormat'
 import { UnpricedBadge } from '@/components/UnpricedBadge'
 import type { ChangedSinceResult } from '@/lib/changedSince'
 
@@ -12,47 +14,6 @@ export interface RunCardProps {
   run: RunMeta
   /** Version differences compared to previous run of same chain (#131). */
   changedSince?: ChangedSinceResult
-}
-
-export const STATUS_CONFIG: Record<RunMeta['status'], { label: string; dotClass: string; textClass: string }> = {
-  complete: { label: 'done', dotClass: 'text-emerald-500', textClass: 'text-emerald-700' },
-  waiting: { label: 'hold', dotClass: 'text-amber-500', textClass: 'text-amber-700' },
-  running: { label: 'running', dotClass: 'text-blue-500 animate-pulse', textClass: 'text-blue-700' },
-  error: { label: 'error', dotClass: 'text-rose-500', textClass: 'text-rose-700' },
-}
-
-export function getRunDurationMs(run: RunMeta): number {
-  if (run.completedAt && run.startedAt) {
-    const start = new Date(run.startedAt).getTime()
-    const end = new Date(run.completedAt).getTime()
-    if (!isNaN(start) && !isNaN(end) && end >= start) {
-      return end - start
-    }
-  }
-  const latencySum = run.agentOutputs.reduce((sum, o) => sum + (o.latencyMs || 0), 0)
-  if (latencySum > 0) return latencySum
-  return 0
-}
-
-export function formatDuration(ms: number): string {
-  if (ms <= 0) return '—'
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const minutes = Math.floor(ms / 60000)
-  const seconds = Math.floor((ms % 60000) / 1000)
-  return `${minutes}m ${seconds}s`
-}
-
-export function formatClockTime(isoString: string): string {
-  const date = new Date(isoString)
-  if (isNaN(date.getTime())) return isoString
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-export function formatDate(isoString: string): string {
-  const date = new Date(isoString)
-  if (isNaN(date.getTime())) return isoString
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export function renderDrift(changedSince?: ChangedSinceResult) {
@@ -86,12 +47,10 @@ export function renderDrift(changedSince?: ChangedSinceResult) {
 export default function RunCard({ run, changedSince }: RunCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const costSummary = summarizeRunCost(run.agentOutputs)
-  const costTooltip = costSummary.unpricedModels.length > 0 ? `Unpriced models: ${costSummary.unpricedModels.join(', ')}` : undefined
-  const totalTokens = run.agentOutputs.reduce((sum, o) => sum + (o.tokensIn || 0) + (o.tokensOut || 0), 0)
-  const durationMs = getRunDurationMs(run)
+  const ledger = summarize(run)
+  const costTooltip = ledger.unpricedModels.length > 0 ? `Unpriced models: ${ledger.unpricedModels.join(', ')}` : undefined
 
-  const statusStyle = STATUS_CONFIG[run.status] ?? STATUS_CONFIG.running
+  const statusStyle = styleOf(ledger.status)
   const isChat = run.chainName.startsWith('Chat with ')
   const href = isChat ? `/chat?runId=${run.runId}` : `/history/${run.runId}`
 
@@ -155,32 +114,32 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          <span className="font-mono text-xs text-zinc-700" title={`${run.agentOutputs.length} ${isChat ? 'turns' : 'steps'}`}>
-            {run.agentOutputs.length}
+          <span className="font-mono text-xs text-zinc-700" title={`${ledger.steps} ${isChat ? 'turns' : 'steps'}`}>
+            {ledger.steps}
           </span>
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
           <span className="font-mono text-xs text-zinc-700">
-            {totalTokens > 0 ? totalTokens.toLocaleString() : '0'}
+            {ledger.tokens > 0 ? ledger.tokens.toLocaleString() : '0'}
           </span>
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          {costSummary.pricedCount === 0 ? (
+          {ledger.costUsd === undefined ? (
             <span
               className="font-mono text-xs text-zinc-900 font-medium"
               title={costTooltip}
             >
-              {run.agentOutputs.length === 0 ? '—' : 'unpriced'}
+              {ledger.steps === 0 ? '—' : 'unpriced'}
             </span>
           ) : (
             <span
               className="font-mono text-xs text-zinc-900 font-medium inline-flex items-center gap-1 justify-end"
               title={costTooltip}
             >
-              <span>${costSummary.totalCost.toFixed(4)}</span>
-              <UnpricedBadge count={costSummary.unpricedCount} />
+              <span>${ledger.costUsd.toFixed(4)}</span>
+              <UnpricedBadge count={ledger.unpricedCount} />
             </span>
           )}
         </td>
@@ -189,7 +148,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
           <div className="flex items-center justify-end gap-2">
             <div className="flex flex-col items-end">
               <span className="font-mono text-xs font-medium text-zinc-900">
-                {formatDuration(durationMs)}
+                {formatDuration(ledger.durationMs)}
               </span>
               <time
                 dateTime={run.startedAt}
@@ -251,21 +210,21 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-lg border border-zinc-200 text-xs">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Duration</span>
-                  <span className="font-mono font-medium text-zinc-800">{formatDuration(durationMs)}</span>
+                  <span className="font-mono font-medium text-zinc-800">{formatDuration(ledger.durationMs)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Tokens</span>
-                  <span className="font-mono font-medium text-zinc-800">{totalTokens.toLocaleString()}</span>
+                  <span className="font-mono font-medium text-zinc-800">{ledger.tokens.toLocaleString()}</span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Cost</span>
                   <span className="font-mono font-medium text-zinc-800 inline-flex items-center gap-1" title={costTooltip}>
-                    {costSummary.pricedCount === 0 ? (
+                    {ledger.costUsd === undefined ? (
                       'unpriced'
                     ) : (
                       <>
-                        <span>${costSummary.totalCost.toFixed(4)}</span>
-                        <UnpricedBadge count={costSummary.unpricedCount} />
+                        <span>${ledger.costUsd.toFixed(4)}</span>
+                        <UnpricedBadge count={ledger.unpricedCount} />
                       </>
                     )}
                   </span>
@@ -273,7 +232,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Steps</span>
                   <span className="font-mono font-medium text-zinc-800">
-                    {run.agentOutputs.length} {isChat ? 'turns' : 'steps'}
+                    {ledger.steps} {isChat ? 'turns' : 'steps'}
                   </span>
                 </div>
               </div>

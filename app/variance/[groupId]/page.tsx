@@ -6,6 +6,8 @@ import { CompareOverlay } from '@/components/result/CompareOverlay'
 import type { LayoutPanel } from '@/lib/layoutModel'
 import type { PanelDeck } from '@/lib/panelDeck'
 import type { VarianceGroup, VarianceNode } from '@/lib/variance'
+import { summarize } from '@/lib/runLedger'
+import { UnpricedBadge } from '@/components/UnpricedBadge'
 
 function runLabel(group: VarianceGroup, index: number): string {
   const run = group.runs[index]
@@ -70,6 +72,7 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
   if (error) return <div className="mx-auto max-w-3xl px-6 py-12 text-sm text-red-700">{error}</div>
   if (!group) return <div className="mx-auto max-w-3xl px-6 py-12 text-sm text-zinc-400">Loading variance group…</div>
 
+  const ledger = summarize(group)
   const comparedRuns = [group.runs[left], group.runs[right]]
   const canCompare = (node: VarianceNode) => comparedRuns.every(run => run && node.samples.some(sample => sample.runId === run.runId))
 
@@ -83,8 +86,15 @@ export default function VariancePage({ params }: { params: Promise<{ groupId: st
         </div>
         <div className="text-right text-xs text-zinc-500">
           <div>{group.completedRunCount} of {group.expectedRunCount} runs complete</div>
-          <div className="font-mono text-zinc-800">{group.costUsd !== undefined ? `$${group.costUsd.toFixed(4)}` : 'unpriced'}</div>
-          {group.costWarning && <div className="text-amber-700">{group.costWarning}</div>}
+          <div className="flex items-center justify-end gap-1 font-mono text-zinc-800">
+            {ledger.costUsd !== undefined ? (
+              <>
+                <span>${ledger.costUsd.toFixed(4)}</span>
+                <UnpricedBadge count={ledger.unpricedCount} />
+              </>
+            ) : 'unpriced'}
+          </div>
+          {ledger.costWarning && <div className="text-amber-700">{ledger.costWarning}</div>}
         </div>
       </header>
 

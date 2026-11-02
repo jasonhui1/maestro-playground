@@ -1,5 +1,5 @@
 import { validateChain } from './chainGraph'
-import { parseModelOverride } from './pricing'
+import { parseModelOverride } from './modelOverride'
 import { parseImageOverride } from './imageOverride'
 import { resolveRunChain, type RunChainBody } from './resolveRunChain'
 import { pinRunSnapshot } from './runVersions'

@@ -69,6 +69,7 @@ test('a variance group lists node spread, ordinary runs and their summed cost', 
   assert.ok(Math.abs((group.costUsd ?? 0) - 0.06) < Number.EPSILON)
 })
 
+// The group's API total is withheld rather than partial (#133); the history views sum what is priced.
 test('one unpriced output makes the group total unpriced instead of silently partial', () => {
   const unpriced = output('world-builder', 'shared')
   delete unpriced.costUsd
@@ -78,7 +79,7 @@ test('one unpriced output makes the group total unpriced instead of silently par
   ])
 
   assert.strictEqual(group.costUsd, undefined)
-  assert.strictEqual(group.costWarning, 'one or more runs contain unpriced output')
+  assert.strictEqual(group.costWarning, 'no price for model')
 })
 
 test('a node missing any expected successful output has no spread instead of a partial-sample spread', () => {

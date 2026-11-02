@@ -1,6 +1,6 @@
 import { ChainDef, FieldSource } from './types'
 import { RunStateMap } from './runState'
-import { isModelPriced } from './pricing'
+import { summarizeCost, type CostEntry } from './runLedger'
 import type { ChangedSinceResult } from './changedSince'
 
 /** Where the run's seed came from — the two shapes the result view offers (#66), plus
@@ -108,41 +108,13 @@ export function buildRunFrame(input: {
     }
   }
 
-  // #126, #128, #145
-  let sum = 0
-  let pricedCount = 0
-  let unpricedCount = 0
-  const unpricedModels = new Set<string>()
-  if (modelOverride && Object.values(states).every(s => !s.result && s.rounds.length === 0)) {
-    if (!isModelPriced(modelOverride)) {
-      unpricedCount++
-      unpricedModels.add(modelOverride)
-    }
-  }
-  for (const s of Object.values(states)) {
-    if (s.rounds.length > 0) {
-      for (const r of s.rounds) {
-        if (typeof r.metrics.costUsd === 'number') {
-          pricedCount++
-          sum += r.metrics.costUsd
-        } else {
-          unpricedCount++
-          if (s.result?.model) unpricedModels.add(s.result.model)
-        }
-      }
-    } else if (s.result) {
-      if (typeof s.result.costUsd === 'number') {
-        pricedCount++
-        sum += s.result.costUsd
-      } else {
-        unpricedCount++
-        if (s.result.model) unpricedModels.add(s.result.model)
-      }
-    }
-  }
-
-  const costUsd = pricedCount > 0 ? sum : undefined
-  const costWarning = unpricedModels.size > 0 ? `no price for ${Array.from(unpricedModels).join(', ')}` : undefined
+  // #126, #128, #145: a node's rounds each carry their own cost; its result stands in only when it ran no rounds.
+  const entries: CostEntry[] = Object.values(states).flatMap(s =>
+    s.rounds.length > 0
+      ? s.rounds.map(r => ({ costUsd: r.metrics.costUsd, model: s.result?.model }))
+      : s.result ? [{ costUsd: s.result.costUsd, model: s.result.model }] : [])
+  const nothingRanYet = Object.values(states).every(s => !s.result && s.rounds.length === 0)
+  const cost = summarizeCost(entries, { pendingModels: modelOverride && nothingRanYet ? [modelOverride] : [] })
 
   const frame: RunFrameModel = {
     chainName: chain.name,
@@ -150,11 +122,11 @@ export function buildRunFrame(input: {
     seedSource: describeSeed(seed),
     status,
     elapsedMs: startedAt === undefined ? 0 : Math.max(0, (endedAt ?? now) - startedAt),
-    costUsd,
+    costUsd: cost.costUsd,
   }
-  if (unpricedCount > 0) frame.unpricedCount = unpricedCount
-  if (unpricedModels.size > 0) frame.unpricedModels = Array.from(unpricedModels)
-  if (costWarning) frame.costWarning = costWarning
+  if (cost.unpricedCount > 0) frame.unpricedCount = cost.unpricedCount
+  if (cost.unpricedModels.length > 0) frame.unpricedModels = cost.unpricedModels
+  if (cost.costWarning) frame.costWarning = cost.costWarning
   if (models.length > 0) frame.models = models
   if (error) frame.error = error
   if (parameter) frame.parameter = parameter

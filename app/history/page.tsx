@@ -6,7 +6,8 @@ import { changedSince, findPreviousRun, type ChangedSinceResult } from '@/lib/ch
 import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
-import { buildVarianceGroup, varianceGroupStatus } from '@/lib/variance'
+import { buildVarianceGroup } from '@/lib/variance'
+import { varianceGroupStatus } from '@/lib/runLedger'
 import { VarianceRunCard } from '@/components/VarianceRunCard'
 
 const STATUS_FILTERS = [
