@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert'
-import { calcCost, isModelPriced, priceUsage, priceWarningFor } from '../lib/pricing'
+import { calcCost, isModelPriced, priceUsage } from '../lib/pricing'
 import { buildRunFrame } from '../lib/runFrame'
 import { emptyNodeState, RunStateMap } from '../lib/runState'
 import type { AgentOutput, ChainDef } from '../lib/types'
@@ -46,8 +46,6 @@ test('calcCost returns 0 for known free model gemma-4-31b-it with or without pre
   assert.strictEqual(calcCost('google/gemma-4-31b-it', 5000, 5000), 0)
   assert.strictEqual(isModelPriced('gemma-4-31b-it'), true)
   assert.strictEqual(isModelPriced('google/gemma-4-31b-it'), true)
-  assert.strictEqual(priceWarningFor('gemma-4-31b-it'), undefined)
-  assert.strictEqual(priceWarningFor('google/gemma-4-31b-it'), undefined)
 })
 
 test('priceUsage prices a known model and warns for an unknown one from one lookup', () => {
@@ -59,7 +57,6 @@ test('calcCost returns undefined for unknown models and provides price warning',
   assert.strictEqual(calcCost('mistral/mistral-large', 1000, 1000), undefined)
   assert.strictEqual(calcCost('unknown-model', 1000, 1000), undefined)
   assert.strictEqual(isModelPriced('unknown-model'), false)
-  assert.strictEqual(priceWarningFor('unknown-model'), 'no price for unknown-model')
 })
 
 test('run frame reports costUsd undefined and costWarning naming the unpriced model', () => {

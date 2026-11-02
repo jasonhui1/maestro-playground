@@ -2,7 +2,8 @@ import { describe, test, expect } from 'vitest'
 import { renderDrift } from '@/components/RunCard'
 import { STATUS_CONFIG } from '@/lib/runStatus'
 import { formatDuration } from '@/lib/timeFormat'
-import { summarize, varianceGroupStatus } from '@/lib/runLedger'
+import { summarizeRun } from '@/lib/runLedger'
+import { varianceGroupStatus } from '@/lib/runStatus'
 import type { VarianceGroup } from '@/lib/variance'
 import type { RunMeta } from '@/lib/types'
 import type { ChangedSinceResult } from '@/lib/changedSince'
@@ -25,7 +26,7 @@ describe('history ledger and status mapping (#142)', () => {
       status: 'complete',
       agentOutputs: [],
     }
-    expect(summarize(run).durationMs).toBe(15500)
+    expect(summarizeRun(run).durationMs).toBe(15500)
     expect(formatDuration(15500)).toBe('15.5s')
   })
 
@@ -63,7 +64,7 @@ describe('history ledger and status mapping (#142)', () => {
         },
       ],
     }
-    expect(summarize(run).durationMs).toBe(3500)
+    expect(summarizeRun(run).durationMs).toBe(3500)
     expect(formatDuration(3500)).toBe('3.5s')
   })
 

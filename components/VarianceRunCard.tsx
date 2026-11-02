@@ -4,10 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import type { VarianceGroup } from '@/lib/variance'
-import { summarize } from '@/lib/runLedger'
-import { statusStyle as styleOf } from '@/lib/runStatus'
+import { summarizeRun } from '@/lib/runLedger'
+import { statusStyle } from '@/lib/runStatus'
 import { formatDuration, formatClockTime, formatDate } from '@/lib/timeFormat'
-import { UnpricedBadge } from '@/components/UnpricedBadge'
+import { CostCell } from '@/components/CostCell'
 
 export interface VarianceRunCardProps {
   group: VarianceGroup
@@ -19,9 +19,8 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
   const spreads = group.nodes.flatMap(node => node.spread === undefined ? [] : [node.spread])
   const widest = spreads.length > 0 ? Math.max(...spreads).toFixed(2) : 'n/a'
 
-  const ledger = summarize(group)
-  const statusStyle = styleOf(ledger.status)
-  const costTooltip = ledger.unpricedModels.length > 0 ? `Unpriced models: ${ledger.unpricedModels.join(', ')}` : undefined
+  const ledger = summarizeRun(group)
+  const style = statusStyle(ledger.status)
 
   const startedAt = group.runs[0]?.startedAt || ''
   const href = `/variance/${encodeURIComponent(group.groupId)}`
@@ -36,9 +35,9 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
       >
         <td className="py-3 px-4 whitespace-nowrap">
           <div className="flex items-center gap-1.5">
-            <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
-              <span className={`text-[10px] leading-none ${statusStyle.dotClass}`}>●</span>
-              <span>{statusStyle.label}</span>
+            <span className={`inline-flex items-center gap-1 text-xs font-medium ${style.textClass}`}>
+              <span className={`text-[10px] leading-none ${style.dotClass}`}>●</span>
+              <span>{style.label}</span>
             </span>
             <span className="rounded border border-violet-200 bg-violet-50 px-1 py-0.2 text-[9px] font-medium text-violet-700">
               ×{group.expectedRunCount}
@@ -108,14 +107,7 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          <span className="font-mono text-xs text-zinc-900 font-medium inline-flex items-center gap-1 justify-end" title={costTooltip}>
-            {ledger.costUsd !== undefined ? (
-              <>
-                <span>${ledger.costUsd.toFixed(4)}</span>
-                <UnpricedBadge count={ledger.unpricedCount} />
-              </>
-            ) : ledger.steps === 0 ? '—' : 'unpriced'}
-          </span>
+          <CostCell cost={ledger} className="font-mono text-xs text-zinc-900 font-medium justify-end" />
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
@@ -197,14 +189,7 @@ export function VarianceRunCard({ group }: VarianceRunCardProps) {
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Total Cost</span>
-                  <span className="font-mono font-medium text-zinc-800 inline-flex items-center gap-1" title={costTooltip}>
-                    {ledger.costUsd !== undefined ? (
-                      <>
-                        <span>${ledger.costUsd.toFixed(4)}</span>
-                        <UnpricedBadge count={ledger.unpricedCount} />
-                      </>
-                    ) : 'unpriced'}
-                  </span>
+                  <CostCell cost={ledger} className="font-mono font-medium text-zinc-800" />
                 </div>
               </div>
             </div>

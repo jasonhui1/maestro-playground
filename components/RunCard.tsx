@@ -4,10 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { RunMeta } from '@/lib/types'
-import { summarize } from '@/lib/runLedger'
-import { statusStyle as styleOf } from '@/lib/runStatus'
+import { summarizeRun } from '@/lib/runLedger'
+import { statusStyle } from '@/lib/runStatus'
 import { formatDuration, formatClockTime, formatDate } from '@/lib/timeFormat'
-import { UnpricedBadge } from '@/components/UnpricedBadge'
+import { CostCell } from '@/components/CostCell'
 import type { ChangedSinceResult } from '@/lib/changedSince'
 
 export interface RunCardProps {
@@ -47,10 +47,9 @@ export function renderDrift(changedSince?: ChangedSinceResult) {
 export default function RunCard({ run, changedSince }: RunCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const ledger = summarize(run)
-  const costTooltip = ledger.unpricedModels.length > 0 ? `Unpriced models: ${ledger.unpricedModels.join(', ')}` : undefined
+  const ledger = summarizeRun(run)
 
-  const statusStyle = styleOf(ledger.status)
+  const style = statusStyle(ledger.status)
   const isChat = run.chainName.startsWith('Chat with ')
   const href = isChat ? `/chat?runId=${run.runId}` : `/history/${run.runId}`
 
@@ -63,9 +62,9 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
         }`}
       >
         <td className="py-3 px-4 whitespace-nowrap">
-          <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
-            <span className={`text-[10px] leading-none ${statusStyle.dotClass}`}>●</span>
-            <span>{statusStyle.label}</span>
+          <span className={`inline-flex items-center gap-1 text-xs font-medium ${style.textClass}`}>
+            <span className={`text-[10px] leading-none ${style.dotClass}`}>●</span>
+            <span>{style.label}</span>
           </span>
         </td>
 
@@ -126,22 +125,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
-          {ledger.costUsd === undefined ? (
-            <span
-              className="font-mono text-xs text-zinc-900 font-medium"
-              title={costTooltip}
-            >
-              {ledger.steps === 0 ? '—' : 'unpriced'}
-            </span>
-          ) : (
-            <span
-              className="font-mono text-xs text-zinc-900 font-medium inline-flex items-center gap-1 justify-end"
-              title={costTooltip}
-            >
-              <span>${ledger.costUsd.toFixed(4)}</span>
-              <UnpricedBadge count={ledger.unpricedCount} />
-            </span>
-          )}
+          <CostCell cost={ledger} className="font-mono text-xs text-zinc-900 font-medium justify-end" />
         </td>
 
         <td className="py-3 px-4 text-right whitespace-nowrap">
@@ -184,9 +168,9 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                     Run Transcript & Summary
                   </span>
                   <span className="font-mono text-xs text-zinc-400">{run.runId}</span>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${statusStyle.textClass}`}>
-                    <span className={`text-[10px] leading-none ${statusStyle.dotClass}`}>●</span>
-                    <span>{statusStyle.label}</span>
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${style.textClass}`}>
+                    <span className={`text-[10px] leading-none ${style.dotClass}`}>●</span>
+                    <span>{style.label}</span>
                   </span>
                 </div>
                 <Link
@@ -218,16 +202,7 @@ export default function RunCard({ run, changedSince }: RunCardProps) {
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Cost</span>
-                  <span className="font-mono font-medium text-zinc-800 inline-flex items-center gap-1" title={costTooltip}>
-                    {ledger.costUsd === undefined ? (
-                      'unpriced'
-                    ) : (
-                      <>
-                        <span>${ledger.costUsd.toFixed(4)}</span>
-                        <UnpricedBadge count={ledger.unpricedCount} />
-                      </>
-                    )}
-                  </span>
+                  <CostCell cost={ledger} className="font-mono font-medium text-zinc-800" />
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-zinc-400 block">Steps</span>

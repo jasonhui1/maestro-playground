@@ -122,7 +122,7 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
   const spreads = spreadOf(entries.map(([, entry]) =>
     entry.samples.filter(sample => sample.status === 'success').map(sample => sample.output)))
 
-  const cost = summarizeCost(runs.flatMap(run => run.agentOutputs), { withholdPartialTotal: true })
+  const cost = summarizeCost(runs.flatMap(run => run.agentOutputs))
 
   return {
     groupId: first?.variance?.groupId ?? '',
@@ -130,7 +130,8 @@ export function buildVarianceGroup(groupRuns: RunMeta[]): VarianceGroup {
     seedPrompt: first?.seedPrompt ?? '',
     expectedRunCount,
     completedRunCount: runs.filter(run => run.status === 'complete').length,
-    ...(cost.costWarning ? { costWarning: cost.costWarning } : { costUsd: cost.costUsd ?? 0 }),
+    ...(cost.costUsd !== undefined ? { costUsd: cost.costUsd } : {}),
+    ...(cost.costWarning ? { costWarning: cost.costWarning } : {}),
     runs,
     nodes: entries.map(([, entry], index) => {
       const successful = entry.samples.filter(sample => sample.status === 'success')

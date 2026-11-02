@@ -7,7 +7,7 @@ import RunCard from '@/components/RunCard'
 import { useWorkspaceStore } from '@/hooks/store/useWorkspaceStore'
 import { X } from 'lucide-react'
 import { buildVarianceGroup } from '@/lib/variance'
-import { varianceGroupStatus } from '@/lib/runLedger'
+import { varianceGroupStatus } from '@/lib/runStatus'
 import { VarianceRunCard } from '@/components/VarianceRunCard'
 
 const STATUS_FILTERS = [

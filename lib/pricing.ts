@@ -31,10 +31,6 @@ export function unpricedWarning(models: string[]): string {
   return `no price for ${models.length > 0 ? models.join(', ') : 'an unnamed model'}`
 }
 
-export function priceWarningFor(model: string): string | undefined {
-  return isModelPriced(model) ? undefined : unpricedWarning([model])
-}
-
 export function calcCost(model: string, tokensIn: number, tokensOut: number): number | undefined {
   const p = lookupPrice(model)
   if (!p) return undefined
@@ -48,7 +44,3 @@ export function priceUsage(model: string, tokensIn: number, tokensOut: number): 
 }
 
 export const PRICED_MODELS: string[] = Object.keys(PRICING)
-
-// Temporary shim so lib/{continueRun,fork,hold,fs/workspace}.ts keep compiling while
-// they are rewritten elsewhere; delete once they import from ./modelOverride (#165).
-export { parseModelOverride, resolveContinuationModelOverride, knownModelCatalogue } from './modelOverride'

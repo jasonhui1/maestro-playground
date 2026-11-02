@@ -1,5 +1,6 @@
 import { ChainDef, FieldSource } from './types'
 import { RunStateMap } from './runState'
+import { isModelPriced } from './pricing'
 import { summarizeCost, type CostEntry } from './runLedger'
 import type { ChangedSinceResult } from './changedSince'
 
@@ -114,7 +115,8 @@ export function buildRunFrame(input: {
       ? s.rounds.map(r => ({ costUsd: r.metrics.costUsd, model: s.result?.model }))
       : s.result ? [{ costUsd: s.result.costUsd, model: s.result.model }] : [])
   const nothingRanYet = Object.values(states).every(s => !s.result && s.rounds.length === 0)
-  const cost = summarizeCost(entries, { pendingModels: modelOverride && nothingRanYet ? [modelOverride] : [] })
+  if (modelOverride && nothingRanYet && !isModelPriced(modelOverride)) entries.push({ model: modelOverride })
+  const cost = summarizeCost(entries)
 
   const frame: RunFrameModel = {
     chainName: chain.name,

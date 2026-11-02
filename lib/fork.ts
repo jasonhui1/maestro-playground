@@ -4,7 +4,7 @@ import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspa
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
-import { resolveContinuationModelOverride, parseModelOverride } from './pricing'
+import { resolveContinuationModelOverride, parseModelOverride } from './modelOverride'
 
 export interface Fork {
   /** The nodes whose output changes; each one's descendants rerun. The first names the fork. */

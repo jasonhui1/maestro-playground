@@ -1,5 +1,7 @@
 import { describe, test, expect } from 'vitest'
-import { summarize, summarizeCost, varianceGroupStatus } from '@/lib/runLedger'
+import { summarizeRun, summarizeCost } from '@/lib/runLedger'
+import { varianceGroupStatus } from '@/lib/runStatus'
+import { unpricedWarning } from '@/lib/pricing'
 import { buildVarianceGroup } from '@/lib/variance'
 import { buildRunFrame } from '@/lib/runFrame'
 import { emptyNodeState } from '@/lib/runState'
@@ -50,23 +52,18 @@ describe('summarizeCost: sum priced, report unpriced', () => {
     expect(free.unpricedCount).toBe(0)
   })
 
-  test('withholdPartialTotal drops the total once anything is unpriced', () => {
-    const entries = [{ costUsd: 0.01, model: 'a' }, { model: 'b' }]
-    expect(summarizeCost(entries, { withholdPartialTotal: true }).costUsd).toBeUndefined()
-    expect(summarizeCost(entries.slice(0, 1), { withholdPartialTotal: true }).costUsd).toBe(0.01)
-  })
-
-  test('pending models count unpriced only when no price is known', () => {
-    expect(summarizeCost([], { pendingModels: ['openai/gpt-4o'] }).unpricedCount).toBe(0)
-    const s = summarizeCost([], { pendingModels: ['mystery'] })
-    expect(s.unpricedModels).toEqual(['mystery'])
-    expect(s.costWarning).toBe('no price for mystery')
+  test('an unnamed unpriced entry still warns, with the unnamed-model wording', () => {
+    const s = summarizeCost([{ costUsd: 0.01 }, {}])
+    expect(s.unpricedCount).toBe(1)
+    expect(s.unpricedModels).toEqual([])
+    expect(s.costWarning).toBe('no price for an unnamed model')
+    expect(unpricedWarning([])).toBe('no price for an unnamed model')
   })
 })
 
-describe('summarize(run)', () => {
+describe('summarizeRun(run)', () => {
   test('reads status, steps, tokens, cost and duration from one run', () => {
-    const l = summarize(run('r1', [output('a', 0.02), output('mystery', undefined, { latencyMs: 400 })], {
+    const l = summarizeRun(run('r1', [output('a', 0.02), output('mystery', undefined, { latencyMs: 400 })], {
       completedAt: '2026-09-23T10:00:15.500Z',
     }))
     expect(l).toMatchObject({
@@ -76,11 +73,11 @@ describe('summarize(run)', () => {
   })
 
   test('duration falls back to summed latency without completedAt', () => {
-    expect(summarize(run('r', [output('a', 1), output('a', 1)])).durationMs).toBe(200)
+    expect(summarizeRun(run('r', [output('a', 1), output('a', 1)])).durationMs).toBe(200)
   })
 })
 
-describe('summarize(variance group)', () => {
+describe('summarizeRun(variance group)', () => {
   const groupOf = (runs: RunMeta[]) => buildVarianceGroup(runs.map((r, i) => ({
     ...r, variance: { groupId: 'g', index: i, size: runs.length },
   })))
@@ -90,16 +87,20 @@ describe('summarize(variance group)', () => {
       run('r1', [output('a', 0.01)], { completedAt: '2026-09-23T10:00:02Z' }),
       run('r2', [output('a', 0.02), output('mystery', undefined)], { completedAt: '2026-09-23T10:00:05Z' }),
     ])
-    const l = summarize(group)
+    const l = summarizeRun(group)
     expect(l).toMatchObject({ steps: 3, tokens: 45, unpricedCount: 1, unpricedModels: ['mystery'], durationMs: 5000 })
     expect(l.costUsd).toBeCloseTo(0.03)
     expect(l.costWarning).toBe('no price for mystery')
   })
 
-  test('the group projection keeps its API total withheld when anything is unpriced (#133)', () => {
+  test('the group projection carries the ledger result: a partial total always comes with a warning (#133)', () => {
     const group = groupOf([run('r1', [output('a', 0.01)]), run('r2', [output('mystery', undefined)])])
-    expect(group.costUsd).toBeUndefined()
+    expect(group.costUsd).toBe(0.01)
     expect(group.costWarning).toBe('no price for mystery')
+    const allPriced = groupOf([run('r1', [output('a', 0.01)])])
+    expect(allPriced.costUsd).toBe(0.01)
+    expect(allPriced.costWarning).toBeUndefined()
+    expect(groupOf([run('r1', [])]).costUsd).toBeUndefined()
   })
 
   test('aggregate status: error beats waiting beats running; complete needs every run', () => {
@@ -107,7 +108,7 @@ describe('summarize(variance group)', () => {
     expect(varianceGroupStatus(make(['complete', 'complete']))).toBe('complete')
     expect(varianceGroupStatus(make(['complete', 'error']))).toBe('error')
     expect(varianceGroupStatus(make(['complete', 'waiting']))).toBe('waiting')
-    expect(summarize(make(['complete', 'running'])).status).toBe('running')
+    expect(summarizeRun(make(['complete', 'running'])).status).toBe('running')
   })
 })
 
@@ -123,7 +124,7 @@ describe('run frame agrees with the ledger', () => {
         b: { ...emptyNodeState(), status: 'success', result: b },
       },
     })
-    const l = summarize(run('r', [a, b]))
+    const l = summarizeRun(run('r', [a, b]))
     expect(frame.costUsd).toBe(l.costUsd)
     expect(frame.unpricedCount).toBe(l.unpricedCount)
     expect(frame.costWarning).toBe(l.costWarning)
