@@ -340,8 +340,8 @@ export interface RunMeta {
   imageOverride?: ImageOverride
   /** The slug of the chain or agent entrypoint (#131). */
   chainSlug?: string
-  /** The entrypoint identity (kind + slug) (#131). */
-  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline'; slug?: string }
+  /** The entrypoint identity (kind + slug) (#131); a chat's slug is its agent's (#168). */
+  entrypoint?: { kind: 'chain' | 'agent' | 'tool' | 'inline' | 'chat'; slug?: string }
   /** One ordinary run's place in a repeated, same-input launch (#133). */
   variance?: { groupId: string; index: number; size: number }
 }

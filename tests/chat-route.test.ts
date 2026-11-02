@@ -159,3 +159,15 @@ test('a missing agent or an empty message list is refused before any model call'
   assert.strictEqual((await post({ agentName: 'nobody', messages: [{ role: 'user', content: 'hi' }] })).status, 404)
   assert.strictEqual(seen.length, 0)
 })
+
+test("an agent whose name differs from its slug finds its chat in its history and its chat list (#168)", async () => {
+  newWorkspace()
+  const runId = (await sse(await post({ agentName: 'Lore Keeper', messages: [{ role: 'user', content: 'hi' }] }))).at(-1)!.runId as string
+
+  assert.deepStrictEqual((await readMeta(runId)).entrypoint, { kind: 'chat', slug: 'lore-keeper' })
+  const { GET } = await import('../app/api/runs/route')
+  const list = async (query: string) =>
+    ((await (await GET({ url: `http://localhost/api/runs?${query}` } as import('next/server').NextRequest)).json()) as RunMeta[]).map(r => r.runId)
+  assert.deepStrictEqual(await list('entityType=agent&slug=lore-keeper'), [runId])
+  assert.deepStrictEqual(await list('kind=chat&slug=lore-keeper'), [runId])
+})

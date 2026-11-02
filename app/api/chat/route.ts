@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const known = ((): RunMeta | undefined => {
       try { return existingRunId ? runs.read(existingRunId) : undefined } catch { return undefined }
     })()
-    const meta = known ?? chatRunMeta(newRunId(), `Chat with ${agentDef.name}`, history[0].content)
+    const meta = known ?? chatRunMeta(newRunId(), agentDef, history[0].content)
     if (!known) runs.create(meta)
     const { runId } = meta
     const currentStep = runs.nextStep(runId)

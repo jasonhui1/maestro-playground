@@ -3,6 +3,7 @@ import assert from 'node:assert'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { diskRunFolders, memoryRunFolders } from '../lib/runFolders'
 
 function write(root: string, rel: string, body: string) {
   const p = path.join(root, rel)
@@ -35,7 +36,7 @@ test('renaming an agent moves the file, keeps its folder, and rewrites the call 
   )
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   assert.strictEqual(result.filePath, path.join(wp, 'agents', 'panel', 'optimist.md'))
   assert.ok(!fs.existsSync(path.join(wp, 'agents', 'panel', 'panel-optimist.md')))
@@ -60,7 +61,7 @@ test('the .versions directory follows the new slug, so a pinned run still resolv
   snapshotVersion(wp, 'agent', 'panel-optimist', 'v2 body')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   assert.ok(!fs.existsSync(path.join(wp, '.versions', 'agent', 'panel-optimist')))
   assert.strictEqual(getVersionContent(wp, 'agent', 'optimist', 1), 'v1 body')
@@ -87,8 +88,8 @@ test('a past run keeps resolving: its pinned key follows the slug, its version n
   snapshotVersion(wp, 'agent', 'panel-optimist', 'the pinned bytes')
 
   const { planRename, renameWorkspaceEntity } = await rename()
-  assert.deepStrictEqual(planRename(wp, 'agent', 'panel-optimist', 'optimist').runs, ['2026-08-08-abc'])
-  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  assert.deepStrictEqual(planRename(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp)).runs, ['2026-08-08-abc'])
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   const meta = JSON.parse(read(path.join(wp, 'logs', '2026-08-08-abc', 'meta.json')))
   assert.deepStrictEqual(meta.versions, { 'chain/decision': 1, 'agent/optimist': 3, defaults: 2 })
@@ -105,7 +106,7 @@ test('a run that never touched the renamed file is left alone', async () => {
   const before = read(metaPath)
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   assert.deepStrictEqual(result.plan.runs, [])
   assert.strictEqual(read(metaPath), before)
@@ -126,7 +127,7 @@ test('a failure part-way leaves no half-rename behind', async () => {
   fs.mkdirSync(path.join(wp, 'agents', 'optimist.md'))
 
   const { renameWorkspaceEntity } = await rename()
-  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist'))
+  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp)))
 
   assert.strictEqual(read(chainPath), chainBefore, 'the rewritten reference was rolled back')
   assert.ok(fs.existsSync(agentPath), 'the file is still at its old name')
@@ -137,7 +138,7 @@ test('a rename with no version history leaves no .versions directory behind', as
   write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   assert.ok(!fs.existsSync(path.join(wp, '.versions', 'agent', 'optimist')))
 })
@@ -153,7 +154,7 @@ test('renaming a skill rewrites its own name, the agent list, and both call-site
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'skill', 'concise', 'brief')
+  renameWorkspaceEntity(wp, 'skill', 'concise', 'brief', diskRunFolders(wp))
 
   // the runtime matches a skill by its frontmatter `name`, so the name follows the slug
   assert.ok(!fs.existsSync(skillPath))
@@ -178,7 +179,7 @@ test('renaming a tool rewrites its own name and every agent that calls it', asyn
   const agentPath = write(wp, 'agents/world-builder.md', '---\nname: Builder\ntools:\n  - retrieve\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'tool', 'retrieve', 'lore-search')
+  renameWorkspaceEntity(wp, 'tool', 'retrieve', 'lore-search', diskRunFolders(wp))
 
   // a tool is bound by frontmatter `name` (lib/tools/registry.ts), so the name follows too
   const renamed = read(path.join(wp, 'tools', 'search', 'lore-search.md'))
@@ -218,7 +219,7 @@ test('renaming a context file rewrites the agent list and the context node', asy
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn')
+  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn', diskRunFolders(wp))
 
   assert.ok(fs.existsSync(path.join(wp, 'context', 'lore', 'inn.md')))
   assert.ok(read(agentPath).includes('- inn'))
@@ -236,7 +237,7 @@ test('renaming a chain rewrites a subchain node and a template that names it', a
   const templatePath = write(wp, 'templates/kickoff.md', '---\nname: Kickoff\nchain: decision\n---\nseed\n')
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'chain', 'decision', 'verdict')
+  renameWorkspaceEntity(wp, 'chain', 'decision', 'verdict', diskRunFolders(wp))
 
   assert.ok(read(outerPath).includes('subchain: verdict'))
   assert.ok(read(templatePath).includes('chain: verdict'))
@@ -249,7 +250,7 @@ test('a prose {critic.v1.2 notes} ref names the agent before the first dot', asy
   const readerPath = write(wp, 'agents/reader.md', '---\nname: Reader\n---\nUse {critic.v1.2 notes}.\n')
 
   const { planRename } = await rename()
-  assert.deepStrictEqual(planRename(wp, 'agent', 'critic', 'judge').manual.map(m => m.filePath), [readerPath])
+  assert.deepStrictEqual(planRename(wp, 'agent', 'critic', 'judge', diskRunFolders(wp)).manual.map(m => m.filePath), [readerPath])
 })
 
 test('a prose {slug} placeholder is reported, never rewritten', async () => {
@@ -258,11 +259,11 @@ test('a prose {slug} placeholder is reported, never rewritten', async () => {
   const agentPath = write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nRead {tavern} and answer.\n')
 
   const { planRename, renameWorkspaceEntity } = await rename()
-  const plan = planRename(wp, 'context', 'tavern', 'inn')
+  const plan = planRename(wp, 'context', 'tavern', 'inn', diskRunFolders(wp))
   assert.deepStrictEqual(plan.manual.map(m => m.filePath), [agentPath])
   assert.deepStrictEqual(plan.rewrites, [])
 
-  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn')
+  renameWorkspaceEntity(wp, 'context', 'tavern', 'inn', diskRunFolders(wp))
   assert.ok(read(agentPath).includes('{tavern}'), 'the prose placeholder is left for the user')
 })
 
@@ -273,7 +274,7 @@ test('the plan names every file it will rewrite and the field it will touch', as
   write(wp, 'agents/other.md', '---\nname: Other\nskills: []\n---\nbody\n')
 
   const { planRename } = await rename()
-  const plan = planRename(wp, 'skill', 'concise', 'brief')
+  const plan = planRename(wp, 'skill', 'concise', 'brief', diskRunFolders(wp))
 
   assert.deepStrictEqual(plan.rewrites.map(r => r.filePath), [agentPath])
   assert.deepStrictEqual(plan.rewrites[0].fields, ['skills'])
@@ -288,7 +289,7 @@ test('planning never writes to disk', async () => {
   const before = read(agentPath)
 
   const { planRename } = await rename()
-  planRename(wp, 'skill', 'concise', 'brief')
+  planRename(wp, 'skill', 'concise', 'brief', diskRunFolders(wp))
 
   assert.strictEqual(read(agentPath), before)
   assert.ok(fs.existsSync(path.join(wp, 'skills', 'concise.md')))
@@ -302,13 +303,13 @@ test('a name already taken anywhere under the type is rejected', async () => {
   const { planRename } = await rename()
   // a duplicate leaf name anywhere under the type leaves both out of the load (#151),
   // so the rename is refused before it can create one
-  assert.throws(() => planRename(wp, 'agent', 'panel-optimist', 'optimist'), /already/i)
+  assert.throws(() => planRename(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp)), /already/i)
 })
 
 test('renaming a slug with no file is refused', async () => {
   const wp = newWorkspace()
   const { planRename } = await rename()
-  assert.throws(() => planRename(wp, 'agent', 'ghost', 'spirit'), /not found/i)
+  assert.throws(() => planRename(wp, 'agent', 'ghost', 'spirit', diskRunFolders(wp)), /not found/i)
 })
 
 test('a new name that sanitizes to nothing is refused', async () => {
@@ -316,7 +317,7 @@ test('a new name that sanitizes to nothing is refused', async () => {
   write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { planRename } = await rename()
-  assert.throws(() => planRename(wp, 'agent', 'optimist', '../..'), /invalid/i)
+  assert.throws(() => planRename(wp, 'agent', 'optimist', '../..', diskRunFolders(wp)), /invalid/i)
 })
 
 test('renaming to the same slug changes nothing', async () => {
@@ -324,7 +325,7 @@ test('renaming to the same slug changes nothing', async () => {
   const filePath = write(wp, 'agents/optimist.md', '---\nname: Optimist\n---\nbody\n')
 
   const { renameWorkspaceEntity } = await rename()
-  const result = renameWorkspaceEntity(wp, 'agent', 'optimist', 'optimist')
+  const result = renameWorkspaceEntity(wp, 'agent', 'optimist', 'optimist', diskRunFolders(wp))
 
   assert.strictEqual(result.filePath, filePath)
   assert.deepStrictEqual(result.plan.rewrites, [])
@@ -354,10 +355,58 @@ test('the workspace loads cleanly after a rename, with no dangling reference', a
   )
 
   const { renameWorkspaceEntity } = await rename()
-  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist')
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', diskRunFolders(wp))
 
   const { loadWorkspace } = await import('../lib/fs/workspace')
   const ws = loadWorkspace(wp)
   const node = ws.chains[0].nodes[0]
   assert.ok(node.kind === 'agent' && ws.agents.some(a => a.slug === node.agent))
+})
+
+test("a rename finds and repoints its runs through the workspace's run folders (#168)", async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  const runs = memoryRunFolders()
+  runs.create({ runId: 'r1', chainName: 'decision', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [], versions: { 'agent/panel-optimist': 3 } })
+
+  const { planRename, renameWorkspaceEntity } = await rename()
+  assert.deepStrictEqual(planRename(wp, 'agent', 'panel-optimist', 'optimist', runs).runs, ['r1'])
+  renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', runs)
+  assert.deepStrictEqual(runs.read('r1').versions, { 'agent/optimist': 3 })
+  assert.ok(!fs.existsSync(path.join(wp, 'logs')), 'nothing reached the disk run folders')
+})
+
+test("a failed rename restores the runs' pins (#168)", async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/panel-optimist.md', '---\nname: Optimist\n---\nbody\n')
+  fs.mkdirSync(path.join(wp, 'agents', 'optimist.md'))
+  const runs = memoryRunFolders()
+  runs.create({ runId: 'r1', chainName: 'decision', seedPrompt: '', startedAt: '', status: 'complete', agentOutputs: [], versions: { 'agent/panel-optimist': 3, defaults: 1 } })
+
+  const { renameWorkspaceEntity } = await rename()
+  assert.throws(() => renameWorkspaceEntity(wp, 'agent', 'panel-optimist', 'optimist', runs))
+  assert.deepStrictEqual(runs.read('r1').versions, { 'agent/panel-optimist': 3, defaults: 1 })
+})
+
+test('a renamed chain and agent keep their runs in their history (#168)', async () => {
+  const wp = newWorkspace()
+  write(wp, 'agents/critic.md', '---\nname: The Critic\n---\nbody\n')
+  write(wp, 'chains/story.md', '---\nname: Story\nnodes:\n  - id: judge\n    kind: agent\n    agent: critic\nedges: []\n---\n')
+  const runs = memoryRunFolders()
+  const run = (runId: string, kind: 'chain' | 'agent', slug: string) => runs.create({
+    runId, chainName: slug, chainSlug: slug, entrypoint: { kind, slug }, seedPrompt: '', startedAt: '2026-01-01',
+    status: 'complete', agentOutputs: [], versions: kind === 'chain' ? { 'chain/story': 1, 'agent/critic': 1 } : { 'agent/critic': 1 },
+  })
+  run('chain-run', 'chain', 'story')
+  run('agent-run', 'agent', 'critic')
+
+  const { renameWorkspaceEntity } = await rename()
+  renameWorkspaceEntity(wp, 'chain', 'story', 'tale', runs)
+  renameWorkspaceEntity(wp, 'agent', 'critic', 'judge', runs)
+
+  const { runIndex } = await import('../lib/runIndex')
+  const index = runIndex(runs)
+  assert.deepStrictEqual(index.list({ of: { kind: 'chain', slug: 'tale', name: 'Story' } }).map(r => r.runId), ['chain-run'])
+  assert.deepStrictEqual(index.list({ of: { kind: 'agent', slug: 'judge' } }).map(r => r.runId), ['agent-run'])
+  assert.deepStrictEqual(index.list({ involving: { slug: 'judge' } }).map(r => r.runId).sort(), ['agent-run', 'chain-run'])
 })

@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import yaml from 'js-yaml'
+import { diskRunFolders } from '../lib/runFolders'
 import {
   address, readEntity, saveEntity, createEntity, createFolder, listFolders, moveWorkspaceEntity,
   planRename, renameWorkspaceEntity, deleteWorkspaceEntity,
@@ -201,8 +202,8 @@ test('rename and delete address a variant the way save and read do', () => {
   const wp = newWorkspace()
   const premortem = write(wp, 'agents/premortem.md', PREMORTEM)
 
-  expect(planRename(wp, 'agent', 'rot', 'decay').variantOf).toBe('premortem')
-  renameWorkspaceEntity(wp, 'agent', 'rot', 'decay')
+  expect(planRename(wp, 'agent', 'rot', 'decay', diskRunFolders(wp)).variantOf).toBe('premortem')
+  renameWorkspaceEntity(wp, 'agent', 'rot', 'decay', diskRunFolders(wp))
   expect(address(wp, 'agent', 'decay').filePath).toBe(premortem)
   expect(address(wp, 'agent', 'rot').kind).toBe('new')
 
@@ -226,7 +227,7 @@ test('refusing a missing slug leaves the workspace untouched', () => {
   const wp = newWorkspace()
 
   expect(refusal(() => deleteWorkspaceEntity(wp, 'agent', 'ghost')).kind).toBe('NOT_FOUND')
-  expect(refusal(() => planRename(wp, 'agent', 'ghost', 'spirit')).kind).toBe('NOT_FOUND')
+  expect(refusal(() => planRename(wp, 'agent', 'ghost', 'spirit', diskRunFolders(wp))).kind).toBe('NOT_FOUND')
   expect(refusal(() => moveWorkspaceEntity(wp, 'agent', 'ghost', 'panel')).kind).toBe('NOT_FOUND')
   expect(fs.readdirSync(wp)).toEqual([])
 })
