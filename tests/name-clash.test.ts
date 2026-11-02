@@ -10,6 +10,7 @@ import { GET as workspaceGET } from '../app/api/workspace/route'
 import { PUT as entityPUT } from '../app/api/workspace/[type]/[slug]/route'
 import { POST as workspacePOST } from '../app/api/workspace/route'
 import { pinnedWorkspace } from '../lib/pinnedWorkspace'
+import { diskWorkspace } from '../lib/runFolders'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
@@ -227,7 +228,7 @@ test('a pinned run keeps the clash reason for a clashing name', () => {
   write(wp, 'agents/creative/fixer.md', '---\nname: Fixer A\n---\nbody\n')
   write(wp, 'agents/scratch/fixer.md', '---\nname: Fixer B\n---\nbody\n')
 
-  const pinned = pinnedWorkspace(wp, loadWorkspace(wp), {})
+  const pinned = pinnedWorkspace(diskWorkspace(wp), loadWorkspace(wp), {})
   assert.ok(!('error' in pinned))
   const chain = {
     slug: 'uses-fixer',

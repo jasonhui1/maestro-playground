@@ -114,7 +114,7 @@ Per ADR-0001, behaviour lives here, not in the descriptor. The dispatch is an `i
 
 - [ ] `ChainNodeKind` string + `ChainNode` union variant (fields match the descriptor)
 - [ ] `registry` descriptor in `lib/nodeKinds.ts` (compiler-forced; includes `acceptsLiterals`, `zoneRole`, `palette.order`)
-- [ ] A field that names a workspace file gets `ref` — rename, delete-refusal and run-version pinning follow (`runVersions` handles `context`/`chain`/`agent` refs; a new ref type needs an arm in `walkNode`)
+- [ ] A field that names a workspace file gets `ref` — rename, delete-refusal and run-version pinning follow (`runFiles.collectTouchedFiles` handles `context`/`chain`/`agent` refs; a new ref type needs an arm in `walkNode`)
 - [ ] `XxxNode.tsx` component typed `EditorNodeDataOf<'xxx'>` (no cast)
 - [ ] Render sockets through `<Sockets handles={data.sockets} />` — no `<Handle>` in the component
 - [ ] Register in the `nodeTypes` map (compiler-forced; mis-wire is a type error)

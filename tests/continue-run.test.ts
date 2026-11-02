@@ -12,6 +12,7 @@ import { stepLog } from '../lib/logger'
 import { agentSlots } from '../lib/tokens'
 import { startRun, type LiveWorkspace } from '../lib/runSession'
 import { memoryWorkspace } from '../lib/runFolders'
+import { prepareRunRequest, type RunRequestBody } from '../lib/runRequest'
 import type { AgentDef, AgentOutput, ChainDef, ChatMessage, HoldRecord, RunMeta } from '../lib/types'
 
 // The run folders, version snapshots and model are in memory; the executor and the continuation are real.
@@ -21,7 +22,6 @@ vi.mock('@/lib/logger', async importOriginal => ({
   newRunId: () => `run-${++nextId}`,
 }))
 
-vi.mock('@/lib/fs/versions', () => ({ snapshotVersion: () => 1 }))
 
 type Model = (agent: AgentDef, systemPrompt: string) => string | Promise<string>
 const defaultModel: Model = (agent, systemPrompt) =>
@@ -673,6 +673,56 @@ describe('fork', () => {
     assert.strictEqual(fork(source, { from: 'prop' }).status, 409)
     assert.strictEqual(answer(source, { direction: 'x' }).status, 409)
     assert.strictEqual(promote(source, 'prop').status, 409)
+  })
+})
+
+describe('version pins (#169)', () => {
+  /** The test agents and chain as loaded files: each with a path and the bytes a version hashes. */
+  function useFiles(edit: Record<string, string> = {}) {
+    const raw = (slug: string, body: string) => edit[slug] ?? `---\nname: ${slug}\nmodel: m\n---\n${body}\n`
+    const defs = {
+      agents: agents.map(a => ({ ...a, filePath: `agents/${a.slug}.md`, rawContent: raw(a.slug, a.systemPrompt) })),
+      skills: [], tools: [], templates: [], context: [], defaults: {},
+      chains: [{ ...chain, filePath: 'chains/held.md', rawContent: edit.held ?? HELD }],
+    } as unknown as LiveWorkspace
+    ws = { ...ws, definitions: () => defs }
+  }
+  async function launch(body: RunRequestBody): Promise<string> {
+    const prepared = prepareRunRequest(ws, { seedPrompt: 'go', ...body })
+    assert.ok(!('error' in prepared))
+    const streamed = await events(startRun(ws, prepared.input))
+    ran.length = 0
+    return runIdOf(streamed)
+  }
+  const stamps = (runId: string) => writes(runId).map(w => w.output.versionNumber)
+
+  test('a fork of an agent run keeps the agent\'s version number', async () => {
+    useFiles()
+    const source = await launch({ agentName: 'prop' })
+    assert.strictEqual(meta(source).versionNumber, 1)
+
+    const forkId = runIdOf(await events(fork(source, { from: 'prop' })))
+    assert.strictEqual(meta(forkId).versionNumber, 1)
+    assert.deepStrictEqual(stamps(forkId), [1])
+
+    useFiles({ prop: '---\nname: prop\nmodel: m\n---\nedited {input}\n' })
+    const current = runIdOf(await events(fork(source, { from: 'prop' })))
+    const pinned = runIdOf(await events(fork(source, { from: 'prop', versions: 'pinned' })))
+    assert.deepStrictEqual([meta(current).versionNumber, meta(current).versions!['agent/prop']], [2, 2])
+    assert.deepStrictEqual([meta(pinned).versionNumber, meta(pinned).versions!['agent/prop']], [1, 1])
+  })
+
+  test('in place snapshots only the file it stamps, and keeps the run\'s pins', async () => {
+    useFiles()
+    const source = await launch({ chainName: 'held' })
+    const pins = meta(source).versions
+    assert.strictEqual(pins!['chain/held'], 1)
+
+    useFiles({ held: `${HELD}\n`, after: '---\nname: after\nmodel: m\n---\nedited <<{direction}>>\n' })
+    await events(answer(source, { direction: 'go' }))
+    assert.deepStrictEqual(meta(source).versions, pins)
+    assert.deepStrictEqual(stamps(source), [1, 1, 2, 2], 'the resumed logs carry the chain version they ran')
+    assert.strictEqual(ws.versions.list('agent', 'after').length, 1, 'a file the run does not record is not snapshotted')
   })
 })
 

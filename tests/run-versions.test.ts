@@ -41,8 +41,13 @@ function seedWorkspace() {
 
 async function load() {
   const ws = await import('../lib/fs/workspace')
-  const rv = await import('../lib/runVersions')
-  return { ws, rv }
+  const { collectTouchedFiles, runFiles } = await import('../lib/runFiles')
+  const { parseVersionKey } = await import('../lib/runVersionModel')
+  const { diskWorkspace } = await import('../lib/runFolders')
+  type Live = Parameters<typeof runFiles>[1]
+  const pin = (root: string, chain: Parameters<typeof collectTouchedFiles>[0], live: Live) =>
+    runFiles(diskWorkspace(root), live, { start: chain }).versions
+  return { ws, rv: { collectTouchedFiles, parseVersionKey, pin } }
 }
 
 test('the walk pins every file the graph reaches, and nothing else', async () => {
@@ -128,11 +133,11 @@ test('pinning writes one version per touched file, and repeats it unchanged', as
   const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
-  const first = rv.pinRunVersions(wp, chain, workspace)
+  const first = rv.pin(wp, chain, workspace)
   assert.strictEqual(first['agent/panel-member'], 1)
   assert.strictEqual(first['defaults'], 1)
 
-  const second = rv.pinRunVersions(wp, chain, ws.loadWorkspace(wp))
+  const second = rv.pin(wp, chain, ws.loadWorkspace(wp))
   assert.deepStrictEqual(second, first, 'an unchanged file keeps its number')
   assert.deepStrictEqual(
     fs.readdirSync(path.join(wp, '.versions', 'agent', 'panel-member')).sort(),
@@ -145,14 +150,14 @@ test('a frontmatter-only edit produces a new version', async () => {
   const wp = seedWorkspace()
   const { ws, rv } = await load()
   const chain0 = ws.loadWorkspace(wp).chains.find(c => c.slug === 'decision-panel')!
-  rv.pinRunVersions(wp, chain0, ws.loadWorkspace(wp))
+  rv.pin(wp, chain0, ws.loadWorkspace(wp))
 
   write(wp, 'agents/panel-member.md',
     `---\nname: Panel Member\nmodel: other/model\nskills:\n  - Red Teaming\ntools:\n  - Retrieve\n---\nPanel body\n`)
   const workspace = ws.loadWorkspace(wp)
   const chain = workspace.chains.find(c => c.slug === 'decision-panel')!
 
-  const pinned = rv.pinRunVersions(wp, chain, workspace)
+  const pinned = rv.pin(wp, chain, workspace)
   assert.strictEqual(pinned['agent/panel-member'], 2)
   assert.strictEqual(pinned['agent/scorer'], 1, 'an untouched-by-the-edit file stays put')
 })

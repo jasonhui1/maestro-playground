@@ -14,10 +14,8 @@ import { resolveContinuationModelOverride, withModelOverride } from './modelOver
 import { diceField, rollRunDice } from './dice'
 import type { Workspace } from './runFolders'
 import { stretchLog, type RunEdit } from './stretchLog'
-import {
-  contextOverrides, loadContinuation, startRun, streamChainRun,
-  type ContinuationVersions, type LiveWorkspace, type StartRunInput,
-} from './runSession'
+import { contextOverrides, startRun, streamChainRun, type LiveWorkspace, type StartRunInput } from './runSession'
+import { runFiles, type ContinuationVersions } from './runFiles'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
 
 /** What a continuation does to a run: answer a hold (resume), reroll its candidates, promote a reply, or fork. */
@@ -159,7 +157,9 @@ function reroll(workspace: LiveWorkspace, meta: RunMeta, request: RerollRequest)
 function streamStretch(
   ws: Workspace, workspace: LiveWorkspace, meta: RunMeta, stretch: Stretch, context: Record<string, string>,
 ): Response | Refusal {
-  const loaded = loadContinuation(ws.root, workspace, meta, stretch.versions)
+  const loaded = runFiles(ws, workspace, stretch.place === 'fork'
+    ? { fork: meta, versions: stretch.versions ?? 'current' }
+    : { resume: meta })
   if ('error' in loaded) return loaded
   const modelOverride = resolveContinuationModelOverride(meta.modelOverride, stretch.modelOverride)
   const history = stretch.history ?? meta.agentOutputs

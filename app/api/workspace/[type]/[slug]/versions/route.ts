@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listVersions, getVersionContent } from '@/lib/fs/versions';
 import { isValidEntityType, address, type EntityType } from '@/lib/fs/workspaceFiles';
 import { requestWorkspace } from '@/lib/requestWorkspace';
 
@@ -13,7 +12,7 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   }
 
-  const { root } = requestWorkspace();
+  const { root, versions } = requestWorkspace();
   // Variants share their declaring file's version snapshots (#123).
   const { storageSlug } = address(root, type as EntityType, slug);
   const { searchParams } = new URL(req.url);
@@ -21,15 +20,14 @@ export async function GET(
 
   try {
     if (version) {
-      const content = getVersionContent(root, type, storageSlug, parseInt(version));
+      const content = versions.read(type, storageSlug, parseInt(version));
       if (content === null) {
         return NextResponse.json({ error: 'Version not found' }, { status: 404 });
       }
       return NextResponse.json({ content });
     }
 
-    const versions = listVersions(root, type, storageSlug);
-    return NextResponse.json(versions);
+    return NextResponse.json(versions.list(type, storageSlug));
   } catch (err: unknown) {
     const error = err as Error;
     return NextResponse.json({ error: error.message }, { status: 500 });

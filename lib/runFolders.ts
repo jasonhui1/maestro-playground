@@ -3,6 +3,7 @@ import path from 'path'
 import { stepLabel, stepLog } from './logger'
 import { loadWorkspace } from './fs/workspace'
 import type { AgentOutput, RunMeta } from './types'
+import { diskVersionStore, memoryVersionStore, type VersionStore } from './versionStore'
 
 /** The runs under `logs/`: each a folder of meta.json plus one log per step (#108). */
 export interface RunFolders {
@@ -39,14 +40,16 @@ export interface Workspace {
   runs: RunFolders
   /** Read fresh on each call: nothing is cached across requests. */
   definitions(): LiveWorkspace
+  /** Snapshots and pinned reads of the workspace's files (#169). */
+  versions: VersionStore
 }
 
 export function diskWorkspace(root: string): Workspace {
-  return { root, runs: diskRunFolders(root), definitions: () => loadWorkspace(root) }
+  return { root, runs: diskRunFolders(root), definitions: () => loadWorkspace(root), versions: diskVersionStore(root) }
 }
 
 export function memoryWorkspace(definitions: LiveWorkspace, root = ''): Workspace & { runs: MemoryRunFolders } {
-  return { root, runs: memoryRunFolders(), definitions: () => definitions }
+  return { root, runs: memoryRunFolders(), definitions: () => definitions, versions: memoryVersionStore() }
 }
 
 /** What an adapter supplies; the rest of a run's folder is built on it once, so the adapters cannot drift. */

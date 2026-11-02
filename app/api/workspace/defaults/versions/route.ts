@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listVersions, getVersionContent } from '@/lib/fs/versions';
 import { requestWorkspace } from '@/lib/requestWorkspace';
 
 // The defaults file has no slug, so it can't share the [type]/[slug] dynamic
@@ -7,19 +6,18 @@ import { requestWorkspace } from '@/lib/requestWorkspace';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const version = searchParams.get('version');
-  const { root } = requestWorkspace();
+  const { versions } = requestWorkspace();
 
   try {
     if (version) {
-      const content = getVersionContent(root, 'defaults', '', parseInt(version));
+      const content = versions.read('defaults', '', parseInt(version));
       if (content === null) {
         return NextResponse.json({ error: 'Version not found' }, { status: 404 });
       }
       return NextResponse.json({ content });
     }
 
-    const versions = listVersions(root, 'defaults', '');
-    return NextResponse.json(versions);
+    return NextResponse.json(versions.list('defaults', ''));
   } catch (err: unknown) {
     const error = err as Error;
     return NextResponse.json({ error: error.message }, { status: 500 });

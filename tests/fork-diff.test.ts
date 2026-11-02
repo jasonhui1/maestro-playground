@@ -13,9 +13,8 @@ import type { LiveWorkspace } from '../lib/runSession'
 import { requestEntry } from './helpers/requestWorkspace'
 
 vi.mock('@/lib/requestWorkspace', () => import('./helpers/requestWorkspace'))
-vi.mock('@/lib/fs/versions', () => ({ snapshotVersion: () => 1 }))
 vi.mock('@/lib/runner', () => ({
-  runAgent: async (agent: any, systemPrompt: string, input: string): Promise<AgentOutput> => ({
+  runAgent: async (agent: AgentDef, systemPrompt: string, input: string): Promise<AgentOutput> => ({
     agentName: agent.name, systemPrompt, input,
     output: agent.slug === 'decider' ? '## Candidate 1\nan idea' : `from ${agent.slug}`,
     tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs: 0, model: 'm', timestamp: '', status: 'success',

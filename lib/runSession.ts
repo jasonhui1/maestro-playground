@@ -1,9 +1,3 @@
-import { unprocessable } from './refusal'
-import { validateChain } from './chainGraph'
-import { chainForResume } from './resolveRunChain'
-import { pinRunVersions } from './runVersions'
-import { versionKey } from './runVersionModel'
-import { pinnedWorkspace } from './pinnedWorkspace'
 import { newRunId } from './logger'
 import type { LiveWorkspace, Workspace } from './runFolders'
 import { stretchLog, type NewRun, type RunEdit, type StretchLog } from './stretchLog'
@@ -14,7 +8,7 @@ import { mergeHolds } from './hold'
 import { sseResponse } from './sse'
 import type { RunEvent } from './runStream'
 import { keepConversations } from './nodeChat'
-import type { AgentOutput, ChainDef, HoldRecord, Refusal, RunMeta } from './types'
+import type { AgentOutput, ChainDef, HoldRecord } from './types'
 import type { RunDefinitions } from './runDefinitions'
 import { diceField, rollRunDice, type DicePins, type RunDice } from './dice'
 
@@ -23,45 +17,7 @@ export function contextOverrides(value: unknown): Record<string, string> {
   return value && typeof value === 'object' ? value as Record<string, string> : {}
 }
 
-/** Which files a continuation runs: the live ones, or the source run's pins (ADR-0011). */
-export type ContinuationVersions = 'current' | 'pinned'
-
 export type { LiveWorkspace }
-
-/** A run's recorded graph over live or pinned files, ready to continue or fork, with those files' pins; or why it cannot. */
-export function loadContinuation(root: string, live: LiveWorkspace, meta: RunMeta, from: ContinuationVersions = 'current'):
-  | {
-      chain: ChainDef
-      workspace: RunSession['workspace']
-      versionNumber: number
-      versions: Record<string, number>
-      /** Context files read back at their pins, for the executor's context overrides. */
-      pinnedContext: Record<string, string>
-    }
-  | Refusal {
-  if (from === 'pinned') {
-    if (!meta.versions) return unprocessable('Run has no pinned versions')
-    const pinned = pinnedWorkspace(root, live, meta.versions)
-    if ('error' in pinned) return pinned
-    const { context: pinnedContext, ...workspace } = pinned
-    const chain = graphOver(meta, workspace)
-    if ('error' in chain) return chain
-    return { chain, workspace, versionNumber: meta.versionNumber ?? 0, versions: meta.versions, pinnedContext }
-  }
-  const chain = graphOver(meta, live)
-  if ('error' in chain) return chain
-  // Live files run by default; the pins in meta stay what the run started with (ADR-0011).
-  const versions = pinRunVersions(root, chain, live)
-  return { chain, workspace: live, versionNumber: versions[versionKey('chain', chain.slug)] ?? 0, versions, pinnedContext: {} }
-}
-
-function graphOver(meta: RunMeta, ws: RunSession['workspace']): ChainDef | Refusal {
-  const chain = chainForResume(meta, ws.chains)
-  if (!chain) return unprocessable('Run has no recorded graph')
-  const validation = validateChain(chain, ws)
-  if (!validation.valid) return { error: 'Invalid chain', status: 400, errors: validation.errors }
-  return chain
-}
 
 export interface RunSession {
   ws: Workspace

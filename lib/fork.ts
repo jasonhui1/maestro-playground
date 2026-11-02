@@ -2,7 +2,7 @@ import { badRequest, notFound, unprocessable, isRefusal } from './refusal'
 import { isRecord, readRevision, reviseOutput, type Revision } from './revision'
 import { parseModelOverride } from './modelOverride'
 import { socketReading } from './nodeSockets'
-import type { ContinuationVersions } from './runSession'
+import type { ContinuationVersions } from './runFiles'
 import type { AgentOutput, Refusal, RunMeta } from './types'
 
 /** A fork request read against its source run. */
