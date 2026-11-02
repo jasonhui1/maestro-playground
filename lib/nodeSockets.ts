@@ -1,5 +1,26 @@
-import { ChainNode } from './types'
-import { inputIsMulti, kindOf, socketReading, type SocketReading, WorkspaceLookup } from './nodeKinds'
+import { ChainNode, ChainNodeKind } from './types'
+import { agentSlugOf, inputIsMulti, kindOf, WorkspaceLookup } from './nodeKinds'
+import { DICE_SOCKET, isWholeOutput, socketKey } from './tokens'
+import { unreachable } from './unreachable'
+
+/** How one output socket reads, per its kind's `read` fact — the reader's vocabulary (#166). */
+export type SocketReading = 'whole' | 'section' | 'roll' | 'keyed'
+
+/** A `sectioned` socket: `dice` is the roll only on a node that rolls, else a section like any other. */
+export function sectionedReading(socket: string, rolls: boolean): 'whole' | 'section' | 'roll' {
+  if (isWholeOutput(socket)) return 'whole'
+  return rolls && socketKey(socket) === DICE_SOCKET ? 'roll' : 'section'
+}
+
+export function socketReading(kind: ChainNodeKind, socket: string, rolls: boolean): SocketReading {
+  const read = kindOf(kind).read
+  switch (read) {
+    case 'seed': case 'context': case 'param': case 'pass-through': return 'whole'
+    case 'keyed': return 'keyed'
+    case 'sectioned': return sectionedReading(socket, rolls)
+    default: return unreachable(read)
+  }
+}
 
 /** One socket of a node, as the canvas needs to draw it and an edge needs to name it. */
 export interface SocketHandle {
@@ -17,6 +38,8 @@ export interface SocketHandle {
 // The one reader of a descriptor's socket facts (#114, ADR-0001).
 export function socketHandles(node: ChainNode, workspace: WorkspaceLookup): SocketHandle[] {
   const descriptor = kindOf(node.kind)
+  const slug = agentSlugOf(node)
+  const rolls = slug !== undefined && workspace.agents.some(a => a.slug === slug && a.dice)
   return [
     ...descriptor.inputs(node, workspace).map((s): SocketHandle => ({
       id: s.name,
@@ -24,7 +47,7 @@ export function socketHandles(node: ChainNode, workspace: WorkspaceLookup): Sock
       ...(s.optional ? { optional: true as const } : {}),
       ...(inputIsMulti(s, descriptor) ? { multi: true as const } : {}),
     })),
-    ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output', reads: socketReading(node.kind, name) })),
+    ...descriptor.outputs(node, workspace).map((name): SocketHandle => ({ id: name, side: 'output', reads: socketReading(node.kind, name, rolls) })),
   ]
 }
 

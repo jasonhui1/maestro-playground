@@ -116,7 +116,7 @@ export function outputKey(node: string, socket: string): string {
 }
 
 /** The run-state key a recorded output files under; a per-socket record's id keeps the raw socket name. */
-export function recordKey(nodeId: string): string {
+export function runStateKey(nodeId: string): string {
   const at = nodeId.indexOf('::')
   return at === -1 ? nodeId : outputKey(nodeId.slice(0, at), nodeId.slice(at + 2))
 }

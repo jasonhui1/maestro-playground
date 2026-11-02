@@ -1,6 +1,7 @@
 import { runLog, recordKey } from './partialRun'
 import { badRequest, notFound, unprocessable, isRefusal } from './refusal'
 import { isRecord, readRevision, reviseOutput, type Revision } from './revision'
+import { socketReading } from './nodeSockets'
 import { loadContinuation, startRun, type ContinuationVersions, type LiveWorkspace, type StartRunInput } from './runSession'
 import type { Workspace } from './runFolders'
 import type { AgentOutput, HoldRecord, Refusal, RunMeta } from './types'
@@ -74,7 +75,7 @@ export function planFork(source: RunMeta, { from, revisions, versions, modelOver
     if (node.zone) return badRequest(`Node ${nodeId} is inside a loop; its rounds cannot be revised`)
     const record = source.agentOutputs.findLast(o => o.nodeId === nodeId)
     if (!record) return badRequest(`Node ${nodeId} has no output in this run`)
-    const outcome = reviseOutput(record.output, rev)
+    const outcome = reviseOutput(record.output, rev, socket => socketReading(node.kind, socket, Boolean(source.dice?.[nodeId])))
     if (isRefusal(outcome)) return outcome
     outputs.push(revisedOutput(record, outcome.output))
   }

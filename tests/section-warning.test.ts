@@ -26,16 +26,16 @@ test('readSocket signals only a wired section that the output does not carry', (
   const gate: ChainNode = { id: 'g', kind: 'gate' }
   const seed: ChainNode = { id: 's', kind: 'seed' }
 
-  assert.deepStrictEqual(readSocket(agent, 'summary', outs, 'SEED', read), { value: 'SHORT' })
-  assert.deepStrictEqual(readSocket(agent, 'changes', outs, 'SEED', read), { value: '', missingSection: 'changes' })
+  assert.deepStrictEqual(readSocket(agent, 'summary', { outputs: outs, seedPrompt: 'SEED', readContext: read }), { value: 'SHORT' })
+  assert.deepStrictEqual(readSocket(agent, 'changes', { outputs: outs, seedPrompt: 'SEED', readContext: read }), { value: '', missingSection: 'changes' })
   // the heading is there and the convention was honoured; an empty body is not a
   // miss (no warning) but is flagged so the prompt substitution can mark it (below)
   const empty = new Map<string, AgentOutput>([['a', out('a', '## Summary\n\n## Changes\nX')]])
-  assert.deepStrictEqual(readSocket(agent, 'summary', empty, 'SEED', read), { value: '', emptySection: 'summary' })
+  assert.deepStrictEqual(readSocket(agent, 'summary', { outputs: empty, seedPrompt: 'SEED', readContext: read }), { value: '', emptySection: 'summary' })
   // the whole output is never a section, however empty it is
-  assert.deepStrictEqual(readSocket(agent, 'output', outs, 'SEED', read), { value: 'BODY\n## Summary\nSHORT' })
-  assert.deepStrictEqual(readSocket(gate, 'anything', outs, 'SEED', read), { value: 'PASSED' })
-  assert.deepStrictEqual(readSocket(seed, 'output', outs, 'SEED', read), { value: 'SEED' })
+  assert.deepStrictEqual(readSocket(agent, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }), { value: 'BODY\n## Summary\nSHORT' })
+  assert.deepStrictEqual(readSocket(gate, 'anything', { outputs: outs, seedPrompt: 'SEED', readContext: read }), { value: 'PASSED' })
+  assert.deepStrictEqual(readSocket(seed, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }), { value: 'SEED' })
 })
 
 test('resolveNodePrompt names producer, consuming slot and expected section', () => {

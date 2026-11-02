@@ -199,8 +199,7 @@ test('socketKey preserves / and does not collide with flat dash', () => {
 test('evalCondition resolves nested section sockets', () => {
   const ctx = refReader(
     new Map([['writer', { id: 'writer', kind: 'agent', agent: 'writer' } as ChainNode]]),
-    new Map([['writer', makeOutput('writer', '## Act 2\n### Scene 3\nClimax reached')]]),
-    '', () => '',
+    { outputs: new Map([['writer', makeOutput('writer', '## Act 2\n### Scene 3\nClimax reached')]]) },
   )
 
   assert.strictEqual(evalCondition('{writer.act-2/scene-3} == "climax reached"', ctx), true)
@@ -285,7 +284,7 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const okOutputs = new Map<string, AgentOutput>([
     ['w', makeOutput('w', '## Act 2\n### Scene 3\nEpic showdown')],
   ])
-  const okRead = readSocket(agentNode, 'act-2/scene-3', okOutputs, '', readCtx)
+  const okRead = readSocket(agentNode, 'act-2/scene-3', { outputs: okOutputs, readContext: readCtx })
   assert.deepStrictEqual(okRead, { value: 'Epic showdown' })
   const okPrompt = resolveNodePrompt(consumerNode, chain, readerAgent, okOutputs, '', readCtx)
   assert.strictEqual(okPrompt.prompt, 'Read: Epic showdown')
@@ -295,7 +294,7 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const missingOutputs = new Map<string, AgentOutput>([
     ['w', makeOutput('w', '## Act 1\n### Scene 1\nOther text')],
   ])
-  const missingRead = readSocket(agentNode, 'act-2/scene-3', missingOutputs, '', readCtx)
+  const missingRead = readSocket(agentNode, 'act-2/scene-3', { outputs: missingOutputs, readContext: readCtx })
   assert.deepStrictEqual(missingRead, { value: '', missingSection: 'act-2/scene-3' })
   const missingPrompt = resolveNodePrompt(consumerNode, chain, readerAgent, missingOutputs, '', readCtx)
   assert.strictEqual(missingPrompt.prompt, 'Read: ')
@@ -307,7 +306,7 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const ambigOutputs = new Map<string, AgentOutput>([
     ['w', makeOutput('w', '## Act 2\n### Scene 3\nFirst pick\n### Scene 3\nSecond pick')],
   ])
-  const ambigRead = readSocket(agentNode, 'act-2/scene-3', ambigOutputs, '', readCtx)
+  const ambigRead = readSocket(agentNode, 'act-2/scene-3', { outputs: ambigOutputs, readContext: readCtx })
   assert.deepStrictEqual(ambigRead, { value: 'First pick', ambiguousSection: 'act-2/scene-3' })
   const ambigPrompt = resolveNodePrompt(consumerNode, chain, readerAgent, ambigOutputs, '', readCtx)
   assert.strictEqual(ambigPrompt.prompt, 'Read: First pick')
@@ -319,7 +318,7 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const emptyOutputs = new Map<string, AgentOutput>([
     ['w', makeOutput('w', '## Act 2\n### Scene 3\n\n## Act 3')],
   ])
-  const emptyRead = readSocket(agentNode, 'act-2/scene-3', emptyOutputs, '', readCtx)
+  const emptyRead = readSocket(agentNode, 'act-2/scene-3', { outputs: emptyOutputs, readContext: readCtx })
   assert.deepStrictEqual(emptyRead, { value: '', emptySection: 'act-2/scene-3' })
   const emptyPrompt = resolveNodePrompt(consumerNode, chain, readerAgent, emptyOutputs, '', readCtx)
   assert.strictEqual(emptyPrompt.prompt, 'Read: [scene: "act-2/scene-3" section empty]')
@@ -329,7 +328,7 @@ test('readSocket and resolveNodePrompt handle nested section sockets and warning
   const ambigAncestorOutputs = new Map<string, AgentOutput>([
     ['w', makeOutput('w', '## Act 2\n### Scene 1\nFirst Act 2\n## Act 2\n### Scene 2\nSecond Act 2')],
   ])
-  const ambigAncestorRead = readSocket(agentNode, 'act-2/missing-scene', ambigAncestorOutputs, '', readCtx)
+  const ambigAncestorRead = readSocket(agentNode, 'act-2/missing-scene', { outputs: ambigAncestorOutputs, readContext: readCtx })
   assert.deepStrictEqual(ambigAncestorRead, {
     value: '',
     missingSection: 'act-2/missing-scene',

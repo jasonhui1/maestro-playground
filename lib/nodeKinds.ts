@@ -1,5 +1,5 @@
 import { ChainDef, ChainNode, ChainNodeKind, AgentDef, SkillDef, ToolDef, ZoneStateEntry } from './types'
-import { agentSlots, DICE_SOCKET, isWholeOutput, socketKey } from './tokens'
+import { agentSlots, DICE_SOCKET, socketKey } from './tokens'
 import { ENTITY_DIRS } from './entityDirs'
 import { agentPartSockets } from './tools/parts'
 import { toolNodeInputs } from './tools/spec'
@@ -41,17 +41,8 @@ export interface PaletteEntry {
 /** `body` runs each round, `boundary` frames the zone, `none` cannot sit inside a loop zone. */
 export type ZoneRole = 'body' | 'boundary' | 'none'
 
-/**
- * What an edge reading this kind's output sockets receives (#166):
- * `seed` the run's seed prompt, or what an `inputs:` port filled it with; `context` its file;
- * `param` the run's parameter value; `pass-through` the whole output whatever the socket;
- * `keyed` one record per socket (subchain ports, zone states); `sectioned` the whole output
- * on `output`, the roll on `dice`, a `##` section on any other socket.
- */
+/** How an edge reads this kind's output sockets; see "Socket read" in CONTEXT.md (#166). */
 export type OutputRead = 'seed' | 'context' | 'param' | 'pass-through' | 'keyed' | 'sectioned'
-
-/** How one output socket reads, per its kind's `OutputRead` — what the canvas labels it as. */
-export type SocketReading = 'whole' | 'section' | 'roll' | 'keyed'
 
 export interface NodeKindDescriptor {
   kind: ChainNodeKind
@@ -319,23 +310,6 @@ export function fieldValue(node: ChainNode, field: FieldDescriptor): unknown {
 
 export function kindOf(kind: ChainNodeKind): NodeKindDescriptor {
   return registry[kind]
-}
-
-export function socketReading(kind: ChainNodeKind, socket: string): SocketReading {
-  const read = registry[kind].read
-  switch (read) {
-    case 'seed': case 'context': case 'param': case 'pass-through': return 'whole'
-    case 'keyed': return 'keyed'
-    case 'sectioned':
-      if (isWholeOutput(socket)) return 'whole'
-      return socketKey(socket) === DICE_SOCKET ? 'roll' : 'section'
-    default: return unhandledRead(read)
-  }
-}
-
-/** Compile-time exhaustiveness: a new `OutputRead` that some reader does not handle fails to build. */
-export function unhandledRead(read: never): never {
-  throw new Error(`no reader for output read "${String(read)}"`)
 }
 
 export function inputIsMulti(input: InputSocket, descriptor: NodeKindDescriptor): boolean {

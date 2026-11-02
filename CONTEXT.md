@@ -24,7 +24,7 @@ A **socket** is a wiring endpoint on a node: output sockets (`output`, `summary`
 
 ## Socket read
 
-What an edge from an output socket delivers, decided by its kind's `read` fact (#166): `seed`, `context` or `param` read the run's value; `pass-through` (gate, branch) the whole output whatever the socket; `keyed` (subchain ports, zone states) one record per socket; `sectioned` (agents and the rest) the whole output on `output`, the roll on `dice`, a `##` section otherwise. One reader, `readSocket`, serves edges, condition refs and **panels**; the canvas labels only a `section` socket as `## name`. _Avoid_: extract (only one of the reads extracts).
+What an edge from an output socket delivers, decided by its kind's `read` fact (#166): `seed`, `context` or `param` read the run's value; `pass-through` (gate, branch) the whole output whatever the socket; `keyed` (subchain ports, zone states) one record per socket; `sectioned` (agents and the rest) the whole output on `output`, the roll on `dice` when the node rolls, a `##` section otherwise. One reader, `readSocket`, serves edges, condition refs and **panels**; the canvas labels only a `section` socket as `## name`, and a fork edits only `whole` or `section` text, refusing keyed and roll sockets. _Avoid_: extract (only one of the reads extracts).
 
 ## Literal input
 

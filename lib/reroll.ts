@@ -143,7 +143,7 @@ async function attemptReroll(
   if (baseline.fixedParts) attempt.fixedParts = baseline.fixedParts
   attempt.reroll = { holdId: hold.nodeId, ...(feedback ? { feedback } : {}) }
   if (versionNumber > 0) attempt.versionNumber = versionNumber
-  const input = readSocket(producer, edge.fromSocket, new Map([[producer.id, attempt]]), seedPrompt, () => '').value
+  const input = readSocket(producer, edge.fromSocket, { outputs: new Map([[producer.id, attempt]]), seedPrompt }).value
   if (attempt.status === 'success' && sliceCandidates(input).length === 0) {
     attempt.status = 'error'
     attempt.error = NO_CANDIDATES

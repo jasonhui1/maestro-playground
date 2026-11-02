@@ -1,7 +1,7 @@
 import { ChainDef, ChainPort, AgentOutput, DiceRoll, RunDice } from './types'
 import { latestOutputsByNode } from './runHistoryState'
-import { readSocket } from './resolveNode'
-import { outputKey, recordKey } from './tokens'
+import { readSocket, type SocketEnv } from './resolveNode'
+import { outputKey, runStateKey } from './tokens'
 
 /** A layout a chain file may name in `view:`. Adding one is a branch here (ADR-0015). */
 export type DeclaredView = 'timeline' | 'columns' | 'sidebar'
@@ -68,11 +68,11 @@ function stateOf(output: AgentOutput | undefined, text: string): PanelState {
   return text.trim() === '' ? 'empty' : 'filled'
 }
 
-type Records = Map<string, AgentOutput>
+type Records = SocketEnv['outputs']
 
-function recordsOf(outputs: AgentOutput[]): Records {
-  const records: Records = new Map()
-  for (const o of outputs) if (o.nodeId) records.set(recordKey(o.nodeId), o)
+function recordsOf(outputs: AgentOutput[]): Map<string, AgentOutput> {
+  const records = new Map<string, AgentOutput>()
+  for (const o of outputs) if (o.nodeId) records.set(runStateKey(o.nodeId), o)
   return records
 }
 
@@ -82,7 +82,7 @@ function panelFor(chain: ChainDef, port: ChainPort, records: Records, dice: RunD
   const socket = port.socket || 'output'
   const output = records.get(port.node) ?? records.get(outputKey(port.node, socket))
   const node = chain.nodes.find(n => n.id === port.node)
-  const text = output && node ? readSocket(node, socket, records, '', () => '', '', dice).value : ''
+  const text = output && node ? readSocket(node, socket, { outputs: records, dice }).value : ''
   const state = stateOf(output, text)
   const panel: LayoutPanel = { name, node: port.node, socket, text, lines: lineCount(text), state }
   if (state === 'errored' && output?.error) panel.error = output.error
@@ -109,10 +109,10 @@ function panelsForSidebar(chain: ChainDef, ports: ChainPort[], outputs: AgentOut
       if (o.nodeId !== port.node) continue
       byRound.set(o.round ?? 0, o)
     }
-    return [...byRound.keys()].sort((a, b) => a - b).map((round): LayoutPanel => ({
-      ...panelFor(chain, port, new Map(latest).set(port.node, byRound.get(round)!), dice, `${port.name} · round ${round + 1}`),
-      round,
-    }))
+    return [...byRound].sort(([a], [b]) => a - b).map(([round, record]): LayoutPanel => {
+      const records: Records = { get: key => key === port.node ? record : latest.get(key) }
+      return { ...panelFor(chain, port, records, dice, `${port.name} · round ${round + 1}`), round }
+    })
   })
 }
 

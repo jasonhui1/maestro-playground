@@ -7,12 +7,12 @@ import { executeToolNode } from './tools/toolNode'
 import type { ToolContext } from './tools/context'
 import { agentPartSockets } from './tools/parts'
 import { injectSkills } from './prompt'
-import { resolveNodePrompt, readSocket, refReader } from './resolveNode'
+import { resolveNodePrompt, readSocket, refReader, type SocketEnv } from './resolveNode'
 import { SectionWarning, sameSectionWarning, emitSectionWarnings } from './sectionWarning'
 import { topoOrder, hasLiteralInput } from './chainGraph'
 import { pairedZones, type Zone } from './zones'
 import { evalCondition } from './condition'
-import { outputKey, recordKey, socketKey, isWholeOutput } from './tokens'
+import { outputKey, runStateKey, socketKey, isWholeOutput } from './tokens'
 import { openHold } from './hold'
 import { withModelOverride } from './modelOverride'
 import { kindOf, agentSlugOf, resolveNodeSkills, MAX_SUBCHAIN_DEPTH, type WorkspaceLookup } from './nodeKinds'
@@ -128,14 +128,15 @@ export async function runChainGraph(
     callbacks.onWarning?.(w)
   }
 
+  const readEnv: SocketEnv = { outputs: nodeOutputs, seedPrompt, readContext, paramValue, dice }
   const edgeValue = (e: typeof chain.edges[number]): string => {
     const src = nodeById.get(e.fromNode)
     if (!src) return ''
-    const read = readSocket(src, e.fromSocket, nodeOutputs, seedPrompt, readContext, paramValue, dice)
+    const read = readSocket(src, e.fromSocket, readEnv)
     emitSectionWarnings(read, e.fromNode, e.toNode, e.toSocket, reportWarning)
     return read.value
   }
-  const refValue = refReader(nodeById, nodeOutputs, seedPrompt, readContext, paramValue, dice)
+  const refValue = refReader(nodeById, readEnv)
 
   // A join's section heading, so the synthesizer downstream can tell contributors apart.
   const joinLabel = (e: typeof chain.edges[number]): string => {
@@ -299,7 +300,7 @@ export async function runChainGraph(
   // replay branched outputs (their out-edges are live)
   for (const o of startOutputs) {
     if (o.nodeId) {
-      nodeOutputs.set(recordKey(o.nodeId), o)
+      nodeOutputs.set(runStateKey(o.nodeId), o)
       if (nodeById.get(o.nodeId)?.kind !== 'tool' || o.status === 'success') markOut(o.nodeId, () => true)
     }
     emit(o.nodeId || '', o); callbacks.onDone(o.nodeId || '', o)
@@ -401,7 +402,7 @@ export async function runChainGraph(
         for (const p of ref.outputs ?? []) {
           const inner = innerById.get(p.node)
           if (!inner) { outMap.set(p.name, ''); continue }
-          const read = readSocket(inner, p.socket ?? 'output', byNode, seedPrompt, readContext, paramValue)
+          const read = readSocket(inner, p.socket ?? 'output', { outputs: byNode, seedPrompt, readContext, paramValue })
           // A skipped inner node produced no answer, so its missing heading is not a
           // convention violation — only a real answer can violate one (#40).
           if (byNode.get(p.node)?.status === 'success') {

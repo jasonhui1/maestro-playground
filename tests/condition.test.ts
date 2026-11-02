@@ -19,7 +19,7 @@ test('condition', () => {
     ...['v', 't', 'r', 'e'].map((id): ChainNode => ({ id, kind: 'agent', agent: id })),
     { id: 'ls', kind: 'loop-start', zone: 'z', state: ['draft'] },
   ]
-  const ctx = refReader(new Map(nodes.map(n => [n.id, n])), outputs, '', () => '')
+  const ctx = refReader(new Map(nodes.map(n => [n.id, n])), { outputs })
 
   assert.strictEqual(evalCondition('{v.output} contains "valid"', ctx), true)   // case-insensitive
   assert.strictEqual(evalCondition('{v.output} == "result: valid"', ctx), true) // trimmed + ci

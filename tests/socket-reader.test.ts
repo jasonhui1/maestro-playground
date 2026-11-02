@@ -3,11 +3,13 @@ import assert from 'node:assert'
 import { runChainGraph } from '../lib/executor'
 import { buildLayoutModel } from '../lib/layoutModel'
 import { evalCondition } from '../lib/condition'
-import { readSocket, refReader } from '../lib/resolveNode'
+import { readSocket, refReader, type SocketEnv } from '../lib/resolveNode'
 import { reviseOutput } from '../lib/revision'
-import { socketHandles } from '../lib/nodeSockets'
+import { socketHandles, socketReading } from '../lib/nodeSockets'
+import { planFork } from '../lib/fork'
+import { isRefusal } from '../lib/refusal'
 import { type NodeKindDescriptor } from '../lib/nodeKinds'
-import type { AgentDef, AgentOutput, ChainDef, ChainNode, RunDice } from '../lib/types'
+import type { AgentDef, AgentOutput, ChainDef, ChainNode, RunMeta } from '../lib/types'
 
 const agent = (slug: string, systemPrompt: string, extra: Partial<AgentDef> = {}): AgentDef => ({
   slug, name: slug, model: 'm', description: '', skills: [], context: [],
@@ -79,15 +81,15 @@ test('a replayed subchain port still reaches its edge when the port name is not 
   assert.strictEqual(delivered(again, 'fromSub'), 'Pitched SEED')
 })
 
-function conditionReader(nodes: ChainNode[], outputs: Map<string, AgentOutput>, run: { seed?: string; param?: string; dice?: RunDice } = {}) {
-  return refReader(new Map(nodes.map(n => [n.id, n])), outputs, run.seed ?? '', () => '', run.param ?? '', run.dice ?? {})
+function conditionReader(nodes: ChainNode[], env: SocketEnv) {
+  return refReader(new Map(nodes.map(n => [n.id, n])), env)
 }
 
 test('a condition reading a nested section matches the edge reading of that section', () => {
   const w: ChainNode = { id: 'w', kind: 'agent', agent: 'w' }
   const outputs = new Map([['w', record('w', '## Act 2\n### Scene 3\nClimax reached\n## Act 2\n### Scene 3\nlater')]])
-  const read = conditionReader([w], outputs)
-  const edge = readSocket(w, 'Act 2/Scene 3', outputs, '', () => '').value
+  const read = conditionReader([w], { outputs })
+  const edge = readSocket(w, 'Act 2/Scene 3', { outputs }).value
 
   assert.strictEqual(edge, 'Climax reached')
   assert.strictEqual(evalCondition(`{w.Act 2/Scene 3} == "${edge}"`, read), true)
@@ -102,7 +104,7 @@ test('a condition reads every kind the way its edge does', () => {
     { id: 'd', kind: 'agent', agent: 'roller' },
   ]
   const outputs = new Map([['g', record('g', '## Verdict\nPASSED')], ['d', record('d', '## Dice\nnot the roll')]])
-  const read = conditionReader(nodes, outputs, { seed: 'the seed', param: 'formal', dice: { d: { mood: ['calm'] } } })
+  const read = conditionReader(nodes, { outputs, seedPrompt: 'the seed', paramValue: 'formal', dice: { d: { mood: ['calm'] } } })
 
   assert.strictEqual(evalCondition('{seed} == "the seed"', read), true)
   assert.strictEqual(evalCondition('{p} == "formal"', read), true)
@@ -121,6 +123,14 @@ test('subchain ports and loop states are not sections on the canvas; agent secti
   assert.deepStrictEqual(outputsOf({ id: 'b', kind: 'branch', cases: [{ label: 'yes', condition: '' }] }), { yes: 'whole' })
 })
 
+test('a `dice` socket is the roll only on a node that rolls; otherwise canvas and edge both read a section', () => {
+  const plain = agent('plain', '{x}', { outputs: [{ name: 'dice' }] })
+  const node: ChainNode = { id: 'n', kind: 'agent', agent: 'plain' }
+  const [handle] = socketHandles(node, { chain, agents: [plain], chains: [] }).filter(h => h.id === 'dice')
+  assert.strictEqual(handle.reads, 'section')
+  assert.strictEqual(readSocket(node, 'dice', { outputs: new Map([['n', record('n', '## Dice\nwritten')]]) }).value, 'written')
+})
+
 test('a panel address round-trips through an addressed revision', () => {
   const prop: ChainDef = {
     slug: 'p', name: 'p', description: '', filePath: '', view: 'timeline',
@@ -129,7 +139,8 @@ test('a panel address round-trips through an addressed revision', () => {
   }
   const original = '## Pitch\nOriginal pitch.\n\n## Notes\nOriginal notes.'
   const panels = buildLayoutModel(prop, [record('prop', original)]).panels
-  const revised = reviseOutput(original, panels.map(p => ({ socket: p.socket, text: `${p.name} edited`, was: p.text })))
+  const reads = (socket: string) => socketReading('agent', socket, false)
+  const revised = reviseOutput(original, panels.map(p => ({ socket: p.socket, text: `${p.name} edited`, was: p.text })), reads)
   assert.ok('output' in revised, JSON.stringify(revised))
 
   const after = buildLayoutModel(prop, [record('prop', revised.output)]).panels
@@ -139,7 +150,47 @@ test('a panel address round-trips through an addressed revision', () => {
   const whole = { ...prop, outputs: [{ name: 'all', node: 'prop', socket: 'Output' }] }
   const [all] = buildLayoutModel(whole, [record('prop', original)]).panels
   assert.strictEqual(all.text, original)
-  assert.deepStrictEqual(reviseOutput(original, [{ socket: all.socket, text: 'replaced', was: all.text }]), { output: 'replaced' })
+  assert.deepStrictEqual(reviseOutput(original, [{ socket: all.socket, text: 'replaced', was: all.text }], reads), { output: 'replaced' })
+})
+
+test('a fork refuses edits to keyed and roll panels; their text is not the node\'s output', () => {
+  const source: RunMeta = {
+    runId: 'r', chainName: 'outer', seedPrompt: 'SEED', startedAt: '', status: 'complete',
+    graph: { nodes: [{ id: 'sub', kind: 'subchain', subchain: 'inner' }, { id: 'd', kind: 'agent', agent: 'roller' }], edges: [] },
+    dice: { d: { mood: ['calm'] } },
+    agentOutputs: [record('sub', ''), record('sub::Output', 'port text'), record('d', '## Notes\nkept')],
+  }
+  const refusedWith = (revisions: Record<string, { socket: string; text: string }[]>) => {
+    const plan = planFork(source, { revisions })
+    return isRefusal(plan) ? plan.status : 'planned'
+  }
+  assert.strictEqual(refusedWith({ sub: [{ socket: 'Output', text: 'x' }] }), 422, 'a subchain port named Output is keyed')
+  assert.strictEqual(refusedWith({ d: [{ socket: 'dice', text: 'x' }] }), 422, 'a roll is not output text')
+  assert.strictEqual(refusedWith({ d: [{ socket: 'notes', text: 'x' }] }), 'planned')
+})
+
+test('a replayed zone state still reaches its edge when the state name is not a slug', async () => {
+  const zoned: ChainDef = {
+    slug: 'z', name: 'z', description: '', filePath: '',
+    nodes: [
+      { id: 'seed', kind: 'seed' },
+      { id: 'ls', kind: 'loop-start', zone: 'z', state: ['Working Draft'] },
+      { id: 'patch', kind: 'agent', agent: 'patch', zone: 'z' },
+      { id: 'le', kind: 'loop-end', zone: 'z', until: '', maxIterations: 1 },
+      { id: 'fromLoop', kind: 'agent', agent: 'reader' },
+    ],
+    edges: [
+      { fromNode: 'seed', fromSocket: 'output', toNode: 'ls', toSocket: 'Working Draft' },
+      { fromNode: 'ls', fromSocket: 'Working Draft', toNode: 'patch', toSocket: 'prev' },
+      { fromNode: 'patch', fromSocket: 'output', toNode: 'le', toSocket: 'Working Draft' },
+      { fromNode: 'le', fromSocket: 'Working Draft', toNode: 'fromLoop', toSocket: 'in' },
+    ],
+  }
+  const first = await runChainGraph(zoned, defs, noop, { seedPrompt: 'SEED', run: echo })
+  assert.strictEqual(delivered(first, 'fromLoop'), 'round over SEED')
+  const replay = first.filter(r => r.nodeId !== 'fromLoop')
+  const again = await runChainGraph(zoned, defs, noop, { seedPrompt: 'SEED', run: echo, replay })
+  assert.strictEqual(delivered(again, 'fromLoop'), 'round over SEED')
 })
 
 test('a kind with no read fact does not compile', () => {

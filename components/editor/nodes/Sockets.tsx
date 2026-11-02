@@ -27,7 +27,7 @@ function dotClass(handle: SocketHandle, tone: SocketTone): string {
 }
 
 function dotTitle(handle: SocketHandle): string {
-  if (handle.reads === 'section') return `Extracts ## ${handle.id} from output`
+  if (handle.reads === 'section') return `Reads ## ${handle.id} of output`
   if (handle.optional) return `${handle.id} (optional)`
   if (handle.multi) return `${handle.id} (accepts many)`
   return handle.id

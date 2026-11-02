@@ -20,10 +20,10 @@ test('resolve-control', () => {
   const gate: ChainNode = { id: 'g', kind: 'gate' }
   const branch: ChainNode = { id: 'r', kind: 'branch' }
 
-  assert.strictEqual(readSocket(seed, 'output', outs, 'SEED', read).value, 'SEED')
-  assert.strictEqual(readSocket(ctx, 'output', outs, 'SEED', read).value, 'CTX:lore')
-  assert.strictEqual(readSocket(agent, 'output', outs, 'SEED', read).value, 'AGENT BODY\n## Summary\nSHORT')
-  assert.strictEqual(readSocket(agent, 'summary', outs, 'SEED', read).value, 'SHORT')
-  assert.strictEqual(readSocket(gate, 'output', outs, 'SEED', read).value, 'PASSED VALUE')
-  assert.strictEqual(readSocket(branch, 'urgent', outs, 'SEED', read).value, 'ROUTED VALUE') // socket ignored
+  assert.strictEqual(readSocket(seed, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'SEED')
+  assert.strictEqual(readSocket(ctx, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'CTX:lore')
+  assert.strictEqual(readSocket(agent, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'AGENT BODY\n## Summary\nSHORT')
+  assert.strictEqual(readSocket(agent, 'summary', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'SHORT')
+  assert.strictEqual(readSocket(gate, 'output', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'PASSED VALUE')
+  assert.strictEqual(readSocket(branch, 'urgent', { outputs: outs, seedPrompt: 'SEED', readContext: read }).value, 'ROUTED VALUE') // socket ignored
 })
